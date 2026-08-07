@@ -1,0 +1,160 @@
+rules_version = '2';
+service cloud.firestore {
+  match /databases/{database}/documents {
+    
+    // Safety net
+    match /{document=**} {
+      allow read, write: if false;
+    }
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
+    }
+
+    function isSuperAdmin(appId) {
+      return isSignedIn() && (
+        ('email' in request.auth.token && request.auth.token.email == 'admblackjamf@gmail.com')
+      );
+    }
+
+    function isAdmin(appId) {
+      return isSignedIn() && (
+        ('email' in request.auth.token && request.auth.token.email == 'admblackjamf@gmail.com') || 
+        (exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/students/$(request.auth.uid)) && 
+         'roles' in get(/databases/$(database)/documents/artifacts/$(appId)/public/data/students/$(request.auth.uid)).data &&
+         get(/databases/$(database)/documents/artifacts/$(appId)/public/data/students/$(request.auth.uid)).data.roles is list &&
+         get(/databases/$(database)/documents/artifacts/$(appId)/public/data/students/$(request.auth.uid)).data.roles.hasAny(['ADMIN', 'DIRETORIA', 'GESTÃO', 'COMUNICAÇÃO', 'SECRETARIA', 'admin', 'diretoria', 'gestão', 'comunicação', 'secretaria']))
+      );
+    }
+
+    function isGerente(appId) {
+      return isSignedIn() && (
+        exists(/databases/$(database)/documents/artifacts/$(appId)/public/data/students/$(request.auth.uid)) && 
+        'roles' in get(/databases/$(database)/documents/artifacts/$(appId)/public/data/students/$(request.auth.uid)).data &&
+        get(/databases/$(database)/documents/artifacts/$(appId)/public/data/students/$(request.auth.uid)).data.roles is list &&
+        get(/databases/$(database)/documents/artifacts/$(appId)/public/data/students/$(request.auth.uid)).data.roles.hasAny(['GERENTE', 'gerente', 'COORDENAÇÕES', 'coordenações'])
+      );
+    }
+
+    // Root Collections
+    match /push_subscriptions/{subId} {
+      allow read, write: if true;
+    }
+
+    // Mail queue
+    match /mail/{mailId} {
+      allow create: if true;
+      allow read, update, delete: if false;
+    }
+
+    match /artifacts/{appId} {
+      allow read: if true;
+    }
+
+    match /artifacts/{appId}/public/data {
+      
+      // Mural Posts
+      match /mural_posts/{postId} {
+        allow read: if true;
+        allow create, update, delete: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
+        
+        // Comments Subcollection
+        match /comments/{commentId} {
+          allow read: if true;
+          allow create: if isSignedIn();
+          allow update, delete: if isSignedIn() && (isAdmin(appId) || isGerente(appId) || request.auth.uid == resource.data.authorId);
+        }
+      }
+
+      // Students/Members
+      match /students/{studentId} {
+        allow read: if true;
+        allow create, delete: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
+        allow update: if isSignedIn() && (
+          isAdmin(appId) || 
+          isGerente(appId) || 
+          (studentId != '_settings_global' && !studentId.matches('^_asset_.*') && (
+            (resource.data.authId != null && request.auth.uid == resource.data.authId) || 
+            (!('authId' in resource.data) || resource.data.authId == null)
+          ))
+        );
+      }
+
+      // Events
+      match /events/{eventId} {
+        allow read: if true;
+        allow write: if isAdmin(appId) || isGerente(appId);
+      }
+
+      // Attendances
+      match /attendances/{attId} {
+        allow read: if true;
+        allow write: if true;
+      }
+
+      // Availabilities
+      match /availabilities/{availId} {
+        allow read: if true;
+        allow write: if true;
+      }
+
+      // Appointments
+      match /appointments/{apptId} {
+        allow read: if true;
+        allow write: if true;
+      }
+
+      // Administrators
+      match /administrators/{adminId} {
+        allow read: if isSignedIn();
+        allow create: if isAdmin(appId) || (isSignedIn() && request.auth.uid == adminId);
+        allow update: if isAdmin(appId) || (isSignedIn() && request.auth.uid == adminId && 
+          (!('role' in request.resource.data.diff(resource.data).affectedKeys()) || request.resource.data.role == resource.data.role));
+        allow delete: if isAdmin(appId);
+      }
+
+      // Admin Invites
+      match /admin_invites/{inviteEmail} {
+        allow read: if true;
+        allow write: if isAdmin(appId) || isSignedIn();
+      }
+
+      // Audit Logs
+      match /audit_logs/{logId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
+      }
+
+      // Push Subscriptions
+      match /push_subscriptions/{subId} {
+        allow read, write: if true;
+      }
+      
+      // Notifications
+      match /notifications/{notifId} {
+        allow read: if true;
+        allow write: if true;
+      }
+
+      // Settings
+      match /settings/{docId} {
+        allow read: if true;
+        allow write: if isAdmin(appId) || isGerente(appId);
+      }
+
+      // Doblo Logs
+      match /doblo_logs/{logId} {
+        allow read: if true;
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin(appId);
+      }
+
+      // Assets
+      match /assets/{assetId} {
+        allow read: if true;
+        allow write: if true;
+      }
+    }
+  }
+}

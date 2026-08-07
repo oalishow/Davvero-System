@@ -1,0 +1,91 @@
+src/components/PublicRequestModal.tsx:197:              <input type="email" value={email} onChange={e => setEmail(e.target.value)} placeholder="Para ser notificado(a) da aprovação" className="input-modern w-full rounded-xl py-3 px-4 text-sm" />
+src/components/NotificationsManager.tsx:70:      // 1. Create Firestore notification (for in-app display)
+src/components/NotificationsManager.tsx:119:      console.error("Erro ao enviar notificação:", err);
+src/components/NotificationsManager.tsx:120:      showAlert("Falha ao enviar notificação: " + err.message, { type: "error" });
+src/components/NotificationsManager.tsx:145:Escreva um título curto (até 50 caracteres, podendo ter um emoji no final) e uma mensagem clara, objetiva, engajadora e diversificada (evite clichês e use vocabulário rico, variando o tom, até 250 caracteres) para a seguinte ideia de notificação:
+src/components/NotificationsManager.tsx:177:      showAlert("Não foi possível gerar a notificação pela IA. Verifique sua chave da API do Gemini.", { type: "error" });
+src/components/NotificationsManager.tsx:303:                <strong>Atenção:</strong> O broadcast enviará esta notificação para o painel de TODOS os alunos imediatamente. Esta ação não poderá ser desfeita.
+src/components/Header.tsx:24:  const { notifications, unreadCount } = useNotifications(recipientId);
+src/components/Header.tsx:34:          const res = await showConfirm("Deseja receber notificações do instituto no seu celular e computador?", { 
+src/components/Header.tsx:227:                               notifications.filter(n => n.recipientId === "todos" && !n.read).forEach(n => {
+src/components/Header.tsx:238:                      {notifications.length > 0 && (
+src/components/Header.tsx:262:                    {notifications.length === 0 ? (
+src/components/Header.tsx:264:                        Nenhuma notificação nova.
+src/components/Header.tsx:267:                      notifications.slice(0, 20).map(n => (
+src/components/PublicAppointmentsList.tsx:123:    const confirmed = await showConfirm(`Deseja trocar o seu horário do dia ${new Date(myAppt.date + 'T12:00:00').toLocaleDateString('pt-BR')} às ${myAppt.startTime} para o dia ${new Date(targetAvail.date + 'T12:00:00').toLocaleDateString('pt-BR')} às ${targetAvail.startTime}? O administrador será notificado.`);
+src/components/PublicAppointmentsList.tsx:145:      // Add notification to admin
+src/components/PublicAppointmentsList.tsx:146:      await addDoc(collection(db, `artifacts/${appId}/public/data/notifications`), {
+src/components/PublicAppointmentsList.tsx:161:      // Add notification to the NEW professional
+src/components/PublicAppointmentsList.tsx:162:      await addDoc(collection(db, `artifacts/${appId}/public/data/notifications`), {
+src/components/PublicAppointmentsList.tsx:171:      // Add notification to the OLD professional (if different from new)
+src/components/PublicAppointmentsList.tsx:173:        await addDoc(collection(db, `artifacts/${appId}/public/data/notifications`), {
+src/components/SuggestEditModal.tsx:111:      // Local onde entra notificação EmailJS extendida
+src/components/SettingsModal.tsx:1577:                        Ative as notificações de navegador para ser alertado
+src/components/SettingsModal.tsx:1586:                              "Seu navegador não suporta notificações.",
+src/components/SettingsModal.tsx:1600:                                  "Permissão para notificações foi negada.",
+src/components/SettingsModal.tsx:1633:                        os novos termos antes de acessarem seus dados novamente, e enviarão uma notificação para todos.
+src/components/SettingsModal.tsx:1644:                                 // Add global notification
+src/components/SettingsModal.tsx:1654:                                 await addDoc(collection(db, `artifacts/${appId}/public/data/notifications`), newNotif);
+src/components/SettingsModal.tsx:1656:                                 showStatus(`Termos atualizados para versão ${newVersion} e notificados com sucesso!`, "success");
+src/components/ChangelogModal.tsx:38:        'Ajustes visuais no contador de notificações.'
+src/components/ChangelogModal.tsx:94:        'Flexibilidade: Alunos agora podem trocar sua data/hora de atendimento, notificando automaticamente o profissional.'
+src/components/AdminPanel.tsx:62:  const [activeTab, setActiveTab] = useState<"dashboard" | "members" | "events" | "appointments" | "notifications">("dashboard");
+src/components/AdminPanel.tsx:392:      // Notificar o novo membro (embora ele precise logar para ver, a notificação estará lá)
+src/components/AdminPanel.tsx:576:          onClick={() => setActiveTab("notifications")}
+src/components/AdminPanel.tsx:578:            activeTab === "notifications"
+src/components/AdminPanel.tsx:613:      {activeTab === "notifications" && (
+src/components/VerificationResult.tsx:510:                notificações ou no app "Arquivos".
+src/components/AdminRequestsModal.tsx:222:                               // Try to send notification
+src/components/NotificationObserver.tsx:11:  // Determine recipient for notifications (admin or the specific student)
+src/components/NotificationObserver.tsx:14:  // Use the central hook that reads the 'notifications' collection and sets PWA Badge
+src/components/NotificationObserver.tsx:15:  const { notifications, unreadCount } = useNotifications(recipientId);
+src/components/NotificationObserver.tsx:18:    // Also request notification permission so we can show Toast/Alert if needed
+src/components/StudentPortal.tsx:681:        // Enable background notifications for this track request
+src/lib/constants.ts:51:  "Atendimentos: Visualização de horários vagos e alteração de data/hora pelo aluno com notificação ao profissional.",
+src/lib/firebase.ts:543:  notification: Omit<Notification, "id" | "createdAt" | "read">,
+src/lib/firebase.ts:548:    const notificationsRef = collection(
+src/lib/firebase.ts:550:      `artifacts/${appId}/public/data/notifications`,
+src/lib/firebase.ts:553:    await addDoc(notificationsRef, {
+src/lib/firebase.ts:554:      ...notification,
+src/lib/firebase.ts:563:      console.error("Erro ao criar notificação:", error);
+src/lib/firebase.ts:568:export const markNotificationAsRead = async (notificationId: string, isBroadcast: boolean = false) => {
+src/lib/firebase.ts:572:      if (!localReads.includes(notificationId)) {
+src/lib/firebase.ts:573:        localReads.push(notificationId);
+src/lib/firebase.ts:583:    const notificationRef = doc(
+src/lib/firebase.ts:585:      `artifacts/${appId}/public/data/notifications`,
+src/lib/firebase.ts:586:      notificationId,
+src/lib/firebase.ts:588:    await updateDoc(notificationRef, { read: true });
+src/lib/firebase.ts:594:      console.error("Erro ao marcar notificação como lida:", error);
+src/lib/firebase.ts:599:export const clearNotification = async (notificationId: string, isBroadcast: boolean = false) => {
+src/lib/firebase.ts:603:      if (!localCleared.includes(notificationId)) {
+src/lib/firebase.ts:604:        localCleared.push(notificationId);
+src/lib/firebase.ts:613:    const notificationRef = doc(
+src/lib/firebase.ts:615:      `artifacts/${appId}/public/data/notifications`,
+src/lib/firebase.ts:616:      notificationId,
+src/lib/firebase.ts:618:    await deleteDoc(notificationRef);
+src/lib/firebase.ts:624:      console.error("Erro ao limpar notificação:", error);
+src/lib/firebase.ts:633:    const notificationsRef = collection(
+src/lib/firebase.ts:635:      `artifacts/${appId}/public/data/notifications`,
+src/lib/firebase.ts:637:    // Handle specific user notifications
+src/lib/firebase.ts:639:      notificationsRef,
+src/lib/firebase.ts:653:      notificationsRef,
+src/lib/firebase.ts:678:      console.error("Erro ao limpar todas notificações:", error);
+src/lib/firebase.ts:687:    const notificationsRef = collection(
+src/lib/firebase.ts:689:      `artifacts/${appId}/public/data/notifications`,
+src/lib/firebase.ts:692:      notificationsRef,
+src/lib/firebase.ts:710:      console.error("Erro ao marcar todas notificações como lidas:", error);
+src/hooks/usePushNotifications.ts:32:        console.warn("User denied push notifications");
+src/hooks/usePushNotifications.ts:33:        alert("Permissão para notificações foi negada. Por favor, libere nas configurações do navegador (ícone de cadeado na barra de endereços).");
+src/hooks/usePushNotifications.ts:68:      alert("Falha ao se inscrever nas notificações. Verifique a permissão do seu navegador.");
+src/hooks/useNotifications.ts:10:  const [notifications, setNotifications] = useState<Notification[]>([]);
+src/hooks/useNotifications.ts:51:    // Extracted logic to process and set notifications so we can reuse it
+src/hooks/useNotifications.ts:103:        console.error("Erro ao carregar cache de notificações:", err);
+src/hooks/useNotifications.ts:108:      collection(db, `artifacts/${appId}/public/data/notifications`),
+src/hooks/useNotifications.ts:142:                 tag: change.doc.id // Prevents duplicate notifications
+src/hooks/useNotifications.ts:152:                     console.warn("Could not show notification via Service Worker or Constructor", e);
+src/hooks/useNotifications.ts:159:                   console.warn("Could not show notification via Constructor", e);
+src/hooks/useNotifications.ts:171:        console.error("Erro no snapshot de notificações:", error);
+src/hooks/useNotifications.ts:192:  return { notifications, unreadCount, isOnline };
+src/service-worker.ts:40:self.addEventListener("notificationclick", (event: any) => {
+src/service-worker.ts:41:  event.notification.close();
+src/service-worker.ts:43:    self.clients.openWindow(event.notification.data.url)
