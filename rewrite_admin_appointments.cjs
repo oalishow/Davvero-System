@@ -1,6 +1,7 @@
-import { BriefcaseMedical, Settings } from "lucide-react";
+const fs = require('fs');
+
+const content = `import { BriefcaseMedical, Settings } from "lucide-react";
 import { useSettings } from "../context/SettingsContext";
-import SchedulingManager from "./SchedulingManager";
 
 export default function AdminAppointments() {
   const { settings } = useSettings();
@@ -49,10 +50,9 @@ export default function AdminAppointments() {
           </div>
         </div>
       </div>
-      
-      <div className="mt-8 text-left">
-        <SchedulingManager />
-      </div>
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/components/AdminAppointments.tsx', content);

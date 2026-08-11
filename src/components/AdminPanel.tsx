@@ -624,6 +624,15 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
       {activeTab === "appointments" && (
         <div className="space-y-4">
+          {settings?.appointmentsExternalLink ? (
+            <div className="bg-sky-50 dark:bg-sky-900/20 p-6 rounded-2xl border border-sky-100 dark:border-sky-800 text-center text-sky-800 dark:text-sky-300">
+              <h3 className="text-lg font-bold mb-2">Modo Simplificado Ativo</h3>
+              <p className="text-sm opacity-80 mb-4">Os agendamentos estão configurados para usar um link externo (WhatsApp/Agenda).</p>
+              <button onClick={() => updateSettings({ appointmentsExternalLink: '' })} className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors">
+                Restaurar Sistema Interno
+              </button>
+            </div>
+          ) : null}
           <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
             <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 font-display flex items-center gap-3">
               <span className="bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400 p-2 rounded-xl">

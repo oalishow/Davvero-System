@@ -16,6 +16,9 @@ export interface Member {
   validityDate?: string;
   alphaCode?: string;
   photoUrl?: string | null;
+  appointmentLink?: string;
+  appointmentType?: "whatsapp" | "google_calendar" | "other";
+  whatsappNumber?: string;
   roles?: string[];
   course?: string;
   seminary?: string;

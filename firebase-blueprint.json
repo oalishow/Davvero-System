@@ -1,0 +1,60 @@
+{
+  "entities": {
+    "Student": {
+      "title": "Student / Member",
+      "description": "Represents a member or student in the application",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "name": { "type": "string", "maxLength": 100 },
+        "email": { "type": "string", "format": "email" },
+        "phone": { "type": "string", "maxLength": 20 },
+        "alphaCode": { "type": "string", "maxLength": 20 },
+        "roles": { "type": "array", "items": { "type": "string" } },
+        "authId": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "number" },
+        "updatedAt": { "type": "number" }
+      }
+    },
+    "Event": {
+      "title": "Event",
+      "description": "An event to be tracked",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 200 },
+        "description": { "type": "string", "maxLength": 2000 },
+        "date": { "type": "string", "format": "date-time" },
+        "location": { "type": "string", "maxLength": 500 },
+        "createdBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "number" }
+      }
+    },
+    "Attendance": {
+      "title": "Attendance Record",
+      "description": "A record of attendance for an event",
+      "type": "object",
+      "properties": {
+        "eventId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "status": { "type": "string", "enum": ["present", "absent", "excused"] },
+        "markedBy": { "type": "string", "maxLength": 128 },
+        "createdAt": { "type": "number" }
+      }
+    }
+  },
+  "firestore": {
+    "/artifacts/{appId}/public/data/students": {
+      "schema": { "$ref": "#/entities/Student" },
+      "description": "Stores students/members information"
+    },
+    "/artifacts/{appId}/public/data/events": {
+      "schema": { "$ref": "#/entities/Event" },
+      "description": "Stores events for tracking"
+    },
+    "/artifacts/{appId}/public/data/attendances": {
+      "schema": { "$ref": "#/entities/Attendance" },
+      "description": "Stores attendance records for events"
+    }
+  }
+}

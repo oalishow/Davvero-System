@@ -1480,7 +1480,7 @@ export default function StudentPortal({
                   } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
                 >
                   <HeartHandshake className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span>Atendimento</span>
+                  <span>Seminário</span>
                 </button>
                 <button
                   onClick={() => setActiveTab("seminary_events")}

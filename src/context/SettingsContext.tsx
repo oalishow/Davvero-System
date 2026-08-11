@@ -37,10 +37,11 @@ interface AppSettings {
     logo: string | null; 
     signature: string | null; 
     rectorName: string;
-    professionals?: { id: string, name: string, role: string, photoUrl: string | null }[];
+    professionals?: { id: string, name: string, role: string, photoUrl: string | null, appointmentLink?: string, appointmentType?: "whatsapp" | "google_calendar" | "other", whatsappNumber?: string }[];
   }>;
   useGoogleScriptCertificate: boolean;
   googleScriptCertificateUrl: string;
+  certificateValidationUrl: string;
   headerLogoUrl: string | null;
   headerLogoLink: string;
   headerLogoEnabled: boolean;
@@ -63,6 +64,8 @@ interface AppSettings {
   libraryEnabled: boolean;
   avaLink: string;
   avaEnabled: boolean;
+  fajopaPlusUrl: string;
+  fajopaPlusEnabled: boolean;
   contemplacaoLink: string;
   contemplacaoEnabled: boolean;
   useWhatsappMural: boolean;
@@ -71,7 +74,8 @@ interface AppSettings {
   muralEnabled?: boolean;
   eventsEnabled?: boolean;
   appointmentsEnabled?: boolean;
-  professionals?: { id: string, name: string, role: string, photoUrl: string | null }[];
+  appointmentsExternalLink?: string;
+  professionals?: { id: string, name: string, role: string, photoUrl: string | null, appointmentLink?: string, appointmentType?: "whatsapp" | "google_calendar" | "other", whatsappNumber?: string }[];
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -122,6 +126,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   seminariesConfig: {},
   useGoogleScriptCertificate: false,
   googleScriptCertificateUrl: 'https://script.google.com/macros/s/AKfycbxNT2BgfK1y0c5N7JILcWaDhexhQqJ6UQv-dmOBFye7mbQNz8kfZ_9JolRzQ4BiTUsr/exec',
+  certificateValidationUrl: 'https://plus.fajopa.org/validar',
   headerLogoUrl: null,
   headerLogoLink: 'https://fajopa.org',
   headerLogoEnabled: true,
@@ -143,6 +148,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   libraryEnabled: true,
   avaLink: 'https://fajopa.net/ava/',
   avaEnabled: true,
+  fajopaPlusUrl: 'https://plus.fajopa.org',
+  fajopaPlusEnabled: true,
   contemplacaoLink: 'https://revista.fajopa.com/index.php/contemplacao',
   contemplacaoEnabled: true,
   useWhatsappMural: true,
@@ -151,11 +158,12 @@ const DEFAULT_SETTINGS: AppSettings = {
   muralEnabled: true,
   eventsEnabled: true,
   appointmentsEnabled: true,
+  appointmentsExternalLink: '',
   professionals: [
-    { id: "prof_altair", name: "Padre Altair", role: "REITOR", photoUrl: null },
-    { id: "prof_anderson", name: "Padre Anderson", role: "VICE-REITOR", photoUrl: null },
-    { id: "prof_braz", name: "Padre Bráz", role: "DIRETOR ESPIRITUAL", photoUrl: null },
-    { id: "prof_alessandra", name: "Dra. Alessandra", role: "PSICÓLOGA", photoUrl: null }
+    { id: "prof_altair", name: "Padre Altair", role: "REITOR", photoUrl: null, appointmentLink: "https://chat.whatsapp.com/GzB9sD90aW09kPndbI38uP", appointmentType: "whatsapp", whatsappNumber: "" },
+    { id: "prof_anderson", name: "Padre Anderson", role: "VICE-REITOR", photoUrl: null, appointmentLink: "https://calendar.app.google/shVAPdZTNeDs2PaGA", appointmentType: "google_calendar", whatsappNumber: "" },
+    { id: "prof_braz", name: "Padre Bráz", role: "DIRETOR ESPIRITUAL", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "" },
+    { id: "prof_alessandra", name: "Dra. Alessandra", role: "PSICÓLOGA", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "" }
   ],
 };
 

@@ -279,7 +279,7 @@ export default function AppointmentsPanel({ member }: AppointmentsPanelProps) {
       endTime = h.toString().padStart(2, '0') + m + '00';
     }
 
-    const summary = `Atendimento com ${roleName}`;
+    const summary = `Seminário com ${roleName}`;
     const description = `Agendamento confirmado via sistema FAJOPA.`;
     const location = appt.location || '';
     
@@ -291,7 +291,7 @@ export default function AppointmentsPanel({ member }: AppointmentsPanelProps) {
 
     const icsContent = `BEGIN:VCALENDAR
 VERSION:2.0
-PRODID:-//FAJOPA//Atendimento//PT-BR
+PRODID:-//FAJOPA//Seminário//PT-BR
 BEGIN:VEVENT
 DTSTART:${startDate}T${startTime}
 DTEND:${endDate}T${endTime}
@@ -305,7 +305,7 @@ END:VCALENDAR`;
     const url = URL.createObjectURL(blob);
     const link = document.createElement('a');
     link.href = url;
-    link.setAttribute('download', `atendimento_${startDate}.ics`);
+    link.setAttribute('download', `seminário_${startDate}.ics`);
     document.body.appendChild(link);
     link.click();
     document.body.removeChild(link);
@@ -446,7 +446,7 @@ END:VCALENDAR`;
               </div>
               <div className="space-y-3 overflow-y-auto pr-1 flex-1 min-h-0" style={{ maxHeight: '400px' }}>
                 {appointmentsAsProf.length === 0 ? (
-                  <p className="text-xs text-slate-500 text-center py-4">Nenhum atendimento agendado.</p>
+                  <p className="text-xs text-slate-500 text-center py-4">Nenhum seminário agendado.</p>
                 ) : (
                   appointmentsAsProf.filter(appt => {
                     if (!profSearchQuery) return true;
@@ -509,7 +509,7 @@ END:VCALENDAR`;
           <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-5 sm:p-6 shadow-sm">
             <h3 className="text-lg font-black text-slate-800 dark:text-white uppercase flex items-center gap-2 mb-4">
               <HeartHandshake className="w-5 h-5 text-purple-500" />
-              Agendar Atendimento
+              Agendar Seminário
             </h3>
             
             <div className="space-y-4">
@@ -605,10 +605,10 @@ END:VCALENDAR`;
                       {appt.status === 'CONFIRMADO' && (
                         <div className="mt-3 pt-3 border-t border-slate-100 dark:border-slate-800 flex justify-between items-center pl-2">
                           <div className="flex gap-2">
-                            <button onClick={() => handleAddToCalendar(appt, prof ? prof.name : 'Atendimento', false)} className="text-[11px] font-bold text-slate-500 hover:text-purple-600 flex items-center gap-1">
+                            <button onClick={() => handleAddToCalendar(appt, prof ? prof.name : 'Seminário', false)} className="text-[11px] font-bold text-slate-500 hover:text-purple-600 flex items-center gap-1">
                               <CalendarPlus className="w-3 h-3" /> Arquivo .ics
                             </button>
-                            <button onClick={() => handleAddToCalendar(appt, prof ? prof.name : 'Atendimento', true)} className="text-[11px] font-bold text-slate-500 hover:text-purple-600 flex items-center gap-1">
+                            <button onClick={() => handleAddToCalendar(appt, prof ? prof.name : 'Seminário', true)} className="text-[11px] font-bold text-slate-500 hover:text-purple-600 flex items-center gap-1">
                               Google
                             </button>
                           </div>

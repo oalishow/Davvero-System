@@ -316,3 +316,38 @@ header, footer, .install-pwa-button, .davvero-icon {
   z-index: 40 !important;
 }
 
+
+@keyframes glitch-anim {
+  0% {
+    text-shadow: 1.5px 0px 0px #ef4444, -1.5px 0px 0px #0ea5e9;
+  }
+  20% {
+    text-shadow: -1.5px 0px 0px #ef4444, 1.5px 0px 0px #0ea5e9;
+  }
+  40% {
+    text-shadow: 1.5px 0px 0px #ef4444, -1.5px 0px 0px #0ea5e9;
+  }
+  60% {
+    text-shadow: -1.5px 0px 0px #ef4444, 1.5px 0px 0px #0ea5e9;
+  }
+  80% {
+    text-shadow: 1.5px 0px 0px #ef4444, -1.5px 0px 0px #0ea5e9;
+  }
+  100% {
+    text-shadow: -1.5px 0px 0px #ef4444, 1.5px 0px 0px #0ea5e9;
+  }
+}
+
+.glitch-text {
+  text-shadow: 1.5px 0px 0px #ef4444, -1.5px 0px 0px #0ea5e9;
+  animation: glitch-anim 0.3s infinite linear;
+}
+
+.glitch-text-hover-only {
+  text-shadow: 1px 0px 0px #ef4444, -1px 0px 0px #0ea5e9;
+  transition: all 0.2s ease;
+}
+
+.group:hover .glitch-text-hover-only {
+  animation: glitch-anim 0.2s infinite linear;
+}

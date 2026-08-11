@@ -165,6 +165,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   
   const [useGoogleScriptCertificate, setUseGoogleScriptCertificate] = useState(cloudSettings.useGoogleScriptCertificate || false);
   const [googleScriptCertificateUrl, setGoogleScriptCertificateUrl] = useState(cloudSettings.googleScriptCertificateUrl || 'https://script.google.com/macros/s/AKfycbxNT2BgfK1y0c5N7JILcWaDhexhQqJ6UQv-dmOBFye7mbQNz8kfZ_9JolRzQ4BiTUsr/exec');
+  const [certificateValidationUrl, setCertificateValidationUrl] = useState(cloudSettings.certificateValidationUrl || 'https://plus.fajopa.org/validar');
 
   const [headerLogoUrl, setHeaderLogoUrl] = useState(cloudSettings.headerLogoUrl);
   const [headerLogoLink, setHeaderLogoLink] = useState(cloudSettings.headerLogoLink || 'https://fajopa.org');
@@ -185,6 +186,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [sophiaEnabled, setSophiaEnabled] = useState(cloudSettings.sophiaEnabled ?? true);
   const [libraryLink, setLibraryLink] = useState(cloudSettings.libraryLink || 'https://biblioteca.sophia.com.br/1291/');
   const [libraryEnabled, setLibraryEnabled] = useState(cloudSettings.libraryEnabled ?? true);
+  const [fajopaPlusUrl, setFajopaPlusUrl] = useState(cloudSettings.fajopaPlusUrl || 'https://plus.fajopa.org');
+  const [fajopaPlusEnabled, setFajopaPlusEnabled] = useState(cloudSettings.fajopaPlusEnabled ?? true);
   const [avaLink, setAvaLink] = useState(cloudSettings.avaLink || 'https://fajopa.net/ava/');
   const [avaEnabled, setAvaEnabled] = useState(cloudSettings.avaEnabled ?? true);
   const [contemplacaoLink, setContemplacaoLink] = useState(cloudSettings.contemplacaoLink || 'https://revista.fajopa.com/index.php/contemplacao');
@@ -192,12 +195,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [muralEnabled, setMuralEnabled] = useState(cloudSettings.muralEnabled ?? true);
   const [eventsEnabled, setEventsEnabled] = useState(cloudSettings.eventsEnabled ?? true);
   const [appointmentsEnabled, setAppointmentsEnabled] = useState(cloudSettings.appointmentsEnabled ?? true);
+  const [appointmentsExternalLink, setAppointmentsExternalLink] = useState(cloudSettings.appointmentsExternalLink || '');
   const [professionals, setProfessionals] = useState<{ id: string, name: string, role: string, photoUrl: string | null }[]>(
     cloudSettings.professionals || DEFAULT_PROFESSIONALS.map(p => ({
       id: p.id,
       name: p.name,
       role: p.roles?.[0] || 'Profissional',
-      photoUrl: p.photoUrl || null
+      photoUrl: p.photoUrl || null,
+      appointmentLink: p.appointmentLink || ''
     }))
   );
   const [useWhatsappMural, setUseWhatsappMural] = useState(cloudSettings.useWhatsappMural ?? true);
@@ -281,6 +286,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         seminariesConfig,
         useGoogleScriptCertificate,
         googleScriptCertificateUrl,
+        certificateValidationUrl,
         headerLogoUrl,
         headerLogoLink,
         headerLogoEnabled,
@@ -300,6 +306,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         sophiaEnabled,
         libraryLink,
         libraryEnabled,
+        fajopaPlusUrl,
+        fajopaPlusEnabled,
         avaLink,
         avaEnabled,
         contemplacaoLink,
@@ -308,6 +316,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         muralEnabled,
         eventsEnabled,
         appointmentsEnabled,
+        appointmentsExternalLink,
         professionals,
       });
 
@@ -539,7 +548,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         ...prev,
         [seminary]: {
           ...current,
-          professionals: [...professionals, { id: 'prof_' + Math.random().toString(36).substr(2, 9), name: '', role: 'PSICÓLOGO(A)', photoUrl: null }]
+          professionals: [...professionals, { id: 'prof_' + Math.random().toString(36).substr(2, 9), name: '', role: 'PSICÓLOGO(A)', photoUrl: null, appointmentLink: '' }]
         }
       };
     });
@@ -574,7 +583,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   };
 
   const addGlobalProfessional = () => {
-    setProfessionals(prev => [...prev, { id: 'prof_' + Math.random().toString(36).substr(2, 9), name: '', role: 'PSICÓLOGO(A)', photoUrl: null }]);
+    setProfessionals(prev => [...prev, { id: 'prof_' + Math.random().toString(36).substr(2, 9), name: '', role: 'PSICÓLOGO(A)', photoUrl: null, appointmentLink: '' }]);
   };
 
   const updateGlobalProfessional = (id: string, field: string, val: string | null) => {
@@ -1420,7 +1429,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
                             <div className="border-t border-slate-100 dark:border-slate-700 pt-3">
                                <div className="flex justify-between items-center mb-2">
-                                 <label className="text-[10px] font-bold text-slate-500 uppercase">Profissionais de Atendimento</label>
+                                 <label className="text-[10px] font-bold text-slate-500 uppercase">Profissionais de Seminário</label>
                                  <button onClick={() => addSeminaryProfessional(sem)} className="text-[10px] bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400 px-2 py-1 rounded font-bold hover:bg-sky-200 dark:hover:bg-sky-900/50 transition-colors uppercase flex items-center gap-1">
                                    <Plus className="w-3 h-3" /> Adicionar
                                  </button>
@@ -1450,6 +1459,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                           <div className="flex-1 grid grid-cols-2 gap-2">
                                             <input type="text" placeholder="Nome Completo" value={prof.name} onChange={e => updateSeminaryProfessional(sem, prof.id, "name", e.target.value.toUpperCase())} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-xs outline-none" />
                                             <input type="text" placeholder="Cargo/Função" value={prof.role} onChange={e => updateSeminaryProfessional(sem, prof.id, "role", e.target.value.toUpperCase())} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-xs outline-none" />
+                                            <input type="text" placeholder="Link de Agendamento (opcional)" value={prof.appointmentLink || ''} onChange={e => updateSeminaryProfessional(sem, prof.id, "appointmentLink", e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-xs outline-none" />
+                                            <input type="text" placeholder="WhatsApp (ex: (00) 00000-0000)" value={prof.whatsappNumber || ''} onChange={e => updateSeminaryProfessional(sem, prof.id, "whatsappNumber", e.target.value)} className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded p-1.5 text-xs outline-none" />
                                           </div>
                                           <button onClick={() => removeSeminaryProfessional(sem, prof.id)} className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-900/20 rounded transition-colors" title="Remover Profissional">
                                             <Trash2 className="w-4 h-4" />
@@ -2178,7 +2189,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       </label>
 
                       {useGoogleScriptCertificate && (
-                        <div>
+                        <>
+                          <div>
                           <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
                             URL do Google Script
                           </label>
@@ -2190,6 +2202,19 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                             placeholder="https://script.google.com/macros/..."
                           />
                         </div>
+                        <div className="space-y-2 mt-4">
+                          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                            URL de Verificação de Certificados
+                          </label>
+                          <input
+                            type="url"
+                            value={certificateValidationUrl}
+                            onChange={(e) => setCertificateValidationUrl(e.target.value)}
+                            className="input-modern"
+                            placeholder="https://plus.fajopa.org/validar"
+                          />
+                        </div>
+                        </>
                       )}
                     </div>
                   </div>
@@ -2602,11 +2627,22 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         />
                         Exibir "Seminário" no App
                       </label>
+                      <div className="mt-4">
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest mb-1 block">Link Externo para Agendamentos (WhatsApp/Google Agenda)</label>
+                        <input
+                          type="text"
+                          value={appointmentsExternalLink}
+                          onChange={e => setAppointmentsExternalLink(e.target.value)}
+                          placeholder="Ex: https://chat.whatsapp.com/..."
+                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-4 py-2.5 text-sm outline-none font-bold text-slate-700 dark:text-slate-300 focus:border-sky-500 transition-colors"
+                        />
+                        <p className="text-[10px] text-slate-400 mt-1">Se preenchido, o sistema de agendamentos interno será desativado e este link será exibido.</p>
+                      </div>
                     </div>
 
                     <div className="border-t border-slate-100 dark:border-slate-700 pt-6">
                       <div className="flex justify-between items-center mb-4">
-                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Profissionais de Atendimento (Geral)</label>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest">Profissionais de Seminário (Geral)</label>
                         <button onClick={addGlobalProfessional} className="text-[10px] bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400 px-3 py-1.5 rounded-full font-bold hover:bg-sky-200 dark:hover:bg-sky-900/50 transition-colors uppercase flex items-center gap-1">
                           <Plus className="w-3 h-3" /> Adicionar Profissional
                         </button>
@@ -2645,6 +2681,22 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                 <div>
                                   <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400 ml-1 block mb-1">Cargo/Especialidade</label>
                                   <input type="text" placeholder="Ex: DIRETOR ESPIRITUAL" value={prof.role} onChange={(e) => updateGlobalProfessional(prof.id, "role", e.target.value.toUpperCase())} className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/50" />
+                                </div>
+                                <div>
+                                  <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400 ml-1 block mb-1">Tipo de Link</label>
+                                  <select value={prof.appointmentType || "whatsapp"} onChange={(e) => updateGlobalProfessional(prof.id, "appointmentType", e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/50 appearance-none">
+                                    <option value="whatsapp">WhatsApp</option>
+                                    <option value="google_calendar">Google Agenda</option>
+                                    <option value="other">Outro Link</option>
+                                  </select>
+                                </div>
+                                <div>
+                                  <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400 ml-1 block mb-1">Link de Agendamento</label>
+                                  <input type="text" placeholder="Ex: https://..." value={prof.appointmentLink || ''} onChange={(e) => updateGlobalProfessional(prof.id, "appointmentLink", e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/50" />
+                                </div>
+                                <div className="col-span-2">
+                                  <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400 ml-1 block mb-1">WhatsApp (Opcional - Exibido abaixo do botão)</label>
+                                  <input type="text" placeholder="Ex: (00) 00000-0000" value={prof.whatsappNumber || ''} onChange={(e) => updateGlobalProfessional(prof.id, "whatsappNumber", e.target.value)} className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/50" />
                                 </div>
                               </div>
                               <button onClick={() => removeGlobalProfessional(prof.id)} className="absolute top-2 right-2 sm:relative sm:top-0 sm:right-0 self-center p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors" title="Remover Profissional">

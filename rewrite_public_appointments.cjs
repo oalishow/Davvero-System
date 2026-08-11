@@ -1,8 +1,9 @@
-import React, { useState, useEffect } from "react";
+const fs = require('fs');
+const content = `import React, { useState, useEffect } from "react";
 import { collection, query, getDocs } from "firebase/firestore";
 import { db, appId } from "../lib/firebase";
 import { Member } from "../types";
-import { User, HeartHandshake, ShieldCheck, Instagram, Facebook, Users, Car, ExternalLink, Calendar as CalendarIcon, MessageCircle } from "lucide-react";
+import { User, HeartHandshake, ShieldCheck, Instagram, Facebook, Users, Car, ExternalLink, Calendar as CalendarIcon } from "lucide-react";
 import MuralPage from "./MuralPage";
 import DobloControl from "./DobloControl";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
@@ -14,7 +15,7 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
   const [activeSubTab, setActiveSubTab] = useState<"agendamentos" | "grupos" | "doblo">("agendamentos");
   
   // We'll store professionals with their appointmentLinks
-  const [professionalsList, setProfessionalsList] = useState<{ id: string, name: string, role: string, photoUrl?: string, appointmentLink?: string, appointmentType?: string, whatsappNumber?: string }[]>([]);
+  const [professionalsList, setProfessionalsList] = useState<{ id: string, name: string, role: string, photoUrl?: string, appointmentLink?: string }[]>([]);
   const [selectedProfId, setSelectedProfId] = useState<string>("all");
 
   useEffect(() => {
@@ -46,7 +47,7 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
 
       if (Object.keys(profMap).length === 0) {
         DEFAULT_PROFESSIONALS.forEach(p => {
-          profMap[p.id] = { ...p, appointmentLink: p.id === 'prof_anderson' ? 'https://calendar.app.google/shVAPdZTNeDs2PaGA' : (p.id === 'prof_altair' ? 'https://chat.whatsapp.com/GzB9sD90aW09kPndbI38uP' : ''), appointmentType: p.id === 'prof_anderson' ? 'google_calendar' : (p.id === 'prof_altair' ? 'whatsapp' : 'other'), whatsappNumber: p.whatsappNumber || '' };
+          profMap[p.id] = { ...p, appointmentLink: p.id === 'prof_anderson' ? 'https://calendar.app.google/shVAPdZTNeDs2PaGA' : (p.id === 'prof_altair' ? 'https://chat.whatsapp.com/GzB9sD90aW09kPndbI38uP' : '') };
         });
       }
 
@@ -71,33 +72,33 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
       <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1.5 rounded-2xl mb-6 shadow-inner no-print border border-slate-200/50 dark:border-slate-700/50">
         <button
           onClick={() => setActiveSubTab("agendamentos")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${
+          className={\`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all \${
             activeSubTab === "agendamentos"
               ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm"
               : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-          }`}
+          }\`}
         >
           <HeartHandshake className="w-4 h-4" />
           Agendamentos
         </button>
         <button
           onClick={() => setActiveSubTab("grupos")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${
+          className={\`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all \${
             activeSubTab === "grupos"
               ? "bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-sm"
               : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-          }`}
+          }\`}
         >
           <Users className="w-4 h-4" />
           Grupos Oficiais
         </button>
         <button
           onClick={() => setActiveSubTab("doblo")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${
+          className={\`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all \${
             activeSubTab === "doblo"
               ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
               : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
-          }`}
+          }\`}
         >
           <Car className="w-4 h-4" />
           Controle da Doblô
@@ -160,23 +161,15 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
                     <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-6">{prof.role}</p>
                     
                     {prof.appointmentLink ? (
-                      <>
-                        <a 
-                          href={prof.appointmentLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2"
-                        >
-                          {prof.appointmentType === "whatsapp" ? <MessageCircle className="w-4 h-4" /> : prof.appointmentType === "google_calendar" ? <CalendarIcon className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
-                          Agendar Horário
-                        </a>
-                        {prof.whatsappNumber && (
-                          <div className="mt-3 text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1">
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            {prof.whatsappNumber}
-                          </div>
-                        )}
-                      </>
+                      <a 
+                        href={prof.appointmentLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                      >
+                        {prof.appointmentLink.includes("calendar") ? <CalendarIcon className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
+                        Agendar Horário
+                      </a>
                     ) : (
                       <button 
                         disabled
@@ -217,3 +210,6 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
     </div>
   );
 }
+`;
+
+fs.writeFileSync('src/components/PublicAppointmentsList.tsx', content);

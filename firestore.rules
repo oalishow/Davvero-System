@@ -67,30 +67,28 @@ service cloud.firestore {
         }
       }
 
-      // Students/Members
+                  // Students/Members
       match /students/{studentId} {
         allow read: if true;
-        allow create, delete: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
-        allow update: if isSignedIn() && (
-          isAdmin(appId) || 
-          isGerente(appId) || 
-          (studentId != '_settings_global' && !studentId.matches('^_asset_.*') && (
-            (resource.data.authId != null && request.auth.uid == resource.data.authId) || 
-            (!('authId' in resource.data) || resource.data.authId == null)
-          ))
-        );
+        allow create: if isSignedIn() && (isAdmin(appId) || isGerente(appId) || request.resource.data.keys().hasAny(['name']));
+        allow update: if isSignedIn() && (isAdmin(appId) || isGerente(appId) || (resource.data.authId != null && request.auth.uid == resource.data.authId));
+        allow delete: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
       }
 
-      // Events
+            // Events
       match /events/{eventId} {
         allow read: if true;
-        allow write: if isAdmin(appId) || isGerente(appId);
+        allow create: if isSignedIn() && (isAdmin(appId) || isGerente(appId)) && request.resource.data.keys().hasAny(['title']);
+        allow update: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
+        allow delete: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
       }
 
-      // Attendances
+            // Attendances
       match /attendances/{attId} {
         allow read: if true;
-        allow write: if true;
+        allow create: if isSignedIn() && (isAdmin(appId) || isGerente(appId)) && request.resource.data.keys().hasAny(['eventId']);
+        allow update: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
+        allow delete: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
       }
 
       // Availabilities
