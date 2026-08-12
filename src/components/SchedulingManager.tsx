@@ -1,6 +1,6 @@
 import React, { useState } from "react";
 import { useSettings } from "../context/SettingsContext";
-import { Save, Plus, Trash2, Calendar, MessageCircle, Link as LinkIcon, ShieldCheck } from "lucide-react";
+import { Save, Plus, Trash2, Calendar, MessageCircle, Link as LinkIcon, ShieldCheck, Upload } from "lucide-react";
 import { useDialog } from "../context/DialogContext";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
 
@@ -58,6 +58,57 @@ export default function SchedulingManager() {
     }
   };
 
+  
+  const handleFileUpload = (
+    e: React.ChangeEvent<HTMLInputElement>,
+    setter: (val: string | null) => void,
+    maxSizeKB = 5120
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    if (file.size > maxSizeKB * 1024) {
+      showAlert(`Arquivo muito grande. Máximo ${maxSizeKB}KB.`, "error");
+      return;
+    }
+
+    const reader = new FileReader();
+    reader.onload = (ev) => {
+      const img = new Image();
+      img.onload = () => {
+        const canvas = document.createElement("canvas");
+        let width = img.width;
+        let height = img.height;
+        const MAX_DIM = 800;
+
+        if (width > height) {
+          if (width > MAX_DIM) {
+            height *= MAX_DIM / width;
+            width = MAX_DIM;
+          }
+        } else {
+          if (height > MAX_DIM) {
+            width *= MAX_DIM / height;
+            height = MAX_DIM;
+          }
+        }
+
+        canvas.width = width;
+        canvas.height = height;
+        const ctx = canvas.getContext("2d");
+        if (ctx) {
+          ctx.drawImage(img, 0, 0, width, height);
+          const dataUrl = file.type === "image/png" ? canvas.toDataURL("image/png", 0.8) : canvas.toDataURL("image/jpeg", 0.7);
+          setter(dataUrl);
+        } else {
+          setter(ev.target?.result as string);
+        }
+      };
+      img.src = ev.target?.result as string;
+    };
+    reader.readAsDataURL(file);
+  };
+
   const getIcon = (type?: string) => {
     if (type === "whatsapp") return <MessageCircle className="w-5 h-5 text-emerald-500" />;
     if (type === "google_calendar") return <Calendar className="w-5 h-5 text-blue-500" />;
@@ -87,7 +138,29 @@ export default function SchedulingManager() {
           {localProfs.map((prof) => (
             <div key={prof.id} className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-2xl border border-slate-200 dark:border-slate-700 flex flex-col gap-4">
               
-              <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+              
+<div className="flex items-center gap-4 w-full">
+  <div className="shrink-0">
+    {prof.photoUrl ? (
+      <div className="relative">
+        <img src={prof.photoUrl} alt="Foto" className="w-16 h-16 rounded-full border border-slate-200 dark:border-slate-700 object-cover" />
+        <button onClick={() => handleUpdate(prof.id, "photoUrl", null)} className="absolute -top-1 -right-1 bg-red-500 text-white rounded-full p-1 shadow-sm hover:bg-red-600 transition-colors">
+          <Trash2 className="w-3 h-3" />
+        </button>
+      </div>
+    ) : (
+      <label className="w-16 h-16 rounded-full bg-slate-100 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-600 flex items-center justify-center cursor-pointer hover:bg-slate-200 dark:hover:bg-slate-700 transition">
+        <Upload className="w-5 h-5 text-slate-400" />
+        <input type="file" className="hidden" accept="image/*" onChange={(e) => {
+          handleFileUpload(e, (val) => {
+            handleUpdate(prof.id, "photoUrl", val);
+          });
+        }} />
+      </label>
+    )}
+  </div>
+  <div className="flex-1 grid grid-cols-1 sm:grid-cols-2 gap-4 w-full">
+
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Nome do Profissional</label>
                   <input
@@ -109,7 +182,7 @@ export default function SchedulingManager() {
                   />
                 </div>
               </div>
-
+</div>
               <div className="flex-1 grid grid-cols-1 md:grid-cols-3 gap-4 w-full items-end">
                 <div>
                   <label className="text-[10px] font-bold text-slate-400 uppercase tracking-widest mb-1 block">Tipo de Link</label>

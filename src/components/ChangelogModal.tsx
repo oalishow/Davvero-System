@@ -8,13 +8,31 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v7.3b',
+      title: 'Verificador de Certificados Duplo',
+      changes: [
+        'Portal de Certificados agora exibe simultaneamente a opção do FAJOPA Plus e o Davvero System.',
+        'Certificados nativos passam a ser emitidos com QR Code e código de validação de autenticidade.'
+      ],
+      current: true,
+    },
+    {
+      version: 'v7.2b',
+      title: 'Simplificação de Abas do Seminário',
+      changes: [
+        'Consolidação das opções de seminário na ID do aluno, alterando para apenas uma aba de eventos.',
+        'Feedback visual resiliente de notificações no perfil e alertas em tempo real.'
+      ],
+      current: false,
+    },
+    {
       version: 'v7.1b',
       title: 'Atualização de Atendimentos e Correções',
       changes: [
         'Renomeada a aba e nomenclaturas de Atendimentos para Seminário em toda a interface do aluno e administrador.',
         'No Mural do WhatsApp, a opção "Acadêmico (FAJOPA)" foi removida, mantendo exclusivamente as notificações de Seminário.'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v7.0b',

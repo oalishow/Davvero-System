@@ -47,7 +47,6 @@ import Modal from "./Modal";
 import PublicRequestModal from "./PublicRequestModal";
 import RegistrationSuccessModal from "./RegistrationSuccessModal";
 import ApprovalSuccessModal from "./ApprovalSuccessModal";
-import AppointmentsPanel from "./AppointmentsPanel";
 import EventsPage from "./EventsPage";
 import SuggestEditModal from "./SuggestEditModal";
 import { ASSETS_DOC_PATH } from "../lib/constants";
@@ -161,7 +160,7 @@ export default function StudentPortal({
 }: StudentPortalProps) {
   const { settings } = useSettings();
   const { showAlert, showConfirm } = useDialog();
-  const { isSupported, subscription, subscribe } = usePushNotifications();
+  const { isSupported, subscription, permission, subscribe, unsubscribe } = usePushNotifications();
   const [bondedId, setBondedId] = useState<string | null>(
     localStorage.getItem(STUDENT_BOND_KEY),
   );
@@ -380,7 +379,7 @@ export default function StudentPortal({
     // Check if Google Script is enabled
     if (settings.useGoogleScriptCertificate && settings.googleScriptCertificateUrl) {
        try {
-         const url = new URL(settings.googleScriptCertificateUrl);
+         const url = new URL(settings.certificateValidationUrl || settings.googleScriptCertificateUrl);
          // Append some helpful params in case the GS needs them
          url.searchParams.append('name', member.name || '');
          url.searchParams.append('doc', member.ra || (member as any).cpf || '');
@@ -388,7 +387,7 @@ export default function StudentPortal({
          url.searchParams.append('type', type);
          window.open(url.toString(), '_blank');
        } catch (e) {
-         window.open(settings.googleScriptCertificateUrl, '_blank');
+         window.open(settings.certificateValidationUrl || settings.googleScriptCertificateUrl, '_blank');
        }
        return;
     }
@@ -877,10 +876,11 @@ export default function StudentPortal({
   const handleBiometricAuth = async () => {
     try {
       setError(null);
+      setIsGenerating(true);
       const credId = localStorage.getItem("student_biometric_credential_id");
       if (credId) {
         await verifyBiometric(credId);
-        setIsGenerating(true);
+        playSound('generating');
         playSound('generating');
         await new Promise(r => setTimeout(r, 3000));
         setIsUnlocked(true);
@@ -889,10 +889,12 @@ export default function StudentPortal({
         playSound('login');
         scrollToCard();
       } else {
-        if (!member) return;
+        if (!member) {
+          setIsGenerating(false);
+          return;
+        }
         const newCredId = await registerBiometric(member.email || "aluno@fajopa", member.name);
         localStorage.setItem("student_biometric_credential_id", newCredId);
-        setIsGenerating(true);
         playSound('generating');
         await new Promise(r => setTimeout(r, 3000));
         setIsUnlocked(true);
@@ -903,6 +905,7 @@ export default function StudentPortal({
       }
     } catch (e: any) {
       console.error(e);
+      setIsGenerating(false);
       const errorMsg = e.message || "";
       const isFrameError =
         e.name === "SecurityError" ||
@@ -1470,30 +1473,17 @@ export default function StudentPortal({
             </button>
 
             {(member?.roles?.some(r => ["SEMINARISTA", "PADRE", "REITOR", "VICE-REITOR", "PSICÓLOGA", "DIRETOR ESPIRITUAL", "DIRETORA ESPIRITUAL"].includes(r.toUpperCase()))) && (
-              <>
-                <button
-                  onClick={() => setActiveTab("appointments")}
-                  className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-                    activeTab === "appointments"
-                      ? "bg-purple-50 dark:bg-purple-500/10 text-purple-600 dark:text-purple-400 border-purple-200 dark:border-purple-500/30 shadow-sm"
-                      : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-                  } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
-                >
-                  <HeartHandshake className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span>Seminário</span>
-                </button>
-                <button
-                  onClick={() => setActiveTab("seminary_events")}
-                  className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-                    activeTab === "seminary_events"
-                      ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30 shadow-sm"
-                      : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-                  } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
-                >
-                  <CalendarHeart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                  <span>Seminário</span>
-                </button>
-              </>
+              <button
+                onClick={() => setActiveTab("seminary_events")}
+                className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
+                  activeTab === "seminary_events"
+                    ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30 shadow-sm"
+                    : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
+                } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
+              >
+                <CalendarHeart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Eventos Seminário</span>
+              </button>
             )}
             <button
               onClick={() => setActiveTab("biblioteca")}
@@ -1862,32 +1852,63 @@ export default function StudentPortal({
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-4"
               >
-                {settings.useGoogleScriptCertificate && settings.googleScriptCertificateUrl ? (
-                  <div className="bg-white dark:bg-slate-800 p-8 sm:p-12 rounded-3xl border border-slate-200 dark:border-slate-700 text-center shadow-lg flex flex-col items-center justify-center gap-6 min-h-[400px]">
-                    <ShieldCheck className="w-16 h-16 text-emerald-500" />
-                    <div>
-                      <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-widest mb-2">Portal de Certificados</h3>
-                      <p className="text-sm text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-                        Acesse seu histórico completo e faça o download dos certificados das atividades que você participou.
-                      </p>
+                <div className="flex flex-col md:flex-row gap-4 mb-6">
+                  {settings.useGoogleScriptCertificate && (settings.certificateValidationUrl || settings.googleScriptCertificateUrl) && (
+                    <div className="flex-1 bg-gradient-to-br from-emerald-500 to-emerald-700 p-6 rounded-3xl shadow-lg flex flex-col justify-between items-start text-white relative overflow-hidden">
+                      <div className="absolute -right-6 -top-6 opacity-10">
+                         <ShieldCheck className="w-32 h-32" />
+                      </div>
+                      <div className="relative z-10">
+                        <h3 className="text-lg font-black uppercase tracking-widest mb-2 flex items-center gap-2">
+                          <ExternalLink className="w-5 h-5" /> FAJOPA Plus
+                        </h3>
+                        <p className="text-sm text-emerald-50 max-w-sm mb-6">
+                          Acesse seu histórico completo e certificados externos no sistema legando do FAJOPA Plus.
+                        </p>
+                      </div>
+                      <button
+                        onClick={() => {
+                          try {
+                            const url = new URL(settings.googleScriptCertificateUrl);
+                            url.searchParams.append('name', member.name || '');
+                            url.searchParams.append('doc', member.ra || (member as any).cpf || '');
+                            window.open(url.toString(), '_blank');
+                          } catch (e) {
+                            window.open(settings.googleScriptCertificateUrl, '_blank');
+                          }
+                        }}
+                        className="bg-white/20 hover:bg-white/30 text-white font-bold py-3 px-6 rounded-xl transition-all active:scale-95 w-full sm:w-auto text-sm backdrop-blur-sm border border-white/20"
+                      >
+                        Acessar Portal FAJOPA
+                      </button>
                     </div>
-                    <button
-                      onClick={() => {
-                        try {
-                          const url = new URL(settings.googleScriptCertificateUrl);
-                          url.searchParams.append('name', member.name || '');
-                          url.searchParams.append('doc', member.ra || (member as any).cpf || '');
-                          window.open(url.toString(), '_blank');
-                        } catch (e) {
-                          window.open(settings.googleScriptCertificateUrl, '_blank');
-                        }
-                      }}
-                      className="btn-modern px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl flex items-center justify-center gap-3 text-sm shadow-md transition-all active:scale-95"
-                    >
-                      <ExternalLink className="w-5 h-5" /> Acessar Meus Certificados
-                    </button>
+                  )}
+                  
+                  <div className="flex-1 bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col justify-between items-start relative overflow-hidden">
+                      <div className="absolute -right-6 -top-6 opacity-[0.03] dark:opacity-[0.05]">
+                         <ShieldCheck className="w-32 h-32 text-slate-900 dark:text-white" />
+                      </div>
+                      <div className="relative z-10">
+                        <h3 className="text-lg font-black uppercase tracking-widest mb-2 flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                          <ShieldCheck className="w-5 h-5 text-sky-500" /> Davvero System
+                        </h3>
+                        <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mb-6">
+                          Seus certificados nativos gerados pelos eventos internos. Verificáveis pelo código QR e autenticidade.
+                        </p>
+                      </div>
+                      <button
+                         onClick={() => {
+                            const el = document.getElementById("davvero-certificates-list");
+                            if(el) el.scrollIntoView({behavior: 'smooth'});
+                         }}
+                         className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold py-3 px-6 rounded-xl transition-all active:scale-95 w-full sm:w-auto text-sm"
+                      >
+                         Ver Certificados Abaixo
+                      </button>
                   </div>
-                ) : (
+                </div>
+
+                <div id="davvero-certificates-list">
                   <>
                     <div className="flex items-center justify-between mb-4 px-1">
                       <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
@@ -1983,7 +2004,7 @@ export default function StudentPortal({
                       </div>
                     </div>
                   </>
-                )}
+                </div>
               </motion.div>
             )}
 
@@ -2016,15 +2037,7 @@ export default function StudentPortal({
               </motion.div>
             )}
 
-            {activeTab === "appointments" && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-4"
-              >
-                <AppointmentsPanel member={member} />
-              </motion.div>
-            )}
+
 
             {activeTab === "biblioteca" && (
               <motion.div
@@ -2124,6 +2137,69 @@ export default function StudentPortal({
                        <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Seminário</p>
                        <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{member?.seminary || '-'}</p>
                      </div>
+                  </div>
+
+                  <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700/50">
+                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-4 flex items-center gap-2">
+                       <BellRing className="w-4 h-4 text-sky-500" /> Serviço de Notificações
+                    </h4>
+                    
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/50">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="text-center sm:text-left">
+                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                            Status Atual
+                          </p>
+                          <div className="flex items-center justify-center sm:justify-start gap-2 mt-1">
+                            {!isSupported ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
+                                <ShieldCheck className="w-3.5 h-3.5" /> Não Suportado
+                              </span>
+                            ) : permission === "denied" ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
+                                <ShieldCheck className="w-3.5 h-3.5" /> Erro (Bloqueado)
+                              </span>
+                            ) : subscription ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
+                                <ShieldCheck className="w-3.5 h-3.5" /> Conectado
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
+                                <ShieldCheck className="w-3.5 h-3.5" /> Pendente
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                            {subscription ? "Seu dispositivo está apto a receber comunicados urgentes." : permission === "denied" ? "Você bloqueou as notificações. Libere a permissão nas configurações do seu navegador para receber comunicados." : "Ative as notificações para receber avisos importantes da secretaria."}
+                          </p>
+                        </div>
+                        {isSupported && (
+                          <div className="flex-shrink-0 w-full sm:w-auto">
+                            {!subscription && permission !== "denied" ? (
+                              <button
+                                onClick={() => {
+                                  playSound('click');
+                                  subscribe();
+                                }}
+                                className="w-full sm:w-auto px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold shadow-sm transition active:scale-95 whitespace-nowrap"
+                              >
+                                Ativar Notificações
+                              </button>
+                            ) : subscription ? (
+                              <button
+                                onClick={() => {
+                                  playSound('click');
+                                  unsubscribe();
+                                }}
+                                className="w-full sm:w-auto px-5 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold transition active:scale-95 whitespace-nowrap"
+                              >
+                                Desativar
+                              </button>
+                            ) : null}
+                          </div>
+                        )}
+                      </div>
+                    </div>
                   </div>
 
                   <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700/50">

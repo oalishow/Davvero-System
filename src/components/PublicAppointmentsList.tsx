@@ -160,23 +160,15 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
                     <p className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-6">{prof.role}</p>
                     
                     {prof.appointmentLink ? (
-                      <>
-                        <a 
-                          href={prof.appointmentLink}
-                          target="_blank"
-                          rel="noopener noreferrer"
-                          className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2"
-                        >
-                          {prof.appointmentType === "whatsapp" ? <MessageCircle className="w-4 h-4" /> : prof.appointmentType === "google_calendar" ? <CalendarIcon className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
-                          Agendar Horário
-                        </a>
-                        {prof.whatsappNumber && (
-                          <div className="mt-3 text-xs font-bold text-slate-500 dark:text-slate-400 flex items-center justify-center gap-1">
-                            <MessageCircle className="w-3.5 h-3.5" />
-                            {prof.whatsappNumber}
-                          </div>
-                        )}
-                      </>
+                      <a 
+                        href={prof.appointmentLink}
+                        target="_blank"
+                        rel="noopener noreferrer"
+                        className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2"
+                      >
+                        {prof.appointmentType === "whatsapp" ? <MessageCircle className="w-4 h-4" /> : prof.appointmentType === "google_calendar" ? <CalendarIcon className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
+                        Agendar Horário
+                      </a>
                     ) : (
                       <button 
                         disabled
@@ -184,6 +176,12 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
                       >
                         Indisponível
                       </button>
+                    )}
+                    {prof.whatsappNumber && (
+                      <a href={`https://wa.me/${prof.whatsappNumber.replace(/\D/g, '').startsWith('55') ? prof.whatsappNumber.replace(/\D/g, '') : '55' + prof.whatsappNumber.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-full mt-3 py-3 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2">
+                        <MessageCircle className="w-4 h-4 fill-white" />
+                        Falar no WhatsApp
+                      </a>
                     )}
                   </div>
                 ))}

@@ -133,20 +133,20 @@ export default function NotificationsManager() {
       }
 
       // 3. Fetch subscriptions from Firestore para Push Nativo
-      let targetSubscriptions: any[] = [];
-      const subPath = "push_subscriptions";
+      let targetTokens: string[] = [];
+      const subPath = "fcm_tokens";
       try {
         const subsSnapshot = await getDocs(collection(db, subPath));
         if (audienceMode === "todos") {
-          targetSubscriptions = subsSnapshot.docs.map(doc => doc.data());
+          targetTokens = subsSnapshot.docs.map(doc => doc.data().token).filter(Boolean);
         } else {
           // Send push to matching device only
           // Our push subscriptions currently might or might not have user ID associated.
           // Since our subscription logic typically saves the browser token, if we linked it using device or user, we filter.
           // IF we don't have user IDs in push_subscriptions, we can only safely do "todos", but we will try filtering if user field exists.
-          targetSubscriptions = subsSnapshot.docs
+          targetTokens = subsSnapshot.docs
             .map(doc => doc.data())
-            .filter(sub => targetMemberIds.includes(sub.userId) || audienceMode === "todos"); 
+            .filter(sub => targetMemberIds.includes(sub.userId) || audienceMode === "todos").map(sub => sub.token).filter(Boolean); 
           // Note: If sub.userId is missing, individual push might be skipped, which is fine since in-app still works.
         }
       } catch (subErr) {
@@ -154,7 +154,7 @@ export default function NotificationsManager() {
       }
 
       // 4. Send Push Notification Broadcast (Native)
-      if (targetSubscriptions.length > 0) {
+      if (targetTokens.length > 0) {
         try {
           const controller = new AbortController();
           const timeoutId = setTimeout(() => controller.abort(), 10000); // 10s timeout
@@ -162,7 +162,7 @@ export default function NotificationsManager() {
           const resp = await fetch("/api/push/broadcast", {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({ title, message, url: "/", subscriptions: targetSubscriptions }),
+            body: JSON.stringify({ title, message, url: "/", tokens: targetTokens }),
             signal: controller.signal
           });
           

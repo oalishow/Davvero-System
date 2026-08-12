@@ -34,20 +34,7 @@ export default function AdminAppointments() {
             </span>
           </div>
           
-          <div className="border-t border-slate-200 dark:border-slate-700 pt-4">
-            <span className="text-xs font-bold text-slate-500 uppercase tracking-widest mb-2 block">Profissionais Gerais</span>
-            {settings.professionals?.map(p => (
-              <div key={p.id} className="flex items-center justify-between py-1">
-                <span className="text-sm text-slate-600 dark:text-slate-400">{p.name}</span>
-                {p.appointmentLink ? (
-                  <span className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-900/30 dark:text-emerald-400 px-2 py-0.5 rounded-full font-bold">Link Ativo</span>
-                ) : (
-                  <span className="text-[10px] bg-slate-100 text-slate-500 dark:bg-slate-800 px-2 py-0.5 rounded-full font-bold">Sem Link</span>
-                )}
-              </div>
-            ))}
           </div>
-        </div>
       </div>
       
       <div className="mt-8 text-left">

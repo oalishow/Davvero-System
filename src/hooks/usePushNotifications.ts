@@ -1,68 +1,86 @@
 import { useState, useEffect } from "react";
-import { db, auth, appId } from "../lib/firebase";
-import { doc, setDoc } from "firebase/firestore";
+import { db, auth, messaging } from "../lib/firebase";
+import { doc, setDoc, deleteDoc } from "firebase/firestore";
+import { getToken, onMessage, deleteToken } from "firebase/messaging";
+
+// You should put your FCM VAPID Key here.
+// You can get this from Firebase Console -> Project Settings -> Cloud Messaging -> Web Push certificates.
+
 
 export function usePushNotifications() {
   const [isSupported, setIsSupported] = useState(false);
-  const [subscription, setSubscription] = useState<PushSubscription | null>(null);
+  const [token, setToken] = useState<string | null>(null);
   const [permission, setPermission] = useState<NotificationPermission>("default");
 
   useEffect(() => {
-    if ("serviceWorker" in navigator && "PushManager" in window) {
+    // Check if running in browser and if it supports Notification
+    if (typeof window !== "undefined" && "Notification" in window && "serviceWorker" in navigator) {
       setIsSupported(true);
       setPermission(Notification.permission);
       
-      navigator.serviceWorker.ready.then((registration) => {
-        registration.pushManager.getSubscription().then((sub) => {
-          setSubscription(sub);
-        });
-      });
+      // If permission is already granted, we can try to retrieve the existing token from local storage
+      const existingToken = localStorage.getItem("fcm_token");
+      if (existingToken) {
+         setToken(existingToken);
+      }
     }
   }, []);
 
   const subscribe = async () => {
+    if (!messaging) {
+      alert("Firebase Messaging não inicializado.");
+      return;
+    }
     try {
       if (!('Notification' in window)) {
-        alert("Seu navegador não suporta Notificações Push ou você está rodando no painel (iFrame). Abra o app em uma nova guia para ativar.");
+        alert("Seu navegador não suporta Notificações Push ou você está rodando no painel. Tente adicionar o site à tela inicial (PWA).");
         return;
       }
-
       const perm = await Notification.requestPermission();
+      setPermission(perm);
       if (perm !== "granted") {
         console.warn("User denied push notifications");
-        alert("Permissão para notificações foi negada. Por favor, libere nas configurações do navegador (ícone de cadeado na barra de endereços).");
+        alert("Permissão para notificações foi negada.");
         return;
       }
 
-      const response = await fetch("/api/push/public-key");
-      const { publicKey } = await response.json();
-
-      if (!publicKey) {
-        console.error("VAPID Public Key not found");
-        return;
-      }
-
+      // Try to get token. Wait for SW to be ready first.
       const registration = await navigator.serviceWorker.ready;
-      const sub = await registration.pushManager.subscribe({
-        userVisibleOnly: true,
-        applicationServerKey: urlBase64ToUint8Array(publicKey),
-      });
-
-      // Save to backend via Firestore Client SDK
-      // Using btoa securely for subscription id
-      const subJson = JSON.parse(JSON.stringify(sub));
-      const subId = btoa(sub.endpoint).replace(/\+/g, '-').replace(/\//g, '_').substring(0, 100);
       
-      // Use the root structure
-      await setDoc(doc(db, "push_subscriptions", subId), {
-        ...subJson,
-        userId: auth.currentUser?.uid || "anonymous",
-        updatedAt: new Date().toISOString()
-      }, { merge: true });
+      let fcmToken;
+      try {
+        const response = await fetch("/api/push/public-key");
+        const { publicKey } = await response.json();
+        
+        fcmToken = await getToken(messaging, { 
+          vapidKey: publicKey,
+          serviceWorkerRegistration: registration 
+        });
+      } catch (err: any) {
+        console.error("FCM Token error", err);
+        // If vapid key is invalid or not provided, we fallback to requesting token without it, or using the server's key.
+        // Actually, if VAPID is missing, it will throw.
+        alert("Falha ao obter token do Firebase. Verifique a chave VAPID nas configurações.");
+        return;
+      }
 
-      setSubscription(sub);
-      setPermission(Notification.permission);
-      return sub;
+      if (fcmToken) {
+        setToken(fcmToken);
+        localStorage.setItem("fcm_token", fcmToken);
+
+        // Save token to backend via Firestore
+        const userId = auth.currentUser?.uid || "anonymous";
+        await setDoc(doc(db, "fcm_tokens", fcmToken), {
+          token: fcmToken,
+          userId,
+          device: navigator.userAgent,
+          updatedAt: new Date().toISOString()
+        }, { merge: true });
+        
+        return fcmToken;
+      } else {
+        alert("Não foi possível gerar o token de notificação.");
+      }
     } catch (error) {
       console.error("Error subscribing to push:", error);
       alert("Falha ao se inscrever nas notificações. Verifique a permissão do seu navegador.");
@@ -70,18 +88,17 @@ export function usePushNotifications() {
   };
 
   const unsubscribe = async () => {
-    if (subscription) {
-      await subscription.unsubscribe();
-      setSubscription(null);
+    if (token && messaging) {
+      try {
+        await deleteToken(messaging);
+        await deleteDoc(doc(db, "fcm_tokens", token));
+      } catch (err) {
+        console.error("Error unsubscribing", err);
+      }
+      setToken(null);
+      localStorage.removeItem("fcm_token");
     }
   };
 
-  return { isSupported, subscription, permission, subscribe, unsubscribe };
-}
-
-function urlBase64ToUint8Array(base64String: string) {
-  const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-  const base64 = (base64String + padding).replace(/-/g, "+").replace(/_/g, "/");
-  const rawData = window.atob(base64);
-  return Uint8Array.from([...rawData].map((char) => char.charCodeAt(0)));
+  return { isSupported, subscription: token ? { endpoint: token } : null, permission, subscribe, unsubscribe };
 }

@@ -18,7 +18,9 @@ interface VerificationResultProps {
     | "NOT_ENROLLED"
     | "ALREADY_PRESENT"
     | "JUST_CHECKED_IN"
-    | "PENDING";
+    | "PENDING"
+    | "VALID_CERTIFICATE";
+  event?: any;
   onReset: () => void;
   onScanNext?: () => void;
   isMyID?: boolean;

@@ -1,6 +1,7 @@
 import { initializeApp } from "firebase/app";
 import { getAuth, signInAnonymously, onAuthStateChanged } from "firebase/auth";
 import { getStorage } from "firebase/storage";
+import { getMessaging } from "firebase/messaging";
 import {
   initializeFirestore,
   getFirestore,
@@ -58,6 +59,7 @@ export const db = dbInstance;
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
+export const messaging = typeof window !== "undefined" ? getMessaging(app) : null;
 setLogLevel("error");
 
 export const appId = firebaseConfig.projectId;

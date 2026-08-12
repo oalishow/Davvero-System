@@ -56,15 +56,13 @@ import EventsRecycleBin from "./EventsRecycleBin";
 import NotificationsManager from "./NotificationsManager";
 import AdminAppointments from "./AdminAppointments";
 import DashboardPanel from "./DashboardPanel";
-import PrintAppointmentsModal from "./PrintAppointmentsModal";
 import { performAutoBackupIfDue } from "../lib/autoBackup";
 import { Calendar, BriefcaseMedical, LayoutDashboard, CalendarDays, ShieldPlus } from "lucide-react";
 
 export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const { settings, updateSettings } = useSettings();
   const [activeTab, setActiveTab] = useState<"dashboard" | "members" | "events" | "appointments" | "notifications">("dashboard");
-  const [showPrintAppointments, setShowPrintAppointments] = useState(false);
-  const [name, setName] = useState("");
+    const [name, setName] = useState("");
   const [ra, setRa] = useState("");
   const [cpf, setCpf] = useState("");
   const [birthdate, setBirthdate] = useState("");
@@ -640,12 +638,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
               </span>
               Painel de Agendamentos (WhatsApp)
             </h2>
-            <button
-              onClick={() => setShowPrintAppointments(true)}
-              className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold flex items-center gap-2 transition-colors border border-slate-200 dark:border-slate-700"
-            >
-              <Printer className="w-4 h-4" /> Exportar em PDF
-            </button>
+            
           </div>
           <AdminAppointments />
         </div>
@@ -1190,9 +1183,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
       {showPrintReport && (
         <PrintReportModal onClose={() => setShowPrintReport(false)} />
       )}
-      {showPrintAppointments && (
-        <PrintAppointmentsModal onClose={() => setShowPrintAppointments(false)} />
-      )}
+      
     </div>
   );
 }

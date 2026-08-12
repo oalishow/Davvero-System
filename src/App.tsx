@@ -57,10 +57,21 @@ export default function App() {
       if (params.has("event")) {
         return "events";
       }
+      if (params.has("cert")) {
+        return "verifier"; // We will set targetVerifyCode in an effect
+      }
     }
     return "verifier";
   });
-  const [targetVerifyCode, setTargetVerifyCode] = useState<string | null>(null);
+  const [targetVerifyCode, setTargetVerifyCode] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("cert")) {
+        return params.get("cert");
+      }
+    }
+    return null;
+  });
   const [adminForceViewCode, setAdminForceViewCode] = useState<string | null>(
     null,
   );
@@ -257,6 +268,7 @@ export default function App() {
   }, []);
 
   return (
+    <ErrorBoundary>
     <div className="min-h-screen relative flex flex-col items-center p-0 sm:p-4 print:block print:p-0">
       <AnimatePresence>
         {isUpdating && (
@@ -590,8 +602,7 @@ export default function App() {
               }}
               transition={{ duration: 0.2 }}
             >
-              <ErrorBoundary>
-                <Suspense
+              <Suspense
                   fallback={
                     <div className="flex justify-center p-10">
                       <Loader2 className="animate-spin text-sky-500 w-8 h-8" />
@@ -616,7 +627,6 @@ export default function App() {
                     />
                   )}
                 </Suspense>
-              </ErrorBoundary>
             </motion.div>
           </AnimatePresence>
 
@@ -624,5 +634,6 @@ export default function App() {
         </div>
       </div>
     </div>
+    </ErrorBoundary>
   );
 }

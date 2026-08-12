@@ -3,7 +3,7 @@ import { collection, query, where, getDocs, addDoc, updateDoc, doc, orderBy, del
 import { db, appId } from "../lib/firebase";
 import { useDialog } from "../context/DialogContext";
 import { Member, Appointment, Availability, AVAILABLE_SEMINARIES } from "../types";
-import { Clock, Calendar as CalendarIcon, User, Plus, CheckCircle, Trash2, HeartHandshake, ShieldCheck, CalendarPlus, Edit2 } from "lucide-react";
+import { Clock, Calendar as CalendarIcon, User, Plus, CheckCircle, Trash2, HeartHandshake, ShieldCheck, CalendarPlus, Edit2, MessageCircle } from "lucide-react";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
 import { useSettings } from "../context/SettingsContext";
 import EditAppointmentModal from "./EditAppointmentModal";
@@ -428,7 +428,7 @@ END:VCALENDAR`;
             </div>
 
             {/* Agendamentos do Profissional */}
-            <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 flex flex-col">
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 flex flex-col" style={{gridColumn: '1 / -1'}}>
               <div className="flex flex-col sm:flex-row sm:items-center justify-between mb-4 gap-3">
                 <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider flex items-center gap-2">
                   <span>Meu Seminário</span>
@@ -561,12 +561,20 @@ END:VCALENDAR`;
                       ))}
                     </div>
                   )}
+                  {selectedProfessional && professionals.find(p => p.id === selectedProfessional)?.whatsappNumber && (
+                    <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 flex flex-col items-center">
+                      <a href={`https://wa.me/${professionals.find(p => p.id === selectedProfessional)?.whatsappNumber?.replace(/\D/g, '').startsWith('55') ? professionals.find(p => p.id === selectedProfessional)?.whatsappNumber?.replace(/\D/g, '') : '55' + professionals.find(p => p.id === selectedProfessional)?.whatsappNumber?.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-full sm:w-auto px-8 py-3 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl text-sm font-bold transition-all shadow-md hover:shadow-lg active:scale-95 flex items-center justify-center gap-2">
+                        <MessageCircle className="w-5 h-5 text-white fill-white" />
+                        Falar no WhatsApp
+                      </a>
+                    </div>
+                  )}
                 </div>
               )}
             </div>
           </div>
 
-          <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-3xl border border-slate-200 dark:border-slate-700">
+          <div className="bg-slate-50 dark:bg-slate-800/50 p-5 rounded-3xl border border-slate-200 dark:border-slate-700" style={{gridColumn: '1 / -1'}}>
             <h4 className="text-sm font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider mb-4 flex items-center justify-between">
               <span>Meu Seminário</span>
             </h4>

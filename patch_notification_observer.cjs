@@ -1,4 +1,7 @@
-import { useEffect } from 'react';
+const fs = require('fs');
+let file = fs.readFileSync('src/components/NotificationObserver.tsx', 'utf8');
+
+const replacement = `import { useEffect } from 'react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useDobloMonitor } from '../hooks/useDobloMonitor';
 import { messaging } from '../lib/firebase';
@@ -66,3 +69,6 @@ export default function NotificationObserver() {
 
   return null;
 }
+`;
+
+fs.writeFileSync('src/components/NotificationObserver.tsx', replacement);
