@@ -2172,50 +2172,52 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
                   <div className="bg-emerald-50 dark:bg-emerald-900/10 p-5 rounded-2xl border border-emerald-200 dark:border-emerald-500/20">
                     <h3 className="text-sm font-bold flex items-center gap-2 mb-4 text-emerald-700 dark:text-emerald-300 uppercase tracking-widest text-[10px]">
-                      <FileText className="w-4 h-4" /> Emissão de Certificados
+                      <FileText className="w-4 h-4" /> Certificados e Validação Externa
                     </h3>
                     <div className="space-y-4">
-                      <label className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+                      <div>
+                        <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                          Link de Validação FAJOPA Plus
+                        </label>
                         <input
-                          type="checkbox"
-                          checked={useGoogleScriptCertificate}
-                          onChange={(e) => setUseGoogleScriptCertificate(e.target.checked)}
-                          className="w-5 h-5 text-emerald-500"
+                          type="url"
+                          value={certificateValidationUrl}
+                          onChange={(e) => setCertificateValidationUrl(e.target.value)}
+                          className="input-modern"
+                          placeholder="https://plus.fajopa.org/validar"
                         />
-                        <div>
-                          <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Usar Google Apps Script</p>
-                          <p className="text-[10px] sm:text-xs text-slate-500">Ao invés do emissor nativo, redirecionar para um script externo.</p>
-                        </div>
-                      </label>
+                        <p className="text-[10px] text-slate-400 mt-1">Link direcionado aos alunos e público para validação de certificados legados.</p>
+                      </div>
 
-                      {useGoogleScriptCertificate && (
-                        <>
+                      <div className="border-t border-emerald-200/60 dark:border-emerald-700/30 pt-4">
+                        <label className="flex items-center gap-3 p-3 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 cursor-pointer">
+                          <input
+                            type="checkbox"
+                            checked={useGoogleScriptCertificate}
+                            onChange={(e) => setUseGoogleScriptCertificate(e.target.checked)}
+                            className="w-5 h-5 text-emerald-500"
+                          />
                           <div>
-                          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                            URL do Google Script
-                          </label>
-                          <input
-                            type="url"
-                            value={googleScriptCertificateUrl}
-                            onChange={(e) => setGoogleScriptCertificateUrl(e.target.value)}
-                            className="input-modern"
-                            placeholder="https://script.google.com/macros/..."
-                          />
-                        </div>
-                        <div className="space-y-2 mt-4">
-                          <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
-                            URL de Verificação de Certificados
-                          </label>
-                          <input
-                            type="url"
-                            value={certificateValidationUrl}
-                            onChange={(e) => setCertificateValidationUrl(e.target.value)}
-                            className="input-modern"
-                            placeholder="https://plus.fajopa.org/validar"
-                          />
-                        </div>
-                        </>
-                      )}
+                            <p className="text-sm font-bold text-slate-700 dark:text-slate-200">Usar Google Apps Script</p>
+                            <p className="text-[10px] sm:text-xs text-slate-500">Redirecionar emissor de certificados para script externo em vez do gerador nativo PDF.</p>
+                          </div>
+                        </label>
+
+                        {useGoogleScriptCertificate && (
+                          <div className="mt-3">
+                            <label className="block text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">
+                              URL do Google Script
+                            </label>
+                            <input
+                              type="url"
+                              value={googleScriptCertificateUrl}
+                              onChange={(e) => setGoogleScriptCertificateUrl(e.target.value)}
+                              className="input-modern"
+                              placeholder="https://script.google.com/macros/..."
+                            />
+                          </div>
+                        )}
+                      </div>
                     </div>
                   </div>
                 </div>

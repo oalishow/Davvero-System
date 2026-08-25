@@ -22,7 +22,8 @@ import {
   Fingerprint,
   Library,
   Bell,
-  BellRing
+  BellRing,
+  Eye
 } from "lucide-react";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { motion, AnimatePresence } from "motion/react";
@@ -41,7 +42,7 @@ import {
   updateDoc,
 } from "firebase/firestore";
 import { db, appId, enrollStudent } from "../lib/firebase";
-import type { Member, Event, Attendance } from "../types";
+import type { Member, Event, Attendance, CertificateTemplate } from "../types";
 import VerificationResult from "./VerificationResult";
 import Modal from "./Modal";
 import PublicRequestModal from "./PublicRequestModal";
@@ -67,16 +68,23 @@ const AsyncCertificateRenderer = memo(
     member: Member;
     isOrganizer?: boolean;
   }) => {
-    const [template, setTemplate] = useState(event.certificateTemplate);
+    const [template, setTemplate] = useState<CertificateTemplate | undefined>(
+      isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate
+    );
+
+    useEffect(() => {
+      setTemplate(isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate);
+    }, [event.id, isOrganizer, event.organizationCertificateTemplate, event.certificateTemplate]);
 
     useEffect(() => {
       let isMounted = true;
-      if (!template) return;
+      const initialTemplate = isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate;
+      if (!initialTemplate) return;
 
       const needsAssets =
-        template.hasCustomBg ||
-        template.hasFajopaSignature ||
-        template.hasRectorSignature;
+        initialTemplate.hasCustomBg ||
+        initialTemplate.hasFajopaSignature ||
+        initialTemplate.hasRectorSignature;
       if (!needsAssets) return;
 
       const fetchAssets = async () => {
@@ -98,6 +106,9 @@ const AsyncCertificateRenderer = memo(
                     ...(assets.backgroundImageUrl && {
                       backgroundImageUrl: assets.backgroundImageUrl,
                     }),
+                    ...(assets.logoUrl && {
+                      logoUrl: assets.logoUrl,
+                    }),
                     ...(assets.fajopaDirectorSignatureUrl && {
                       fajopaDirectorSignatureUrl:
                         assets.fajopaDirectorSignatureUrl,
@@ -109,7 +120,7 @@ const AsyncCertificateRenderer = memo(
                   }
                 : prev,
             );
-          } else if ((template as any).hasCustomBg && !isOrganizer) {
+          } else if ((initialTemplate as any).hasCustomBg && !isOrganizer) {
             // Fallback to old bg doc
             const oldBgSnap = await getDoc(
               doc(db, ASSETS_DOC_PATH(appId, `cert_bg_${event.id}`)),
@@ -131,11 +142,12 @@ const AsyncCertificateRenderer = memo(
       return () => {
         isMounted = false;
       };
-    }, [event.id, isOrganizer]);
+    }, [event.id, isOrganizer, event.organizationCertificateTemplate, event.certificateTemplate]);
 
     if (!template) return null;
     return (
       <CertificateRenderer
+        id={`cert-node-${isOrganizer ? "org" : "part"}-${event.id}`}
         event={event}
         template={template}
         member={member}
@@ -185,9 +197,26 @@ export default function StudentPortal({
   const [alphaCode, setAlphaCode] = useState("");
   const [isPrePinAnimation, setIsPrePinAnimation] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [activeTab, setActiveTab] = useState<"id" | "events" | "certificates" | "academic" | "appointments" | "seminary_events" | "liturgy" | "account" | "biblioteca">(
-    "id",
-  );
+  const [activeTab, setActiveTab] = useState<"id" | "events" | "certificates" | "academic" | "appointments" | "seminary_events" | "liturgy" | "account" | "biblioteca">(() => {
+    if (typeof window !== "undefined") {
+      const saved = sessionStorage.getItem("student_target_tab");
+      if (saved) {
+        sessionStorage.removeItem("student_target_tab");
+        return saved as any;
+      }
+    }
+    return "id";
+  });
+
+  useEffect(() => {
+    const handleOpenStudentTab = (e: any) => {
+      if (e.detail?.tab) {
+        setActiveTab(e.detail.tab);
+      }
+    };
+    window.addEventListener("openStudentTab", handleOpenStudentTab);
+    return () => window.removeEventListener("openStudentTab", handleOpenStudentTab);
+  }, []);
   const [eventsSubTab, setEventsSubTab] = useState<"upcoming" | "past">(
     "upcoming",
   );
@@ -207,6 +236,10 @@ export default function StudentPortal({
   const [visitorRegistering, setVisitorRegistering] = useState(false);
   const [showRegistrationSuccessModal, setShowRegistrationSuccessModal] = useState(false);
   const [showApprovalModal, setShowApprovalModal] = useState(false);
+  const [previewCertEvent, setPreviewCertEvent] = useState<{
+    event: Event;
+    type: "participant" | "organizer";
+  } | null>(null);
 
   const portalContainerRef = useRef<HTMLDivElement>(null);
 
@@ -376,41 +409,35 @@ export default function StudentPortal({
   ) => {
     if (!member) return;
 
-    // Check if Google Script is enabled
-    if (settings.useGoogleScriptCertificate && settings.googleScriptCertificateUrl) {
-       try {
-         const url = new URL(settings.certificateValidationUrl || settings.googleScriptCertificateUrl);
-         // Append some helpful params in case the GS needs them
-         url.searchParams.append('name', member.name || '');
-         url.searchParams.append('doc', member.ra || (member as any).cpf || '');
-         url.searchParams.append('event', event.title || '');
-         url.searchParams.append('type', type);
-         window.open(url.toString(), '_blank');
-       } catch (e) {
-         window.open(settings.certificateValidationUrl || settings.googleScriptCertificateUrl, '_blank');
-       }
-       return;
-    }
-
     setIsDownloading(true);
 
     try {
       // Find the node
-      const node = document.getElementById(
-        `cert-node-${type === "participant" ? "part" : "org"}-${event.id}`,
-      );
+      const nodeId = `cert-node-${type === "participant" ? "part" : "org"}-${event.id}`;
+      const node = document.getElementById(nodeId);
       if (!node) {
-        throw new Error("Certificado não encontrado no DOM.");
+        throw new Error("Certificado não encontrado ou ainda em carregamento. Tente novamente.");
       }
 
-      // Ensure images are loaded. We can wait a bit or use a more robust way.
-      // html-to-image handles most cases better than html2canvas.
+      // Small tick to ensure styles and fonts are painted
+      await new Promise((resolve) => setTimeout(resolve, 80));
 
-      const canvas = await toCanvas(node, {
-        pixelRatio: 2,
-        skipFonts: false,
-        cacheBust: true,
-      });
+      let canvas: HTMLCanvasElement;
+      try {
+        canvas = await toCanvas(node, {
+          pixelRatio: 2,
+          skipFonts: false,
+          cacheBust: true,
+        });
+      } catch (errCanvas) {
+        console.warn("toCanvas error, falling back to html2canvas", errCanvas);
+        canvas = await html2canvas(node, {
+          scale: 2,
+          useCORS: true,
+          allowTaint: true,
+          backgroundColor: null,
+        });
+      }
 
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
 
@@ -422,10 +449,11 @@ export default function StudentPortal({
 
       pdf.addImage(imgData, "JPEG", 0, 0, 297, 210);
 
-      const fileName = `Certificado_${member.name.replace(/\s+/g, "_")}_${event.title.replace(/\s+/g, "_")}.pdf`;
+      const fileName = `Certificado_${(member.name || "Aluno").replace(/\s+/g, "_")}_${(event.title || "Evento").replace(/\s+/g, "_")}.pdf`;
 
       // Save the file
       pdf.save(fileName);
+      playSound('success');
 
       // On mobile devices, offer to open the certificate as well
       const isMobile =
@@ -437,7 +465,7 @@ export default function StudentPortal({
         setTimeout(async () => {
           if (
             await showConfirm(
-              "Certificado descarregado! Deseja tentar abrir o arquivo para visualização imediata?",
+              "Certificado descarregado com sucesso! Deseja abrir o arquivo agora?",
               { type: 'success' }
             )
           ) {
@@ -450,7 +478,7 @@ export default function StudentPortal({
     } catch (e: any) {
       console.error("Download Error:", e);
       showAlert(
-        `Erro ao descarregar: ${e.message || "Falha na geração do arquivo"}`,
+        `Erro ao gerar certificado: ${e.message || "Falha na geração do arquivo"}`,
         { type: 'error' }
       );
     } finally {
@@ -1850,50 +1878,49 @@ export default function StudentPortal({
               <motion.div
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
-                className="space-y-4"
+                className="space-y-6"
               >
-                <div className="flex flex-col md:flex-row gap-4 mb-6">
-                  {settings.useGoogleScriptCertificate && (settings.certificateValidationUrl || settings.googleScriptCertificateUrl) && (
-                    <div className="flex-1 bg-gradient-to-br from-emerald-500 to-emerald-700 p-6 rounded-3xl shadow-lg flex flex-col justify-between items-start text-white relative overflow-hidden">
-                      <div className="absolute -right-6 -top-6 opacity-10">
-                         <ShieldCheck className="w-32 h-32" />
-                      </div>
-                      <div className="relative z-10">
-                        <h3 className="text-lg font-black uppercase tracking-widest mb-2 flex items-center gap-2">
-                          <ExternalLink className="w-5 h-5" /> FAJOPA Plus
-                        </h3>
-                        <p className="text-sm text-emerald-50 max-w-sm mb-6">
-                          Acesse seu histórico completo e certificados externos no sistema legando do FAJOPA Plus.
-                        </p>
-                      </div>
-                      <button
-                        onClick={() => {
-                          try {
-                            const url = new URL(settings.googleScriptCertificateUrl);
-                            url.searchParams.append('name', member.name || '');
-                            url.searchParams.append('doc', member.ra || (member as any).cpf || '');
-                            window.open(url.toString(), '_blank');
-                          } catch (e) {
-                            window.open(settings.googleScriptCertificateUrl, '_blank');
-                          }
-                        }}
-                        className="bg-white/20 hover:bg-white/30 text-white font-bold py-3 px-6 rounded-xl transition-all active:scale-95 w-full sm:w-auto text-sm backdrop-blur-sm border border-white/20"
-                      >
-                        Acessar Portal FAJOPA
-                      </button>
+                {/* FAJOPA Plus & Davvero Cards */}
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-3xl shadow-lg flex flex-col justify-between items-start text-white relative overflow-hidden">
+                    <div className="absolute -right-6 -top-6 opacity-10">
+                       <ShieldCheck className="w-32 h-32" />
                     </div>
-                  )}
+                    <div className="relative z-10">
+                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 text-emerald-100 text-[10px] font-black uppercase tracking-widest mb-3">
+                        Validação de Certificados
+                      </div>
+                      <h3 className="text-lg font-black uppercase tracking-tight mb-2 flex items-center gap-2">
+                        <ExternalLink className="w-5 h-5" /> FAJOPA Plus
+                      </h3>
+                      <p className="text-xs text-emerald-50 max-w-sm mb-6 leading-relaxed">
+                        Acesse a validação e autenticidade oficial de certificados da rede FAJOPA Plus.
+                      </p>
+                    </div>
+                    <button
+                      onClick={() => {
+                        const targetUrl = settings.certificateValidationUrl || "https://plus.fajopa.org/validar";
+                        window.open(targetUrl, '_blank');
+                      }}
+                      className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold py-2.5 px-5 rounded-xl transition-all active:scale-95 w-full sm:w-auto text-xs shadow-md flex items-center justify-center gap-2"
+                    >
+                      <ExternalLink className="w-4 h-4" /> Validar no FAJOPA Plus
+                    </button>
+                  </div>
                   
-                  <div className="flex-1 bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col justify-between items-start relative overflow-hidden">
+                  <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col justify-between items-start relative overflow-hidden">
                       <div className="absolute -right-6 -top-6 opacity-[0.03] dark:opacity-[0.05]">
                          <ShieldCheck className="w-32 h-32 text-slate-900 dark:text-white" />
                       </div>
                       <div className="relative z-10">
-                        <h3 className="text-lg font-black uppercase tracking-widest mb-2 flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                          <ShieldCheck className="w-5 h-5 text-sky-500" /> Davvero System
+                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 text-[10px] font-black uppercase tracking-widest mb-3">
+                          Nativo & Verificável
+                        </div>
+                        <h3 className="text-lg font-black uppercase tracking-tight mb-2 flex items-center gap-2 text-slate-800 dark:text-slate-100">
+                          <ShieldCheck className="w-5 h-5 text-sky-500" /> DAVVERO System
                         </h3>
-                        <p className="text-sm text-slate-500 dark:text-slate-400 max-w-sm mb-6">
-                          Seus certificados nativos gerados pelos eventos internos. Verificáveis pelo código QR e autenticidade.
+                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-6 leading-relaxed">
+                          Seus certificados oficiais gerados diretamente pela plataforma, com código QR e validação digital instantânea.
                         </p>
                       </div>
                       <button
@@ -1901,9 +1928,9 @@ export default function StudentPortal({
                             const el = document.getElementById("davvero-certificates-list");
                             if(el) el.scrollIntoView({behavior: 'smooth'});
                          }}
-                         className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold py-3 px-6 rounded-xl transition-all active:scale-95 w-full sm:w-auto text-sm"
+                         className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold py-2.5 px-5 rounded-xl transition-all active:scale-95 w-full sm:w-auto text-xs flex items-center justify-center gap-2"
                       >
-                         Ver Certificados Abaixo
+                         Ver Certificados Oficiais Abaixo
                       </button>
                   </div>
                 </div>
@@ -1912,7 +1939,7 @@ export default function StudentPortal({
                   <>
                     <div className="flex items-center justify-between mb-4 px-1">
                       <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-emerald-500" /> Meus Certificados
+                        <ShieldCheck className="w-4 h-4 text-emerald-500" /> Certificados de Eventos Concluídos
                       </h3>
                     </div>
 
@@ -1923,7 +1950,7 @@ export default function StudentPortal({
                       const hasOrgCert = (e.status === "encerrado" || e.status === "aberto") && e.organizationCertificateTemplate?.isApproved === true && attendance.isOrganizer === true;
                       return hasPartCert || hasOrgCert;
                     }).length > 0 ? (
-                      <div className="space-y-3">
+                      <div className="space-y-4">
                         {allEvents.filter((e) => {
                             if (e.status !== "encerrado" && e.status !== "aberto") return false;
                             const attendance = myAttendances.find((a) => a.eventId === e.id);
@@ -1942,22 +1969,54 @@ export default function StudentPortal({
                             const hasOrgCert = event.organizationCertificateTemplate?.isApproved === true && attendance?.isOrganizer === true;
 
                             return (
-                              <div key={event.id} className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 text-left shadow-sm flex flex-col gap-2">
-                                <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm leading-tight mb-2">{event.title}</h4>
-                                <div className="flex flex-wrap gap-2 mb-2">
-                                  <span className="text-[9px] font-bold uppercase bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-slate-500">{formatText}</span>
-                                  <span className="text-[9px] font-bold uppercase bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md text-slate-500">{periodText}</span>
+                              <div key={event.id} className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 text-left shadow-sm flex flex-col gap-3">
+                                <div>
+                                  <h4 className="font-bold text-slate-800 dark:text-slate-100 text-base leading-snug mb-1">{event.title}</h4>
+                                  <div className="flex flex-wrap gap-2 mt-2">
+                                    <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{formatText}</span>
+                                    <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{periodText}</span>
+                                    <span className="text-[10px] font-bold uppercase bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-lg">{event.hours || 0} horas</span>
+                                  </div>
                                 </div>
-                                {hasPartCert && (
-                                  <button onClick={() => handleDownloadCertificate(event, "participant")} className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2">
-                                    {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ExternalLink className="w-4 h-4" /> Participação</>}
-                                  </button>
-                                )}
-                                {hasOrgCert && (
-                                  <button onClick={() => handleDownloadCertificate(event, "organizer")} className="w-full py-3 bg-amber-500 hover:bg-amber-400 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2">
-                                    {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><ExternalLink className="w-4 h-4" /> Organização</>}
-                                  </button>
-                                )}
+
+                                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex flex-col sm:flex-row gap-2">
+                                  {hasPartCert && (
+                                    <div className="flex-1 flex gap-2">
+                                      <button 
+                                        onClick={() => handleDownloadCertificate(event, "participant")} 
+                                        disabled={isDownloading}
+                                        className="flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                                      >
+                                        {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Certificado (PDF)</>}
+                                      </button>
+                                      <button 
+                                        onClick={() => setPreviewCertEvent({ event, type: "participant" })}
+                                        className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                        title="Visualizar Certificado"
+                                      >
+                                        <Eye className="w-4 h-4" /> Visualizar
+                                      </button>
+                                    </div>
+                                  )}
+                                  {hasOrgCert && (
+                                    <div className="flex-1 flex gap-2">
+                                      <button 
+                                        onClick={() => handleDownloadCertificate(event, "organizer")} 
+                                        disabled={isDownloading}
+                                        className="flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-400 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                                      >
+                                        {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Organização (PDF)</>}
+                                      </button>
+                                      <button 
+                                        onClick={() => setPreviewCertEvent({ event, type: "organizer" })}
+                                        className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                        title="Visualizar Certificado de Organização"
+                                      >
+                                        <Eye className="w-4 h-4" /> Visualizar
+                                      </button>
+                                    </div>
+                                  )}
+                                </div>
                               </div>
                             );
                           })}
@@ -1965,7 +2024,7 @@ export default function StudentPortal({
                     ) : (
                       <div className="bg-slate-50 dark:bg-slate-800/30 p-10 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
                         <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2">Nenhum certificado disponível</p>
-                        <p className="text-xs text-slate-500">Os certificados aparecem aqui após a confirmação da sua participação em eventos.</p>
+                        <p className="text-xs text-slate-500">Os certificados aparecem aqui após a confirmação da sua participação e aprovação do modelo pelo administrador.</p>
                       </div>
                     )}
 
@@ -2304,6 +2363,105 @@ export default function StudentPortal({
             </div>
           </div>
         </Modal>
+
+        {/* Certificate Preview Modal */}
+        {previewCertEvent && member && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-950/80 backdrop-blur-sm overflow-y-auto">
+            <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-4xl w-full p-6 shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col items-center">
+              <div className="flex items-center justify-between w-full mb-4">
+                <div className="flex items-center gap-2">
+                  <ShieldCheck className="w-5 h-5 text-sky-500" />
+                  <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                    Prévia do Certificado ({previewCertEvent.type === "participant" ? "Participação" : "Organização"})
+                  </h3>
+                </div>
+                <button
+                  onClick={() => setPreviewCertEvent(null)}
+                  className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-sm"
+                >
+                  ✕
+                </button>
+              </div>
+
+              {/* Responsive container with scale transform to fit the certificate */}
+              <div className="w-full flex items-center justify-center bg-slate-100 dark:bg-slate-950/60 rounded-2xl p-2 sm:p-4 overflow-hidden border border-slate-200 dark:border-slate-800 min-h-[320px]">
+                <div className="w-full max-w-full overflow-x-auto flex justify-center py-2">
+                  <div style={{ transform: "scale(0.55)", transformOrigin: "top center", height: "460px", width: "1122px" }}>
+                    <AsyncCertificateRenderer
+                      event={previewCertEvent.event}
+                      member={member}
+                      isOrganizer={previewCertEvent.type === "organizer"}
+                    />
+                  </div>
+                </div>
+              </div>
+
+              <div className="flex flex-col sm:flex-row gap-3 w-full justify-end mt-6 pt-4 border-t border-slate-100 dark:border-slate-800">
+                <button
+                  onClick={() => setPreviewCertEvent(null)}
+                  className="py-3 px-6 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
+                >
+                  Fechar
+                </button>
+                <button
+                  onClick={() => {
+                    handleDownloadCertificate(previewCertEvent.event, previewCertEvent.type);
+                  }}
+                  disabled={isDownloading}
+                  className="py-3 px-6 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                >
+                  {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Certificado em PDF</>}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {/* Hidden Render Container for Off-Screen PDF Capture */}
+        <div 
+          aria-hidden="true" 
+          style={{ 
+            position: "fixed", 
+            left: "-9999px", 
+            top: "-9999px", 
+            width: "1122px", 
+            height: "793px", 
+            overflow: "hidden", 
+            pointerEvents: "none", 
+            zIndex: -9999,
+            opacity: 1
+          }}
+        >
+          {member && allEvents.map((ev) => {
+            const att = myAttendances.find((a) => a.eventId === ev.id);
+            if (!att) return null;
+            const hasPart = (ev.status === "encerrado" || ev.status === "aberto") && ev.certificateTemplate?.isApproved === true && (att.status === "presente" || att.status === "apto_para_certificado");
+            const hasOrg = (ev.status === "encerrado" || ev.status === "aberto") && ev.organizationCertificateTemplate?.isApproved === true && att.isOrganizer === true;
+
+            return (
+              <React.Fragment key={ev.id}>
+                {hasPart && (
+                  <div id={`cert-node-part-${ev.id}`}>
+                    <AsyncCertificateRenderer
+                      event={ev}
+                      member={member}
+                      isOrganizer={false}
+                    />
+                  </div>
+                )}
+                {hasOrg && (
+                  <div id={`cert-node-org-${ev.id}`}>
+                    <AsyncCertificateRenderer
+                      event={ev}
+                      member={member}
+                      isOrganizer={true}
+                    />
+                  </div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
       </>
     );
   }

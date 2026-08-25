@@ -198,6 +198,13 @@ export default function App() {
     (window as any).triggerVerification = handleGlobalVerify;
     (window as any).triggerAdminForceView = handleAdminForceView;
     (window as any).triggerTab = (tab: any) => setActiveTab(tab);
+    (window as any).triggerStudentTab = (subTab?: string) => {
+      if (subTab) {
+        sessionStorage.setItem("student_target_tab", subTab);
+        window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: subTab } }));
+      }
+      setActiveTab("student");
+    };
     (window as any).triggerWelcomeModal = () => setShowWelcomeModal(true);
   }, []);
 

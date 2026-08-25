@@ -8,175 +8,530 @@ interface CertificateRendererProps {
   template: CertificateTemplate;
   member: Partial<Member>;
   isOrganizer?: boolean;
+  id?: string;
 }
 
 export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendererProps>(
-  ({ event, template, member, isOrganizer }, ref) => {
+  ({ event, template, member, isOrganizer, id }, ref) => {
     const { settings } = useSettings();
 
-    // Use specific signature urls from template, or fallback to the carteirinha settings
+    // Signatures URLs and names fallback
     const fajopaSigUrl = template.fajopaDirectorSignatureUrl || settings.instSignature;
     const rectorSigUrl = template.seminarRectorSignatureUrl || settings.rectorSignature;
     const fajopaName = template.fajopaDirectorName || settings.directorName;
     const rectorName = template.seminarRectorName || settings.rectorName;
-    
-    const fontClass = template.fontFamily === 'serif' ? 'font-serif' : 
-                      template.fontFamily === 'mono' ? 'font-mono' : 'font-sans';
-                      
-    const certHours = isOrganizer && event.organizationHours ? event.organizationHours : event.hours;
-                      
-    const defaultBodyText = isOrganizer
-      ? `Certificamos que [NOME DO ALUNO], atuou como membro da Equipe de Organização do evento "${event.title}", em formato ${event.format}, realizado entre ${new Date(event.startDate).toLocaleDateString('pt-BR')} e ${new Date(event.endDate || event.startDate).toLocaleDateString('pt-BR')}, com carga horária total de ${certHours} horas.`
-      : `Certificamos que [NOME DO ALUNO], participou com êxito do evento "${event.title}", em formato ${event.format}, realizado entre ${new Date(event.startDate).toLocaleDateString('pt-BR')} e ${new Date(event.endDate || event.startDate).toLocaleDateString('pt-BR')}, com carga horária total de ${certHours} horas.`;
-    
-    const bodyText = (template.bodyText || defaultBodyText)
-      .replace(/\[NOME DO ALUNO\]/g, member.name || 'NOME DO ALUNO')
-      .replace(/\[RA DO ALUNO\]/g, member.ra || 'RA DO ALUNO');
 
-    // Mapeamento de temas visuais (Nano Banana Design System)
-    const themes: Record<string, { bg: string, border: React.ReactNode, titleColor: string, textStyle: string }> = {
+    // Font Family resolution
+    const fontClass = 
+      template.fontFamily === 'serif' ? 'font-serif' :
+      template.fontFamily === 'mono' ? 'font-mono' :
+      template.fontFamily === 'cinzel' ? 'font-serif tracking-wider' :
+      template.fontFamily === 'script' ? 'italic font-serif' :
+      template.fontFamily === 'merriweather' ? 'font-serif' :
+      template.fontFamily === 'montserrat' ? 'font-sans tracking-wide' : 'font-sans';
+
+    // Calculation of hours (Safe: never outputs "null", "undefined", or 0)
+    const rawHours = isOrganizer && event.organizationHours ? event.organizationHours : event.hours;
+    const hasValidHours = rawHours && String(rawHours).trim() !== "" && String(rawHours).toLowerCase() !== "null" && String(rawHours).toLowerCase() !== "undefined" && Number(rawHours) !== 0;
+    const hoursText = hasValidHours ? `, com carga horária total de ${rawHours} horas` : "";
+
+    const defaultBodyText = isOrganizer
+      ? `Certificamos que [NOME DO ALUNO], atuou com distinção como membro da Equipe de Organização do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado entre ${new Date(event.startDate).toLocaleDateString('pt-BR')} e ${new Date(event.endDate || event.startDate).toLocaleDateString('pt-BR')}${hoursText}.`
+      : `Certificamos que [NOME DO ALUNO], participou com êxito e assiduidade do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado entre ${new Date(event.startDate).toLocaleDateString('pt-BR')} e ${new Date(event.endDate || event.startDate).toLocaleDateString('pt-BR')}${hoursText}.`;
+
+    // Clean body text (strip any literal "null horas" or "undefined horas" from user edits)
+    let bodyText = (template.bodyText || defaultBodyText)
+      .replace(/\[NOME DO ALUNO\]/g, member.name || 'NOME DO PARTICIPANTE')
+      .replace(/\[RA DO ALUNO\]/g, member.ra || 'RA DO ALUNO')
+      .replace(/null horas/gi, '')
+      .replace(/undefined horas/gi, '');
+
+    // Typography customization styles
+    const customFontSize = template.fontSize ? `${template.fontSize}px` : undefined;
+    const customFontWeight = template.isBold ? 'font-bold' : 'font-normal';
+    const customTextAlign = 
+      template.textAlign === 'left' ? 'text-left' :
+      template.textAlign === 'center' ? 'text-center' :
+      template.textAlign === 'right' ? 'text-right' : 'text-justify';
+
+    const textBoxWidthClass = 
+      template.textBoxWidth === 'narrow' ? 'max-w-[720px] px-4' :
+      template.textBoxWidth === 'wide' ? 'max-w-[980px] px-8' :
+      template.textBoxWidth === 'full' ? 'w-full px-2' : 'max-w-[880px] px-6';
+
+    // Signatures configuration
+    const sigHeight = template.signatureSize || 65;
+    const sigOffsetY = template.signatureOffsetY || 0;
+    const sigDistributionClass = 
+      template.signaturePosition === 'center' ? 'justify-center gap-16' :
+      template.signaturePosition === 'left' ? 'justify-start gap-12' :
+      template.signaturePosition === 'right' ? 'justify-end gap-12' :
+      template.signaturePosition === 'space-between' ? 'justify-between px-10' :
+      'justify-around px-8';
+
+    // Event Logo configuration
+    const logoSource = template.logoUrl || (template.showLogo ? event.imageUrl : undefined);
+    const logoHeight = template.logoSize || 70;
+    const logoPos = template.logoPosition || "top-center";
+
+    // Design Themes Library
+    const themes: Record<string, { bg: string; border: React.ReactNode; titleColor: string; subtitleColor: string; defaultTextStyle: string; signatureLineColor: string; nameColor: string; roleColor: string; watermarkColor: string }> = {
       "theme-classic": {
-        bg: "bg-[#F9F7F1]",
+        bg: "bg-[#FDFBF7]",
         border: (
           <>
-            <div className="absolute inset-0 border-[20px] border-[#D4AF37] m-4 pointer-events-none rounded-sm opacity-80 z-0"></div>
-            <div className="absolute inset-0 border-[2px] border-[#D4AF37] m-10 pointer-events-none rounded-none opacity-60 z-0"></div>
+            <div className="absolute inset-0 border-[16px] border-[#C5A059] m-3 pointer-events-none rounded-none opacity-85 z-0"></div>
+            <div className="absolute inset-0 border-[2px] border-[#C5A059] m-8 pointer-events-none rounded-none opacity-60 z-0"></div>
+            {/* Cantoneiras decorativas */}
+            <div className="absolute top-7 left-7 w-8 h-8 border-t-2 border-l-2 border-[#C5A059] pointer-events-none z-0"></div>
+            <div className="absolute top-7 right-7 w-8 h-8 border-t-2 border-r-2 border-[#C5A059] pointer-events-none z-0"></div>
+            <div className="absolute bottom-7 left-7 w-8 h-8 border-b-2 border-l-2 border-[#C5A059] pointer-events-none z-0"></div>
+            <div className="absolute bottom-7 right-7 w-8 h-8 border-b-2 border-r-2 border-[#C5A059] pointer-events-none z-0"></div>
           </>
         ),
-        titleColor: "text-[#2C3E50]",
-        textStyle: "text-slate-800 text-3xl font-serif text-justify leading-relaxed",
+        titleColor: "text-[#1E293B]",
+        subtitleColor: "text-[#C5A059]",
+        defaultTextStyle: "text-slate-800 text-[26px] leading-[1.7]",
+        signatureLineColor: "border-[#C5A059]",
+        nameColor: "text-slate-900",
+        roleColor: "text-slate-600",
+        watermarkColor: "text-slate-900",
       },
       "theme-modern": {
         bg: "bg-white",
         border: (
           <>
-            <div className="absolute top-0 left-0 w-32 h-32 border-t-8 border-l-8 border-sky-600 m-8 pointer-events-none z-0"></div>
-            <div className="absolute bottom-0 right-0 w-32 h-32 border-b-8 border-r-8 border-sky-600 m-8 pointer-events-none z-0"></div>
+            <div className="absolute top-0 left-0 w-36 h-36 border-t-8 border-l-8 border-sky-600 m-6 pointer-events-none z-0"></div>
+            <div className="absolute bottom-0 right-0 w-36 h-36 border-b-8 border-r-8 border-sky-600 m-6 pointer-events-none z-0"></div>
+            <div className="absolute inset-x-8 top-0 h-1.5 bg-gradient-to-r from-sky-600 via-indigo-500 to-sky-600 pointer-events-none z-0"></div>
+            <div className="absolute inset-x-8 bottom-0 h-1.5 bg-gradient-to-r from-sky-600 via-indigo-500 to-sky-600 pointer-events-none z-0"></div>
           </>
         ),
-        titleColor: "text-sky-900 tracking-tight",
-        textStyle: "text-slate-700 text-3xl font-sans text-left leading-relaxed",
+        titleColor: "text-sky-950 tracking-tight",
+        subtitleColor: "text-sky-600",
+        defaultTextStyle: "text-slate-700 text-[26px] leading-[1.65]",
+        signatureLineColor: "border-sky-600",
+        nameColor: "text-slate-900",
+        roleColor: "text-slate-500",
+        watermarkColor: "text-slate-800",
       },
       "theme-theology": {
-        bg: "bg-[#FAFAFA]",
+        bg: "bg-[#FCF9F9]",
         border: (
           <>
-            <div className="absolute inset-0 m-0 pointer-events-none border-[30px] border-[#4A0E2E] shadow-[inset_0_0_0_4px_#D4AF37] z-0"></div>
-            <div className="absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full opacity-[0.03] pointer-events-none flex items-center justify-center z-0">
-               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-[800px] h-[800px] text-[#4A0E2E]">
+            <div className="absolute inset-0 m-0 pointer-events-none border-[26px] border-[#4A0E2E] shadow-[inset_0_0_0_3px_#D4AF37] z-0"></div>
+            <div className="absolute inset-1/2 -translate-x-1/2 -translate-y-1/2 w-full h-full opacity-[0.035] pointer-events-none flex items-center justify-center z-0">
+               <svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="currentColor" className="w-[700px] h-[700px] text-[#4A0E2E]">
                   <path fillRule="evenodd" d="M12 2.25c-5.385 0-9.75 4.365-9.75 9.75s4.365 9.75 9.75 9.75 9.75-4.365 9.75-9.75S17.385 2.25 12 2.25Zm0 13.5a3.75 3.75 0 1 0 0-7.5 3.75 3.75 0 0 0 0 7.5Z" clipRule="evenodd" />
                </svg>
             </div>
           </>
         ),
         titleColor: "text-[#4A0E2E]",
-        textStyle: "text-[#2d081c] text-4xl font-serif text-center leading-[1.8]",
+        subtitleColor: "text-[#9E2A2B]",
+        defaultTextStyle: "text-[#2d081c] text-[27px] leading-[1.75]",
+        signatureLineColor: "border-[#4A0E2E]",
+        nameColor: "text-[#2d081c]",
+        roleColor: "text-slate-600",
+        watermarkColor: "text-[#4A0E2E]",
       },
       "theme-solemn": {
         bg: "bg-[#0B132B]",
         border: (
           <>
-            <div className="absolute inset-0 border-[4px] border-[#D4AF37] m-12 pointer-events-none opacity-40 z-0"></div>
+            <div className="absolute inset-0 border-[3px] border-[#D4AF37] m-8 pointer-events-none opacity-50 z-0"></div>
+            <div className="absolute inset-0 border border-[#D4AF37] m-11 pointer-events-none opacity-30 z-0"></div>
+            <div className="absolute top-10 left-10 w-6 h-6 border-t-2 border-l-2 border-[#D4AF37] pointer-events-none z-0"></div>
+            <div className="absolute top-10 right-10 w-6 h-6 border-t-2 border-r-2 border-[#D4AF37] pointer-events-none z-0"></div>
+            <div className="absolute bottom-10 left-10 w-6 h-6 border-b-2 border-l-2 border-[#D4AF37] pointer-events-none z-0"></div>
+            <div className="absolute bottom-10 right-10 w-6 h-6 border-b-2 border-r-2 border-[#D4AF37] pointer-events-none z-0"></div>
           </>
         ),
-        titleColor: "text-[#D4AF37]",
-        textStyle: "text-slate-300 text-3xl font-serif text-center leading-relaxed",
-      }
+        titleColor: "text-[#E5B842]",
+        subtitleColor: "text-slate-300",
+        defaultTextStyle: "text-slate-200 text-[26px] leading-[1.7]",
+        signatureLineColor: "border-[#D4AF37]/60",
+        nameColor: "text-slate-100",
+        roleColor: "text-slate-400",
+        watermarkColor: "text-slate-400",
+      },
+      "theme-fajopa": {
+        bg: "bg-[#F8FAFC]",
+        border: (
+          <>
+            <div className="absolute inset-0 border-[14px] border-[#1E3A8A] m-2 pointer-events-none z-0"></div>
+            <div className="absolute inset-0 border-[2px] border-[#0D9488] m-7 pointer-events-none opacity-70 z-0"></div>
+          </>
+        ),
+        titleColor: "text-[#1E3A8A]",
+        subtitleColor: "text-[#0D9488]",
+        defaultTextStyle: "text-slate-800 text-[26px] leading-[1.7]",
+        signatureLineColor: "border-[#1E3A8A]",
+        nameColor: "text-slate-900",
+        roleColor: "text-slate-600",
+        watermarkColor: "text-slate-800",
+      },
+      "theme-diplomatic": {
+        bg: "bg-[#F7FAF7]",
+        border: (
+          <>
+            <div className="absolute inset-0 border-[18px] border-[#064E3B] m-2 pointer-events-none shadow-[inset_0_0_0_2px_#D4AF37] z-0"></div>
+            <div className="absolute inset-0 border border-[#D4AF37] m-8 pointer-events-none opacity-80 z-0"></div>
+          </>
+        ),
+        titleColor: "text-[#064E3B]",
+        subtitleColor: "text-[#B45309]",
+        defaultTextStyle: "text-slate-800 text-[26px] leading-[1.7]",
+        signatureLineColor: "border-[#064E3B]",
+        nameColor: "text-slate-900",
+        roleColor: "text-slate-600",
+        watermarkColor: "text-[#064E3B]",
+      },
+      "theme-minimal": {
+        bg: "bg-white",
+        border: (
+          <>
+            <div className="absolute inset-0 border border-slate-300 m-8 pointer-events-none z-0"></div>
+            <div className="absolute top-8 left-1/2 -translate-x-1/2 w-24 h-1 bg-slate-900 pointer-events-none z-0"></div>
+          </>
+        ),
+        titleColor: "text-slate-900 tracking-widest",
+        subtitleColor: "text-slate-500",
+        defaultTextStyle: "text-slate-700 text-[25px] leading-[1.65]",
+        signatureLineColor: "border-slate-800",
+        nameColor: "text-slate-900",
+        roleColor: "text-slate-500",
+        watermarkColor: "text-slate-800",
+      },
+      "theme-parchment": {
+        bg: "bg-[#F5EBE0]",
+        border: (
+          <>
+            <div className="absolute inset-0 border-[18px] border-[#5C3D2E] m-2 pointer-events-none opacity-90 z-0"></div>
+            <div className="absolute inset-0 border-[2px] border-[#8C6239] m-8 pointer-events-none opacity-60 z-0"></div>
+          </>
+        ),
+        titleColor: "text-[#5C3D2E]",
+        subtitleColor: "text-[#8C6239]",
+        defaultTextStyle: "text-[#3D2619] text-[26px] leading-[1.7]",
+        signatureLineColor: "border-[#5C3D2E]",
+        nameColor: "text-[#3D2619]",
+        roleColor: "text-[#6B4B35]",
+        watermarkColor: "text-[#5C3D2E]",
+      },
+      "theme-laurel": {
+        bg: "bg-[#FCFDFD]",
+        border: (
+          <>
+            <div className="absolute inset-0 border-[14px] border-[#9A7B38] m-3 pointer-events-none z-0"></div>
+            <div className="absolute inset-0 border-[2px] border-[#9A7B38] m-8 pointer-events-none opacity-60 z-0"></div>
+          </>
+        ),
+        titleColor: "text-[#785E23]",
+        subtitleColor: "text-[#9A7B38]",
+        defaultTextStyle: "text-slate-800 text-[26px] leading-[1.7]",
+        signatureLineColor: "border-[#9A7B38]",
+        nameColor: "text-slate-900",
+        roleColor: "text-slate-600",
+        watermarkColor: "text-[#785E23]",
+      },
+      "theme-emerald-gold": {
+        bg: "bg-[#F4F9F6]",
+        border: (
+          <>
+            <div className="absolute inset-0 border-[20px] border-[#064E3B] m-2 pointer-events-none shadow-[inset_0_0_0_3px_#D4AF37] z-0"></div>
+            <div className="absolute inset-0 border border-[#D4AF37] m-8 pointer-events-none opacity-70 z-0"></div>
+            <div className="absolute top-9 left-9 w-10 h-10 border-t-2 border-l-2 border-[#D4AF37] pointer-events-none z-0"></div>
+            <div className="absolute top-9 right-9 w-10 h-10 border-t-2 border-r-2 border-[#D4AF37] pointer-events-none z-0"></div>
+            <div className="absolute bottom-9 left-9 w-10 h-10 border-b-2 border-l-2 border-[#D4AF37] pointer-events-none z-0"></div>
+            <div className="absolute bottom-9 right-9 w-10 h-10 border-b-2 border-r-2 border-[#D4AF37] pointer-events-none z-0"></div>
+          </>
+        ),
+        titleColor: "text-[#064E3B]",
+        subtitleColor: "text-[#D97706]",
+        defaultTextStyle: "text-[#062c22] text-[26px] leading-[1.7]",
+        signatureLineColor: "border-[#064E3B]",
+        nameColor: "text-[#064E3B]",
+        roleColor: "text-slate-600",
+        watermarkColor: "text-[#064E3B]",
+      },
+      "theme-academic-navy": {
+        bg: "bg-[#F8FAFC]",
+        border: (
+          <>
+            <div className="absolute inset-0 border-[16px] border-[#0F172A] m-2 pointer-events-none shadow-[inset_0_0_0_3px_#38BDF8] z-0"></div>
+            <div className="absolute inset-0 border border-[#38BDF8] m-8 pointer-events-none opacity-60 z-0"></div>
+            <div className="absolute inset-x-12 top-0 h-1 bg-gradient-to-r from-transparent via-[#38BDF8] to-transparent pointer-events-none z-0"></div>
+            <div className="absolute inset-x-12 bottom-0 h-1 bg-gradient-to-r from-transparent via-[#38BDF8] to-transparent pointer-events-none z-0"></div>
+          </>
+        ),
+        titleColor: "text-[#0F172A]",
+        subtitleColor: "text-[#0284C7]",
+        defaultTextStyle: "text-slate-800 text-[26px] leading-[1.68]",
+        signatureLineColor: "border-[#0F172A]",
+        nameColor: "text-slate-900",
+        roleColor: "text-slate-600",
+        watermarkColor: "text-[#0F172A]",
+      },
+      "theme-renaissance": {
+        bg: "bg-[#FAF5EF]",
+        border: (
+          <>
+            <div className="absolute inset-0 border-[22px] border-[#78350F] m-2 pointer-events-none shadow-[inset_0_0_0_4px_#B45309] z-0"></div>
+            <div className="absolute inset-0 border-[2px] border-[#B45309] m-9 pointer-events-none opacity-80 z-0"></div>
+            <div className="absolute top-8 left-8 w-12 h-12 border-t-4 border-l-4 border-[#B45309] pointer-events-none z-0"></div>
+            <div className="absolute top-8 right-8 w-12 h-12 border-t-4 border-r-4 border-[#B45309] pointer-events-none z-0"></div>
+            <div className="absolute bottom-8 left-8 w-12 h-12 border-b-4 border-l-4 border-[#B45309] pointer-events-none z-0"></div>
+            <div className="absolute bottom-8 right-8 w-12 h-12 border-b-4 border-r-4 border-[#B45309] pointer-events-none z-0"></div>
+          </>
+        ),
+        titleColor: "text-[#78350F]",
+        subtitleColor: "text-[#B45309]",
+        defaultTextStyle: "text-[#451A03] text-[26px] leading-[1.72]",
+        signatureLineColor: "border-[#78350F]",
+        nameColor: "text-[#451A03]",
+        roleColor: "text-[#92400E]",
+        watermarkColor: "text-[#78350F]",
+      },
+      "theme-contemporary-ruby": {
+        bg: "bg-[#FFFBFB]",
+        border: (
+          <>
+            <div className="absolute inset-0 border-[16px] border-[#881337] m-2 pointer-events-none shadow-[inset_0_0_0_2px_#E11D48] z-0"></div>
+            <div className="absolute inset-0 border border-[#E11D48] m-8 pointer-events-none opacity-50 z-0"></div>
+          </>
+        ),
+        titleColor: "text-[#881337] tracking-tight",
+        subtitleColor: "text-[#BE123C]",
+        defaultTextStyle: "text-slate-800 text-[26px] leading-[1.68]",
+        signatureLineColor: "border-[#881337]",
+        nameColor: "text-[#881337]",
+        roleColor: "text-slate-600",
+        watermarkColor: "text-[#881337]",
+      },
     };
 
     const currentTheme = themes[template.bgStyle] || themes["theme-classic"];
 
+    const titleText = template.titleText || "CERTIFICADO";
+    
+    // Exact subtitle resolution: ensure no mismatch between organizer and participant modes
+    let subtitleText = template.subtitleText;
+    if (!subtitleText || subtitleText.trim() === "") {
+      subtitleText = isOrganizer ? "DE ORGANIZAÇÃO" : "DE PARTICIPAÇÃO";
+    } else if (isOrganizer && subtitleText.toUpperCase().includes("PARTICIPAÇÃO")) {
+      subtitleText = "DE ORGANIZAÇÃO";
+    } else if (!isOrganizer && subtitleText.toUpperCase().includes("ORGANIZAÇÃO")) {
+      subtitleText = "DE PARTICIPAÇÃO";
+    }
+
     return (
       <div 
         ref={ref} 
-        className={`w-[1122px] h-[793px] relative flex flex-col justify-between p-20 overflow-hidden ${fontClass} ${currentTheme.bg}`}
+        id={id || `cert-node-${isOrganizer ? "org" : "part"}-${event.id}`}
+        className={`w-[1123px] h-[794px] min-w-[1123px] min-h-[794px] max-w-[1123px] max-h-[794px] aspect-[297/210] relative flex flex-col justify-between p-14 overflow-hidden select-none box-border ${fontClass} ${currentTheme.bg}`}
       >
+        {/* Custom background image overlay */}
         {template.backgroundImageUrl && (
-          <img src={template.backgroundImageUrl} className="absolute inset-0 w-full h-full object-cover z-0 opacity-100 mix-blend-multiply" alt="Background" crossOrigin="anonymous" />
+          <img 
+            src={template.backgroundImageUrl} 
+            className="absolute inset-0 w-full h-full object-cover z-0 opacity-100 mix-blend-multiply" 
+            alt="Background" 
+            crossOrigin="anonymous" 
+          />
         )}
         
         {!template.backgroundImageUrl && currentTheme.border}
 
-        <div className="relative z-10 flex flex-col items-center pt-8">
-           <h1 className={`text-6xl font-black tracking-widest uppercase mb-4 ${currentTheme.titleColor}`}>CERTIFICADO</h1>
-           <h2 className={`text-2xl font-medium tracking-widest ${template.bgStyle === 'theme-solemn' ? 'text-slate-400' : 'text-slate-500'} uppercase`}>{isOrganizer ? "DE ORGANIZAÇÃO" : "DE PARTICIPAÇÃO"}</h2>
+        {/* Top Header Section with Logo and Titles */}
+        <div className="relative z-10 flex flex-col items-center pt-2 shrink-0">
+          
+          {/* Logo positioning: top-left or top-right absolute, or top-center inline with transparent alpha support */}
+          {logoSource && logoPos === "top-left" && (
+            <div className="absolute top-0 left-4 z-20">
+              <img 
+                src={logoSource} 
+                alt="Event Logo" 
+                style={{ height: `${logoHeight}px` }} 
+                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
+                crossOrigin="anonymous" 
+              />
+            </div>
+          )}
+
+          {logoSource && logoPos === "top-right" && (
+            <div className="absolute top-0 right-4 z-20">
+              <img 
+                src={logoSource} 
+                alt="Event Logo" 
+                style={{ height: `${logoHeight}px` }} 
+                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
+                crossOrigin="anonymous" 
+              />
+            </div>
+          )}
+
+          {logoSource && logoPos === "top-center" && (
+            <div className="mb-2.5 flex justify-center">
+              <img 
+                src={logoSource} 
+                alt="Event Logo" 
+                style={{ height: `${logoHeight}px` }} 
+                className="object-contain max-w-[240px] drop-shadow-sm bg-transparent" 
+                crossOrigin="anonymous" 
+              />
+            </div>
+          )}
+
+          <h1 className={`text-5xl sm:text-6xl font-black tracking-widest uppercase mb-1.5 text-center ${currentTheme.titleColor}`}>
+            {titleText}
+          </h1>
+          <h2 className={`text-xl sm:text-2xl font-semibold tracking-widest uppercase text-center ${currentTheme.subtitleColor}`}>
+            {subtitleText}
+          </h2>
         </div>
 
-        <div className="relative z-10 flex flex-col items-center justify-center flex-1 my-12 px-24">
-          <p className={currentTheme.textStyle} dangerouslySetInnerHTML={{ __html: bodyText.replace(/\n/g, '<br />') }}></p>
+        {/* Central Body Content Section */}
+        <div className="relative z-10 flex flex-col items-center justify-center flex-1 my-4 px-8 overflow-hidden">
+          <div className={`${textBoxWidthClass} w-full flex items-center justify-center`}>
+            <p 
+              className={`${currentTheme.defaultTextStyle} ${customFontWeight} ${customTextAlign}`}
+              style={{
+                fontSize: customFontSize,
+              }}
+              dangerouslySetInnerHTML={{ __html: bodyText.replace(/\n/g, '<br />') }}
+            ></p>
+          </div>
         </div>
 
-        <div className="relative z-10 flex flex-row items-end justify-around pb-12 w-full px-16">
-          {/* Assinaturas baseadas nos flags de Settings ou diretos do editor */}
+        {/* Signatures Row with strict alignment & offset controls */}
+        <div 
+          className={`relative z-10 flex flex-row items-end ${sigDistributionClass} w-full pb-8 shrink-0 transition-transform`}
+          style={{
+            transform: `translateY(${sigOffsetY}px)`,
+          }}
+        >
+          {/* Assinatura 1: Diretor FAJOPA */}
           {(template.showFajopaDirectorSignature ?? false) && (
-            <div className="flex flex-col items-center text-center w-80">
-              {fajopaSigUrl ? (
-                <img src={fajopaSigUrl} className="h-20 mb-2 object-contain mix-blend-multiply" crossOrigin="anonymous" alt="Signature" />
-              ) : (
-                <div className="h-20" />
-              )}
-              <div className={`w-full border-b-2 ${template.bgStyle === 'theme-solemn' ? 'border-slate-500' : 'border-slate-800'} mb-4`}></div>
-              <h3 className={`text-2xl font-bold ${template.bgStyle === 'theme-solemn' ? 'text-slate-100' : 'text-slate-800'}`}>{fajopaName || "Diretor FAJOPA"}</h3>
-              <p className={`text-lg font-medium ${template.bgStyle === 'theme-solemn' ? 'text-slate-400' : 'text-slate-600'}`}>Diretor de Ensino / Acadêmico</p>
+            <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
+              <div 
+                className="w-full flex items-end justify-center mb-1.5"
+                style={{ height: `${sigHeight}px` }}
+              >
+                {fajopaSigUrl ? (
+                  <img 
+                    src={fajopaSigUrl} 
+                    style={{ maxHeight: `${sigHeight}px` }}
+                    className="max-w-[220px] object-contain mix-blend-multiply" 
+                    crossOrigin="anonymous" 
+                    alt="Assinatura Diretor" 
+                  />
+                ) : (
+                  <div className="w-full h-px" />
+                )}
+              </div>
+              <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
+              <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+                {fajopaName || "Diretor FAJOPA"}
+              </h3>
+              <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+                Diretor de Ensino / Acadêmico
+              </p>
             </div>
           )}
           
+          {/* Assinatura 2: Reitor do Seminário */}
           {(template.showSeminarRectorSignature ?? false) && (
-            <div className="flex flex-col items-center text-center w-80">
-              {rectorSigUrl ? (
-                <img src={rectorSigUrl} className="h-20 mb-2 object-contain mix-blend-multiply" crossOrigin="anonymous" alt="Signature" />
-              ) : (
-                <div className="h-20" />
-              )}
-              <div className={`w-full border-b-2 ${template.bgStyle === 'theme-solemn' ? 'border-slate-500' : 'border-slate-800'} mb-4`}></div>
-              <h3 className={`text-2xl font-bold ${template.bgStyle === 'theme-solemn' ? 'text-slate-100' : 'text-slate-800'}`}>{rectorName || "Reitor"}</h3>
-              <p className={`text-lg font-medium ${template.bgStyle === 'theme-solemn' ? 'text-slate-400' : 'text-slate-600'}`}>Reitor do Seminário</p>
+            <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
+              <div 
+                className="w-full flex items-end justify-center mb-1.5"
+                style={{ height: `${sigHeight}px` }}
+              >
+                {rectorSigUrl ? (
+                  <img 
+                    src={rectorSigUrl} 
+                    style={{ maxHeight: `${sigHeight}px` }}
+                    className="max-w-[220px] object-contain mix-blend-multiply" 
+                    crossOrigin="anonymous" 
+                    alt="Assinatura Reitor" 
+                  />
+                ) : (
+                  <div className="w-full h-px" />
+                )}
+              </div>
+              <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
+              <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+                {rectorName || "Reitor"}
+              </h3>
+              <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+                Reitor do Seminário
+              </p>
             </div>
           )}
 
-          {/* Legacy Support se faltarem as novas flags, usar assinatiras originais se preenchidas */}
+          {/* Assinaturas personalizadas caso ativadas */}
           {(!(template.showFajopaDirectorSignature ?? false) && !(template.showSeminarRectorSignature ?? false)) && (
             <>
               {(template.signatureName || template.signatureRole) && (
-                <div className="flex flex-col items-center text-center w-80">
-                  <div className="h-16" />
-                  <div className={`w-full border-b-2 ${template.bgStyle === 'theme-solemn' ? 'border-slate-500' : 'border-slate-800'} mb-4`}></div>
-                  <h3 className={`text-2xl font-bold ${template.bgStyle === 'theme-solemn' ? 'text-slate-100' : 'text-slate-800'}`}>{template.signatureName || "Nome do Responsável"}</h3>
-                  <p className={`text-lg font-medium ${template.bgStyle === 'theme-solemn' ? 'text-slate-400' : 'text-slate-600'}`}>{template.signatureRole || "Cargo / Instituição"}</p>
+                <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
+                  <div 
+                    className="w-full flex items-end justify-center mb-1.5"
+                    style={{ height: `${sigHeight}px` }}
+                  >
+                    <div className="w-full h-px" />
+                  </div>
+                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
+                  <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+                    {template.signatureName || "Nome do Responsável"}
+                  </h3>
+                  <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+                    {template.signatureRole || "Cargo / Instituição"}
+                  </p>
                 </div>
               )}
               
               {(template.signature2Name || template.signature2Role) && (
-                <div className="flex flex-col items-center text-center w-80">
-                  <div className="h-16" />
-                  <div className={`w-full border-b-2 ${template.bgStyle === 'theme-solemn' ? 'border-slate-500' : 'border-slate-800'} mb-4`}></div>
-                  <h3 className={`text-2xl font-bold ${template.bgStyle === 'theme-solemn' ? 'text-slate-100' : 'text-slate-800'}`}>{template.signature2Name || ""}</h3>
-                  <p className={`text-lg font-medium ${template.bgStyle === 'theme-solemn' ? 'text-slate-400' : 'text-slate-600'}`}>{template.signature2Role || ""}</p>
+                <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
+                  <div 
+                    className="w-full flex items-end justify-center mb-1.5"
+                    style={{ height: `${sigHeight}px` }}
+                  >
+                    <div className="w-full h-px" />
+                  </div>
+                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
+                  <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+                    {template.signature2Name || ""}
+                  </h3>
+                  <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+                    {template.signature2Role || ""}
+                  </p>
                 </div>
               )}
             </>
           )}
         </div>
         
-        {/* Código de Verificação */}
-        <div className="absolute bottom-6 left-10 z-10 flex items-center gap-4">
-          <div className="bg-white p-2 rounded shadow-sm border border-slate-200">
+        {/* Verification QR Code & Authentication Stamp */}
+        <div className="absolute bottom-5 left-9 z-20 flex items-center gap-3">
+          <div className="bg-white p-1.5 rounded-lg shadow-sm border border-slate-200">
             <QRCodeSVG 
-               value={`${window.location.origin}/verify?cert=${event.id.slice(0,8).toUpperCase()}-${(member.id || member.ra || "DOC").slice(0,8).toUpperCase()}`} 
-               size={64} 
+               value={`${typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?cert=` : ''}${event.id.slice(0,8).toUpperCase()}-${(member.id || member.ra || "DOC").slice(0,8).toUpperCase()}`} 
+               size={54} 
                level="M" 
                includeMargin={false} 
             />
           </div>
           <div className={`flex flex-col ${template.bgStyle === 'theme-solemn' ? 'text-slate-400' : 'text-slate-600'}`}>
-             <p className="text-[10px] font-bold uppercase tracking-widest mb-1 opacity-80">Validação Autenticidade</p>
-             <p className="text-[14px] font-mono font-bold">${event.id.slice(0,6).toUpperCase()}-${(member.id || member.ra || "DOC").slice(0,6).toUpperCase()}</p>
+             <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5 opacity-80">Autenticidade Oficial</p>
+             <p className="text-[12px] font-mono font-bold tracking-wider">{event.id.slice(0,8).toUpperCase()}-{(member.id || member.ra || "DOC").slice(0,8).toUpperCase()}</p>
           </div>
         </div>
 
-        {/* Assinatura / Logo */}
-        <div className="absolute bottom-6 right-10 opacity-30 pointer-events-none z-10">
-          <p className={`text-[12px] font-bold uppercase tracking-widest ${template.bgStyle === 'theme-solemn' ? 'text-slate-500' : 'text-slate-900'}`}>Powered by DAVVERO System & FAJOPA</p>
+        {/* Institution Brand Stamp */}
+        <div className="absolute bottom-5 right-9 opacity-40 pointer-events-none z-20">
+          <p className={`text-[11px] font-bold uppercase tracking-widest ${currentTheme.watermarkColor}`}>
+            Powered by DAVVERO System & FAJOPA
+          </p>
         </div>
       </div>
     );

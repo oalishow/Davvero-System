@@ -9,10 +9,14 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
       version: 'v7.3b',
-      title: 'Verificador de Certificados Duplo',
+      title: 'Emissão, Design e Validação de Certificados',
       changes: [
-        'Portal de Certificados agora exibe simultaneamente a opção do FAJOPA Plus e o Davvero System.',
-        'Certificados nativos passam a ser emitidos com QR Code e código de validação de autenticidade.'
+        'Suporte aprimorado para logotipos e assinaturas com fundo transparente (remoção automática de fundo branco opaco).',
+        'Padronização geométrica rigorosa em proporção A4 Paisagem (297mm × 210mm) para visualização e download em alta resolução.',
+        'Novos templates de certificados clássicos e contemporâneos (Esmeralda & Ouro, Excelência Navy, Renascença e Rubi).',
+        'Correção e precisão no Validador Oficial com identificação estrita de participantes/organizadores por evento.',
+        'Subtítulo e nomenclatura dinâmica ao baixar comprovantes de validação institucional.',
+        'Portal de Certificados integrado com verificação dupla (FAJOPA Plus e Davvero System).'
       ],
       current: true,
     },

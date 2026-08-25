@@ -62,6 +62,26 @@ export interface CertificateTemplate {
   hasCustomBg?: boolean;
   hasFajopaSignature?: boolean;
   hasRectorSignature?: boolean;
+
+  // Visual, Logo & Typography Customizations
+  logoUrl?: string;
+  showLogo?: boolean;
+  logoSize?: number; // 40 to 160px
+  logoPosition?: "top-center" | "top-left" | "top-right";
+  hasCustomLogo?: boolean;
+  
+  fontSize?: number; // 20 to 42px
+  isBold?: boolean;
+  textAlign?: "left" | "center" | "justify" | "right";
+  textBoxWidth?: "narrow" | "normal" | "wide" | "full";
+  titleText?: string;
+  subtitleText?: string;
+  
+  // Signatures custom positioning & sizing
+  signatureSize?: number; // 40 to 140px
+  signaturePosition?: "center" | "space-between" | "space-around" | "left" | "right";
+  signatureOffsetY?: number; // -40 to 40px
+  signatureGap?: number; // 10 to 60px
 }
 
 export interface Event {

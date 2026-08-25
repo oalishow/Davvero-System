@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Camera, XCircle, Search, ScanLine, CheckCircle, ArrowLeft, Loader2, ExternalLink, ShieldCheck } from "lucide-react";
+import { Camera, XCircle, Search, ScanLine, CheckCircle, ArrowLeft, Loader2, ExternalLink, ShieldCheck, Award, GraduationCap, QrCode, Sparkles, ChevronRight, UserCheck, Check, Copy, BookOpen } from "lucide-react";
 import { collection, query, getDocs } from "firebase/firestore";
 import {
   db,
@@ -61,7 +61,13 @@ export default function Verifier({
       | "EXPIRED"
       | "NOT_FOUND"
       | "NOT_ENROLLED"
-      | "ALREADY_PRESENT";
+      | "ALREADY_PRESENT"
+      | "JUST_CHECKED_IN"
+      | "PENDING"
+      | "VALID_CERTIFICATE";
+    event?: any;
+    isOrganizer?: boolean;
+    certCode?: string;
   } | null>(null);
 
   const [showPublicReq, setShowPublicReq] = useState(false);
@@ -78,40 +84,267 @@ export default function Verifier({
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const scanHandledRef = useRef(false);
 
-  const handleVerifyCertificate = (code: string) => {
+  const handleVerifyCertificate = async (rawCode: string) => {
+    if (!rawCode || !rawCode.trim()) {
+      showAlert("Por favor, digite ou escaneie o código do certificado.", { type: "warning" });
+      return;
+    }
+
     setIsProcessing(true);
-    setTimeout(() => {
-      const parts = code.split('-');
-      if (parts.length !== 2) {
-         showAlert("Código de certificado inválido.", { type: "error" });
-         setIsProcessing(false);
-         return;
+    let code = rawCode.trim();
+
+    // 1. If it is a full URL or contains query parameters, extract the cert param
+    try {
+      if (code.includes("cert=")) {
+        const urlParams = new URLSearchParams(code.includes("?") ? code.split("?")[1] : code);
+        const certParam = urlParams.get("cert");
+        if (certParam) code = certParam.trim();
+        else {
+          const parts = code.split("cert=");
+          if (parts[1]) code = parts[1].split("&")[0].split("#")[0].trim();
+        }
+      } else if (code.includes("verify=")) {
+        const urlParams = new URLSearchParams(code.includes("?") ? code.split("?")[1] : code);
+        const verifyParam = urlParams.get("verify");
+        if (verifyParam) code = verifyParam.trim();
+      } else if (code.startsWith("http://") || code.startsWith("https://")) {
+        const url = new URL(code);
+        const certParam = url.searchParams.get("cert") || url.searchParams.get("verify");
+        if (certParam) code = certParam.trim();
+        else {
+          const pathSegments = url.pathname.split("/").filter(Boolean);
+          if (pathSegments.length > 0) {
+            code = pathSegments[pathSegments.length - 1];
+          }
+        }
       }
-      
-      const eventPart = parts[0];
-      const memberPart = parts[1];
-      
-      const evt = eventsCache.find(e => e.id.slice(0, 8).toUpperCase() === eventPart || e.id.slice(0, 6).toUpperCase() === eventPart);
-      const mem = membersCache.find(m => {
-          const mId = (m.id || "").slice(0, 8).toUpperCase();
-          const mId6 = (m.id || "").slice(0, 6).toUpperCase();
-          const ra = (m.ra || "").slice(0, 8).toUpperCase();
-          const ra6 = (m.ra || "").slice(0, 6).toUpperCase();
-          return mId === memberPart || mId6 === memberPart || ra === memberPart || ra6 === memberPart;
-      });
-      
-      if (evt && (mem || memberPart === "DOC")) {
-          // Success! Show validation result
-          setValidationResult({
-             member: mem || { name: "Participante Externo / Visitante", role: "VISITOR", id: "DOC", email: "" } as any,
-             status: "VALID_CERTIFICATE" as any,
-             event: evt
-          });
+    } catch (e) {
+      console.warn("URL parse fallback for cert code:", e);
+    }
+
+    // Clean formatting: remove extra quotes, uppercase
+    code = code.replace(/["']/g, "").trim().toUpperCase();
+
+    // Split by common separators (- , / , :)
+    let eventPart = "";
+    let memberPart = "";
+
+    if (code.includes("-")) {
+      const parts = code.split("-");
+      eventPart = parts[0].trim();
+      memberPart = parts.slice(1).join("-").trim();
+    } else if (code.includes("/")) {
+      const parts = code.split("/");
+      eventPart = parts[0].trim();
+      memberPart = parts.slice(1).join("/").trim();
+    } else if (code.includes(":")) {
+      const parts = code.split(":");
+      eventPart = parts[0].trim();
+      memberPart = parts.slice(1).join(":").trim();
+    } else {
+      if (code.length >= 12 && code.length <= 20) {
+        eventPart = code.slice(0, 8);
+        memberPart = code.slice(8);
       } else {
-          setValidationResult({ member: null, status: "NOT_FOUND" });
+        eventPart = code;
+        memberPart = code;
       }
+    }
+
+    try {
+      // 1. Search for Event in Cache or Firestore
+      let foundEvent: Event | undefined = eventsCache.find((e) => {
+        const eIdUpper = (e.id || "").toUpperCase();
+        return (
+          eIdUpper === eventPart ||
+          eIdUpper.startsWith(eventPart) ||
+          (eventPart.length >= 6 && eIdUpper.includes(eventPart)) ||
+          (eventPart.length >= 8 && eventPart.startsWith(eIdUpper.slice(0, 8))) ||
+          (e.title && e.title.toUpperCase().includes(eventPart))
+        );
+      });
+
+      if (!foundEvent) {
+        // Fallback: Fetch directly from Firestore
+        const { collection: col, getDocs: getD } = await import("firebase/firestore");
+        const eventsSnap = await getD(col(db, `artifacts/${appId}/public/data/events`));
+        const allEvents = eventsSnap.docs.map((d) => ({ ...d.data(), id: d.id } as Event));
+        foundEvent = allEvents.find((e) => {
+          const eIdUpper = (e.id || "").toUpperCase();
+          return (
+            eIdUpper === eventPart ||
+            eIdUpper.startsWith(eventPart) ||
+            (eventPart.length >= 6 && eIdUpper.includes(eventPart)) ||
+            (eventPart.length >= 8 && eventPart.startsWith(eIdUpper.slice(0, 8))) ||
+            (e.title && e.title.toUpperCase().includes(eventPart))
+          );
+        });
+      }
+
+      // 2. Search for Member
+      let foundMember: Member | undefined;
+      let isOrganizer = false;
+
+      // 2a. Priority 1: Check attendances of the matched event (guarantees exact student who participated in this event)
+      if (foundEvent) {
+        let eventAttendances: Attendance[] = attendancesCache.filter((a) => a.eventId === foundEvent!.id);
+        if (eventAttendances.length === 0) {
+          try {
+            const { collection: col, getDocs: getD, query: qry, where: whr } = await import("firebase/firestore");
+            const attSnap = await getD(qry(col(db, `artifacts/${appId}/public/data/attendances`), whr("eventId", "==", foundEvent.id)));
+            eventAttendances = attSnap.docs.map((d) => ({ ...d.data(), id: d.id } as Attendance));
+          } catch (e) {
+            console.warn("Failed to fetch event attendances for cert validation", e);
+          }
+        }
+
+        // Look for attendance matching memberPart
+        const matchedAtt = eventAttendances.find((a) => {
+          const sId = (a.studentId || "").toUpperCase();
+          return (
+            sId === memberPart ||
+            sId.startsWith(memberPart) ||
+            (memberPart.length >= 8 && memberPart.startsWith(sId.slice(0, 8))) ||
+            (memberPart.length >= 6 && sId.slice(0, 6) === memberPart.slice(0, 6))
+          );
+        });
+
+        if (matchedAtt) {
+          isOrganizer = !!matchedAtt.isOrganizer;
+          foundMember = membersCache.find((m) => m.id === matchedAtt.studentId);
+          if (!foundMember) {
+            try {
+              const { doc: dc, getDoc: gdc } = await import("firebase/firestore");
+              const mSnap = await gdc(dc(db, `artifacts/${appId}/public/data/students`, matchedAtt.studentId));
+              if (mSnap.exists()) {
+                foundMember = { id: mSnap.id, ...mSnap.data() } as Member;
+              }
+            } catch (e) {
+              console.warn("Failed to fetch member by attendance studentId", e);
+            }
+          }
+        }
+      }
+
+      // 2b. Priority 2: Direct match in membersCache or Firestore students
+      if (!foundMember && memberPart !== "DOC" && memberPart !== "VISITOR") {
+        const memberPartClean = memberPart.replace(/\D/g, "");
+
+        // Tier 1: Exact matches
+        foundMember = membersCache.find((m) => {
+          const mIdUpper = (m.id || "").toUpperCase();
+          const mRaUpper = (m.ra || "").toUpperCase();
+          const mAlphaUpper = (m.alphaCode || "").toUpperCase();
+          const mCpfClean = (m.cpf || "").replace(/\D/g, "");
+
+          return (
+            mIdUpper === memberPart ||
+            mRaUpper === memberPart ||
+            mAlphaUpper === memberPart ||
+            (memberPartClean.length >= 6 && mCpfClean === memberPartClean)
+          );
+        });
+
+        // Tier 2: Prefix matches
+        if (!foundMember) {
+          foundMember = membersCache.find((m) => {
+            const mIdUpper = (m.id || "").toUpperCase();
+            const mRaUpper = (m.ra || "").toUpperCase();
+            return (
+              (memberPart.length >= 4 && (mIdUpper.startsWith(memberPart) || mRaUpper.startsWith(memberPart))) ||
+              (memberPart.length >= 8 && (memberPart.startsWith(mIdUpper.slice(0, 8)) || memberPart.startsWith(mRaUpper.slice(0, 8))))
+            );
+          });
+        }
+
+        // Tier 3: Fetch all from Firestore if still not in cache
+        if (!foundMember) {
+          const { collection: col, getDocs: getD } = await import("firebase/firestore");
+          const studentsSnap = await getD(col(db, `artifacts/${appId}/public/data/students`));
+          const allStudents = studentsSnap.docs.map((d) => ({ ...d.data(), id: d.id } as Member));
+          foundMember = allStudents.find((m) => {
+            const mIdUpper = (m.id || "").toUpperCase();
+            const mRaUpper = (m.ra || "").toUpperCase();
+            const mAlphaUpper = (m.alphaCode || "").toUpperCase();
+            const mCpfClean = (m.cpf || "").replace(/\D/g, "");
+
+            return (
+              mIdUpper === memberPart ||
+              mRaUpper === memberPart ||
+              mAlphaUpper === memberPart ||
+              (memberPartClean.length >= 6 && mCpfClean === memberPartClean) ||
+              (memberPart.length >= 4 && (mIdUpper.startsWith(memberPart) || mRaUpper.startsWith(memberPart))) ||
+              (memberPart.length >= 8 && memberPart.startsWith(mIdUpper.slice(0, 8)))
+            );
+          });
+        }
+      }
+
+      // Check attendance to confirm organization status if not checked yet
+      if (foundEvent && foundMember && !isOrganizer) {
+        const att = attendancesCache.find(
+          (a) => a.eventId === foundEvent!.id && a.studentId === foundMember!.id
+        );
+        if (att) {
+          isOrganizer = !!att.isOrganizer;
+        } else {
+          try {
+            const { collection: col, getDocs: getD, query: qry, where: whr } = await import("firebase/firestore");
+            const aSnap = await getD(
+              qry(
+                col(db, `artifacts/${appId}/public/data/attendances`),
+                whr("eventId", "==", foundEvent.id),
+                whr("studentId", "==", foundMember.id)
+              )
+            );
+            if (!aSnap.empty) {
+              const aData = aSnap.docs[0].data() as Attendance;
+              isOrganizer = !!aData.isOrganizer;
+            }
+          } catch (e) {
+            console.warn("Error checking attendance for cert", e);
+          }
+        }
+      }
+
+      // If both or event + valid doc found:
+      if (foundEvent && (foundMember || memberPart === "DOC" || memberPart === "VISITOR")) {
+        const resolvedMember =
+          foundMember ||
+          ({
+            name: "Participante Certificado",
+            roles: ["VISITANTE"],
+            id: memberPart,
+            ra: "DOC-EXTERNO",
+          } as Member);
+
+        const certDisplayCode = `${foundEvent.id.slice(0, 8).toUpperCase()}-${(resolvedMember.id || resolvedMember.ra || "DOC").slice(0, 8).toUpperCase()}`;
+
+        setValidationResult({
+          member: resolvedMember,
+          status: "VALID_CERTIFICATE",
+          event: foundEvent,
+          isOrganizer,
+          certCode: certDisplayCode,
+        });
+        playSound("success");
+      } else {
+        showAlert(
+          `Certificado não encontrado na base de dados com o código "${rawCode}". Verifique se o código foi digitado corretamente ou se o certificado foi emitido pela plataforma anterior FAJOPA Plus.`,
+          { type: "error" }
+        );
+        setValidationResult({
+          member: null,
+          status: "NOT_FOUND",
+        });
+        playSound("error");
+      }
+    } catch (err: any) {
+      console.error("Error verifying certificate:", err);
+      showAlert("Ocorreu um erro ao consultar o certificado: " + (err.message || "Falha de rede"), { type: "error" });
+    } finally {
       setIsProcessing(false);
-    }, 800);
+    }
   };
 
   useEffect(() => {
@@ -141,7 +374,6 @@ export default function Verifier({
         setIsAdminLogged(true);
       } else {
         setIsAdminLogged(false);
-        setVerifyMode("STANDARD");
       }
     });
 
@@ -150,7 +382,7 @@ export default function Verifier({
 
   useEffect(() => {
     if (cacheLoaded && externalCode) {
-      if (externalCode.includes('-')) {
+      if (externalCode.includes('-') || externalCode.includes('cert=') || verifyMode === 'CERTIFICATE') {
          handleVerifyCertificate(externalCode);
       } else {
          runVerification(externalCode, false);
@@ -377,24 +609,37 @@ export default function Verifier({
                 config,
                 (decodedText: string) => {
                   console.log("Scanner: Detected code:", decodedText);
-                  // Process the result immediately for responsiveness
                   let memberId = decodedText;
+                  let isCertCode = false;
                   try {
                     console.log("Scanner: Attempting parsing...");
-                    // More robust URL parameter extraction
-                    if (decodedText.includes("verify=")) {
+                    if (decodedText.includes("cert=")) {
+                      const parts = decodedText.split("cert=");
+                      if (parts.length > 1) {
+                        memberId = parts[1].split("&")[0].split("#")[0];
+                        isCertCode = true;
+                      }
+                    } else if (decodedText.includes("verify=")) {
                       const parts = decodedText.split("verify=");
                       if (parts.length > 1) {
                         memberId = parts[1].split("&")[0].split("#")[0];
                       }
                     } else if (decodedText.startsWith("http")) {
                       const url = new URL(decodedText);
-                      memberId = url.searchParams.get("verify") || decodedText;
+                      const cert = url.searchParams.get("cert");
+                      const verify = url.searchParams.get("verify");
+                      if (cert) {
+                        memberId = cert;
+                        isCertCode = true;
+                      } else if (verify) {
+                        memberId = verify;
+                      }
+                    } else if (verifyMode === "CERTIFICATE" || decodedText.includes("-")) {
+                      isCertCode = true;
                     }
-                    console.log("Scanner: Extracted ID:", memberId);
+                    console.log("Scanner: Extracted ID:", memberId, "isCertCode:", isCertCode);
                   } catch (e) {
                     console.error("Scanner: Parsing error:", e);
-                    // Fallback to raw text if parsing fails
                     memberId = decodedText;
                   }
 
@@ -408,7 +653,11 @@ export default function Verifier({
                   setTimeout(() => {
                     setIsScanning(false);
                     setScanSuccessAnim(false);
-                    runVerification(memberId, false, decodedText);
+                    if (isCertCode || verifyMode === "CERTIFICATE") {
+                      handleVerifyCertificate(memberId);
+                    } else {
+                      runVerification(memberId, false, decodedText);
+                    }
 
                     // Stop camera as cleanup
                     ht5Qrcode
@@ -419,13 +668,11 @@ export default function Verifier({
                   }, 1200);
                 },
                 (errorMessage: string) => {
-                  // Usually we do silent failure for scanning, but for debugging we can log
-                  // console.log("Scanner: Scan error (common):", errorMessage);
+                  // silent
                 },
               )
               .catch((err: any) => {
                 console.error("Scanner: Camera start error:", err);
-                // Inform user on serious failure
                 if (
                   err?.toString().includes("NotAllowedError") ||
                   err?.toString().includes("Permission")
@@ -445,7 +692,15 @@ export default function Verifier({
                 config,
                 (decodedText: string) => {
                   let memberId = decodedText;
-                  if (decodedText.includes("verify=")) memberId = decodedText.split("verify=")[1].split("&")[0].split("#")[0];
+                  let isCertCode = false;
+                  if (decodedText.includes("cert=")) {
+                    memberId = decodedText.split("cert=")[1].split("&")[0].split("#")[0];
+                    isCertCode = true;
+                  } else if (decodedText.includes("verify=")) {
+                    memberId = decodedText.split("verify=")[1].split("&")[0].split("#")[0];
+                  } else if (verifyMode === "CERTIFICATE" || decodedText.includes("-")) {
+                    isCertCode = true;
+                  }
                   
                   if (scanHandledRef.current) return;
                   scanHandledRef.current = true;
@@ -455,7 +710,11 @@ export default function Verifier({
                   setTimeout(() => {
                     setIsScanning(false);
                     setScanSuccessAnim(false);
-                    runVerification(memberId, false, decodedText);
+                    if (isCertCode || verifyMode === "CERTIFICATE") {
+                      handleVerifyCertificate(memberId);
+                    } else {
+                      runVerification(memberId, false, decodedText);
+                    }
                     ht5Qrcode?.stop().catch();
                   }, 1200);
                 },
@@ -809,6 +1068,9 @@ export default function Verifier({
         <VerificationResult
           member={validationResult.member}
           status={validationResult.status}
+          event={validationResult.event}
+          isOrganizer={validationResult.isOrganizer}
+          certCode={validationResult.certCode}
           isAdminLogged={isAdminLogged}
           onReset={() => {
             setValidationResult(null);
@@ -1135,74 +1397,214 @@ export default function Verifier({
       )}
 
       {verifyMode === "CERTIFICATE" && (
-        <div className="w-full flex-col justify-center text-center max-w-6xl mx-auto space-y-4 min-h-[500px]">
+        <div className="w-full flex flex-col justify-center text-center max-w-4xl mx-auto space-y-6 min-h-[500px]">
           <div className="flex justify-between items-center no-print">
             <button
               onClick={() => setVerifyMode("STANDARD")}
-              className="text-xs font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center gap-1"
+              className="text-xs font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors flex items-center gap-1.5 px-3 py-1.5 rounded-lg hover:bg-slate-100 dark:hover:bg-slate-800"
             >
-              <ArrowLeft className="w-4 h-4" /> Voltar
+              <ArrowLeft className="w-4 h-4" /> Voltar para Validação
             </button>
+          </div>
+
+          <div className="text-center space-y-1">
+            <h1 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-slate-100 flex items-center justify-center gap-2">
+              <Award className="w-6 h-6 sm:w-7 sm:h-7 text-emerald-600 dark:text-emerald-400" />
+              Validação Oficial de Certificados
+            </h1>
+            <p className="text-xs sm:text-sm text-slate-500 dark:text-slate-400 max-w-lg mx-auto leading-relaxed">
+              Consulte a autenticidade e validade jurídica de certificados emitidos pelo Sistema DAVVERO ou pela FAJOPA.
+            </p>
+          </div>
+
+          {/* Logged-In Student Quick Section */}
+          {(() => {
+            const bondedId = localStorage.getItem("davveroId_student_identity");
+            const student = bondedId ? membersCache.find((m) => m.id === bondedId) : null;
+            if (!student) return null;
+
+            const myAtts = attendancesCache.filter(
+              (a) =>
+                a.studentId === student.id &&
+                (a.status === "presente" || a.status === "apto_para_certificado" || a.isOrganizer)
+            );
+            const myEvents = myAtts
+              .map((a) => ({
+                attendance: a,
+                event: eventsCache.find((e) => e.id === a.eventId),
+              }))
+              .filter((item): item is { attendance: Attendance; event: Event } => !!item.event);
+
+            return (
+              <div className="w-full bg-gradient-to-br from-sky-500/10 via-emerald-500/10 to-indigo-500/10 dark:from-sky-950/40 dark:via-emerald-950/40 dark:to-indigo-950/40 p-5 sm:p-6 rounded-3xl border border-sky-200/80 dark:border-sky-800/60 shadow-lg text-left">
+                <div className="flex items-center justify-between flex-wrap gap-2 mb-3">
+                  <span className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-xs font-bold bg-sky-100 text-sky-800 dark:bg-sky-900/80 dark:text-sky-200">
+                    <GraduationCap className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                    Aluno Conectado: {student.name}
+                  </span>
+                  <span className="text-[11px] font-semibold text-slate-500 dark:text-slate-400">
+                    RA: {student.ra || "N/A"}
+                  </span>
+                </div>
+
+                <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 mb-4">
+                  Seus certificados oficiais estão disponíveis para consulta, download em PDF e impressão no seu Portal do Aluno.
+                </p>
+
+                <button
+                  onClick={() => {
+                    if ((window as any).triggerStudentTab) {
+                      (window as any).triggerStudentTab("certificates");
+                    } else if ((window as any).triggerTab) {
+                      (window as any).triggerTab("student");
+                    }
+                  }}
+                  className="w-full p-4 rounded-2xl bg-gradient-to-r from-sky-600 to-indigo-600 hover:from-sky-500 hover:to-indigo-500 text-white font-bold flex items-center justify-between shadow-md hover:shadow-xl transition-all group active:scale-[0.99]"
+                >
+                  <div className="flex items-center gap-3">
+                    <Award className="w-6 h-6 text-sky-200" />
+                    <div className="text-left">
+                      <div className="text-sm sm:text-base font-black">Acessar Meus Certificados no Portal</div>
+                      <div className="text-[11px] text-sky-100 font-normal">Visualizar e emitir meus comprovantes oficiais</div>
+                    </div>
+                  </div>
+                  <ChevronRight className="w-5 h-5 group-hover:translate-x-1 transition-transform text-white/80" />
+                </button>
+
+                {myEvents.length > 0 && (
+                  <div className="mt-5 pt-4 border-t border-sky-200/60 dark:border-sky-800/40">
+                    <div className="text-[11px] font-bold text-slate-600 dark:text-slate-300 uppercase tracking-wider mb-2.5">
+                      Seus Certificados Registrados (Validação Instantânea em 1 Clique):
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                      {myEvents.map((item) => (
+                        <button
+                          key={item.event.id}
+                          onClick={() => {
+                            const certCode = `${item.event.id.slice(0, 8).toUpperCase()}-${(student.id || student.ra || "DOC").slice(0, 8).toUpperCase()}`;
+                            handleVerifyCertificate(certCode);
+                          }}
+                          className="p-3 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-800 rounded-xl border border-sky-100 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 flex items-center justify-between text-left transition-all shadow-sm hover:shadow"
+                        >
+                          <div className="pr-2">
+                            <div className="text-xs font-bold text-slate-800 dark:text-slate-100 line-clamp-1">
+                              {item.event.title}
+                            </div>
+                            <div className="text-[10px] text-slate-500 dark:text-slate-400">
+                              {item.attendance.isOrganizer ? "Organizador" : "Participante"} • {item.event.workloadHours || 4}h
+                            </div>
+                          </div>
+                          <span className="text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/80 dark:bg-emerald-950/80 px-2.5 py-1 rounded-lg shrink-0">
+                            Validar
+                          </span>
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            );
+          })()}
+
+          {/* Divider for external validation */}
+          <div className="relative text-center my-2">
+            <div className="absolute inset-0 flex items-center">
+              <div className="w-full border-t border-slate-200 dark:border-slate-700"></div>
+            </div>
+            <span className="relative px-3 bg-slate-50 dark:bg-slate-900 text-[11px] font-bold text-slate-500 uppercase tracking-wider">
+              Validação Externa (Documentos Impressos ou de Terceiros)
+            </span>
           </div>
 
           <div className="grid grid-cols-1 md:grid-cols-2 gap-6 h-full">
             {/* Davvero System Verifier */}
-            <div className="w-full bg-white dark:bg-slate-800/60 p-8 rounded-3xl border border-sky-100 dark:border-sky-900/30 shadow-xl text-center flex flex-col items-center justify-center min-h-[400px]">
-              <div className="w-20 h-20 bg-sky-100 dark:bg-sky-900/50 rounded-full flex items-center justify-center mb-6">
-                <ShieldCheck className="w-10 h-10 text-sky-600 dark:text-sky-400" />
+            <div className="w-full bg-white dark:bg-slate-800/60 p-6 sm:p-8 rounded-3xl border border-sky-100 dark:border-sky-900/30 shadow-xl text-center flex flex-col justify-between min-h-[380px]">
+              <div>
+                <div className="w-16 h-16 bg-sky-100 dark:bg-sky-900/50 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+                  <ShieldCheck className="w-8 h-8 text-sky-600 dark:text-sky-400" />
+                </div>
+                <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-1.5 tracking-tight">
+                  Sistema DAVVERO
+                </h2>
+                <p className="text-slate-600 dark:text-slate-400 mb-5 text-xs sm:text-sm leading-relaxed max-w-xs mx-auto">
+                  Valide certificados emitidos internamente via escaneamento do QR Code ou inserção manual do código.
+                </p>
               </div>
-              <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2 tracking-tight">Davvero System</h2>
-              <p className="text-slate-600 dark:text-slate-400 mb-6 max-w-xs mx-auto text-sm leading-relaxed">
-                Verifique a autenticidade de certificados emitidos internamente pela nossa plataforma.
-              </p>
-              
-              <div className="w-full max-w-sm space-y-4">
-                <input
-                  type="text"
-                  placeholder="Código do Certificado (ex: ABCD12-EFGH34)"
-                  className="w-full p-4 rounded-xl text-sm font-mono text-center border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 focus:outline-none focus:border-sky-500"
-                  value={codeInput}
-                  onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
-                  onKeyDown={(e) => {
-                     if (e.key === 'Enter' && codeInput) {
-                        handleVerifyCertificate(codeInput);
-                     }
-                  }}
-                />
+
+              <div className="w-full space-y-3">
+                {/* Method 1: QR Scanner */}
                 <button
-                  onClick={() => handleVerifyCertificate(codeInput)}
-                  disabled={!codeInput || isProcessing}
-                  className="w-full btn-modern px-6 py-4 bg-sky-500 hover:bg-sky-600 text-white font-bold rounded-2xl flex items-center justify-center gap-2 text-sm shadow-md transition-all active:scale-95 disabled:opacity-50"
+                  onClick={startScanner}
+                  className="w-full py-3 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/50 dark:hover:bg-sky-900/50 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 font-bold flex items-center justify-center gap-2 text-xs sm:text-sm transition-all active:scale-95 shadow-sm"
                 >
-                  {isProcessing ? "Verificando..." : "Validar Código"}
+                  <QrCode className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                  Escanear QR Code com Câmera
                 </button>
+
+                <div className="relative text-center my-1">
+                  <div className="absolute inset-0 flex items-center">
+                    <div className="w-full border-t border-slate-100 dark:border-slate-800"></div>
+                  </div>
+                  <span className="relative px-2 bg-white dark:bg-slate-800 text-[10px] font-semibold text-slate-400 uppercase">
+                    ou digite o código
+                  </span>
+                </div>
+
+                {/* Method 2: Manual Code Input */}
+                <div className="space-y-2">
+                  <input
+                    type="text"
+                    placeholder="Código (ex: ABCD12-EFGH34) ou link"
+                    className="w-full py-2.5 px-3 rounded-xl text-xs sm:text-sm font-mono text-center border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900 focus:outline-none focus:border-sky-500"
+                    value={codeInput}
+                    onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" && codeInput) {
+                        handleVerifyCertificate(codeInput);
+                      }
+                    }}
+                  />
+                  <button
+                    onClick={() => handleVerifyCertificate(codeInput)}
+                    disabled={!codeInput || isProcessing}
+                    className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white font-bold rounded-xl flex items-center justify-center gap-2 text-xs sm:text-sm shadow-md transition-all active:scale-95 disabled:opacity-50"
+                  >
+                    {isProcessing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Search className="w-4 h-4" />}
+                    {isProcessing ? "Verificando..." : "Validar Código Manual"}
+                  </button>
+                </div>
               </div>
             </div>
 
             {/* FAJOPA Plus Verifier */}
-            <div className="w-full bg-white dark:bg-slate-800/60 p-8 rounded-3xl border border-emerald-100 dark:border-emerald-900/30 shadow-xl text-center flex flex-col items-center justify-center min-h-[400px]">
-              <div className="w-20 h-20 bg-emerald-100 dark:bg-emerald-900/50 rounded-full flex items-center justify-center mb-6">
-                <ShieldCheck className="w-10 h-10 text-emerald-600 dark:text-emerald-400" />
+            <div className="w-full bg-white dark:bg-slate-800/60 p-6 sm:p-8 rounded-3xl border border-emerald-100 dark:border-emerald-900/30 shadow-xl text-center flex flex-col justify-between min-h-[380px]">
+              <div>
+                <div className="w-16 h-16 bg-emerald-100 dark:bg-emerald-900/50 rounded-2xl flex items-center justify-center mb-4 mx-auto">
+                  <ShieldCheck className="w-8 h-8 text-emerald-600 dark:text-emerald-400" />
+                </div>
+                <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 mb-1.5 tracking-tight">
+                  FAJOPA Plus
+                </h2>
+                <p className="text-slate-600 dark:text-slate-400 mb-6 text-xs sm:text-sm leading-relaxed max-w-xs mx-auto">
+                  Validação de certificados acadêmicos anteriores ou emitidos pela rede externa FAJOPA Plus.
+                </p>
               </div>
-              <h2 className="text-2xl font-black text-slate-800 dark:text-slate-100 mb-2 tracking-tight">FAJOPA Plus</h2>
-              <p className="text-slate-600 dark:text-slate-400 mb-6 max-w-xs mx-auto text-sm leading-relaxed">
-                Validação de certificados acadêmicos antigos ou emitidos pela rede FAJOPA.
-              </p>
-              
-              {(settings.certificateValidationUrl || settings.googleScriptCertificateUrl) ? (
+
+              <div className="w-full pt-4">
                 <a
-                  href={settings.certificateValidationUrl || settings.googleScriptCertificateUrl}
+                  href={settings.certificateValidationUrl || "https://plus.fajopa.org/validar"}
                   target="_blank"
                   rel="noopener noreferrer"
-                  className="btn-modern px-8 py-4 bg-emerald-500 hover:bg-emerald-600 text-white font-bold rounded-2xl flex items-center justify-center gap-3 text-sm shadow-md transition-all hover:-translate-y-1 hover:shadow-lg active:scale-95"
+                  className="w-full py-4 px-6 bg-emerald-600 hover:bg-emerald-500 text-white font-bold rounded-2xl flex items-center justify-center gap-2.5 text-xs sm:text-sm shadow-md transition-all hover:-translate-y-0.5 hover:shadow-lg active:scale-95"
                 >
-                  Acessar FAJOPA Plus <ExternalLink className="w-5 h-5" />
+                  <BookOpen className="w-4 h-4" />
+                  <span>Acessar Validação FAJOPA Plus</span>
+                  <ExternalLink className="w-4 h-4 opacity-80" />
                 </a>
-              ) : (
-                <p className="text-sm text-slate-400 bg-slate-50 dark:bg-slate-900 p-4 rounded-xl">
-                  Link não configurado pelo administrador.
+                <p className="text-[10px] text-slate-400 mt-3">
+                  Abre em nova janela o validador oficial plus.fajopa.org
                 </p>
-              )}
+              </div>
             </div>
           </div>
         </div>

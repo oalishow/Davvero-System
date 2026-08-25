@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Printer, CheckCircle, QrCode, Keyboard } from "lucide-react";
+import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check, ExternalLink, Calendar, Clock, BookOpen, UserCheck } from "lucide-react";
 import type { Member } from "../types";
 import { QRCodeSVG } from "qrcode.react";
 import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL } from "../lib/constants";
@@ -21,6 +21,8 @@ interface VerificationResultProps {
     | "PENDING"
     | "VALID_CERTIFICATE";
   event?: any;
+  isOrganizer?: boolean;
+  certCode?: string;
   onReset: () => void;
   onScanNext?: () => void;
   isMyID?: boolean;
@@ -31,6 +33,9 @@ interface VerificationResultProps {
 export default function VerificationResult({
   member,
   status,
+  event,
+  isOrganizer = false,
+  certCode = "",
   onReset,
   onScanNext,
   isMyID = false,
@@ -41,6 +46,7 @@ export default function VerificationResult({
   const [exporting, setExporting] = useState(false);
   const [modalResetOpen, setModalResetOpen] = useState(false);
   const [showExportSuccess, setShowExportSuccess] = useState(false);
+  const [copiedLink, setCopiedLink] = useState(false);
   const now = new Date();
   const timestampStr = `${now.toLocaleDateString("pt-BR")} às ${now.toLocaleTimeString("pt-BR")}`;
 
@@ -58,6 +64,15 @@ export default function VerificationResult({
         "Acesso Concedido. Membro da comunidade devidamente matriculado.";
       dotColor = "bg-emerald-500 animate-pulse";
       badgeText = "Ativo";
+      break;
+    case "VALID_CERTIFICATE":
+      themeClass = "emerald";
+      titleText = "Certificado Autêntico & Verificado";
+      subtitleText = isOrganizer ? "Certificado Oficial de Organização" : "Certificado Oficial de Participação";
+      descHtml =
+        "A autenticidade e validade deste certificado foram confirmadas com sucesso na base de dados oficial da instituição.";
+      dotColor = "bg-emerald-500 animate-pulse";
+      badgeText = isOrganizer ? "Organizador Verificado" : "Participante Verificado";
       break;
     case "INACTIVE":
       themeClass = "amber";
@@ -221,7 +236,10 @@ export default function VerificationResult({
         // Just downloading regular result snapshot
         const link = document.createElement("a");
         link.href = imgData;
-        link.download = `VerifyID_${status === "VALID" ? "Validacao" : "Recusa"}_${safeName.replace(/\s+/g, "_")}.jpg`;
+        const certTypeSuffix = status === "VALID_CERTIFICATE"
+          ? (isOrganizer ? "Certificado_Organizacao" : "Certificado_Participacao")
+          : (status === "VALID" ? "Validacao_Identidade" : "Comprovante_Validacao");
+        link.download = `FAJOPA_${certTypeSuffix}_${safeName.replace(/\s+/g, "_")}.jpg`;
         document.body.appendChild(link);
         link.click();
         document.body.removeChild(link);
@@ -311,7 +329,113 @@ export default function VerificationResult({
         </motion.div>
       )}
 
-      {status === "VALID" && member?.roles?.includes("VISITANTE") && !member?.roles?.some(r => r !== "VISITANTE") && !isAdminLogged && !isMyID ? (
+      {status === "VALID_CERTIFICATE" ? (
+        <div
+          id="validation-card-capture"
+          className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border-2 border-emerald-500/40 shadow-2xl shadow-emerald-500/10 flex flex-col items-center animate-success-pop text-center space-y-5 relative overflow-hidden"
+        >
+          {/* Ambient Glows */}
+          <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-400/20 rounded-full blur-2xl pointer-events-none" />
+          <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-amber-400/15 rounded-full blur-2xl pointer-events-none" />
+
+          {/* Golden Seal Award Icon */}
+          <motion.div
+            initial={{ scale: 0, rotate: -180 }}
+            animate={{ scale: 1, rotate: 0 }}
+            transition={{ type: "spring", stiffness: 200, damping: 14 }}
+            className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-700 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-600/30 border-4 border-emerald-100 dark:border-emerald-800 relative z-10"
+          >
+            <Award className="w-10 h-10 text-white" />
+          </motion.div>
+
+          <div className="relative z-10">
+            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-widest border border-emerald-300 dark:border-emerald-700 mb-2">
+              <ShieldCheck className="w-3.5 h-3.5" /> Autenticidade Comprovada
+            </div>
+            <h2 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white leading-tight">
+              Certificado Oficial Registrado
+            </h2>
+            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
+              Faculdade João Paulo II • DAVVERO System
+            </p>
+          </div>
+
+          {/* Certificate Data Card */}
+          <div className="w-full bg-slate-50 dark:bg-slate-800/70 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-left space-y-3 relative z-10">
+            <div>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Participante Certificado</p>
+              <p className="text-base sm:text-lg font-black text-slate-800 dark:text-white leading-snug">{safeName}</p>
+              {member?.ra && <p className="text-xs text-slate-500 font-mono mt-0.5 font-semibold">RA: {member.ra}</p>}
+              {member?.cpf && (isMyID || isAdminLogged) && <p className="text-xs text-slate-500 font-mono font-semibold">CPF: {member.cpf}</p>}
+            </div>
+
+            <div className="border-t border-slate-200/80 dark:border-slate-700/60 pt-3">
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Evento / Curso</p>
+              <p className="text-sm sm:text-base font-bold text-sky-600 dark:text-sky-400 leading-snug">
+                {event?.title || "Evento Acadêmico"}
+              </p>
+            </div>
+
+            <div className="grid grid-cols-2 gap-2 border-t border-slate-200/80 dark:border-slate-700/60 pt-3 text-xs">
+              <div>
+                <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Tipo de Emissão</p>
+                <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">
+                  {isOrganizer ? "Organização" : "Participação"}
+                </p>
+              </div>
+              <div>
+                <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Carga Horária</p>
+                <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">
+                  {isOrganizer && event?.organizationHours ? event.organizationHours : (event?.hours || 0)} Horas
+                </p>
+              </div>
+              {event?.startDate && (
+                <div className="col-span-2">
+                  <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Período de Realização</p>
+                  <p className="font-medium text-slate-600 dark:text-slate-300 mt-0.5">
+                    {new Date(event.startDate).toLocaleDateString("pt-BR")}
+                    {event.endDate && event.endDate !== event.startDate ? ` a ${new Date(event.endDate).toLocaleDateString("pt-BR")}` : ""}
+                    {event.format ? ` (${event.format.toUpperCase()})` : ""}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            {certCode && (
+              <div className="border-t border-slate-200/80 dark:border-slate-700/60 pt-3 flex items-center justify-between gap-2">
+                <div>
+                  <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Cód. Autenticação</p>
+                  <p className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">{certCode}</p>
+                </div>
+                <button
+                  onClick={() => {
+                    const url = `${cleanBaseUrl}?cert=${certCode}`;
+                    navigator.clipboard.writeText(url);
+                    setCopiedLink(true);
+                    showAlert("Link de autenticidade copiado com sucesso!", { type: "success" });
+                    setTimeout(() => setCopiedLink(false), 3000);
+                  }}
+                  className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-sky-500 text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
+                  title="Copiar Link de Autenticidade"
+                >
+                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
+                  {copiedLink ? "Copiado!" : "Copiar Link"}
+                </button>
+              </div>
+            )}
+          </div>
+
+          {/* Validation Guarantee Seal */}
+          <div className="w-full bg-emerald-50 dark:bg-emerald-950/30 p-3 rounded-xl border border-emerald-200/60 dark:border-emerald-800/40 text-left">
+            <p className="text-[9px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider mb-0.5 flex items-center gap-1">
+              <CheckCircle className="w-3 h-3 text-emerald-600" /> Assinaturas Digitais Válidas
+            </p>
+            <p className="text-[10px] text-emerald-700 dark:text-emerald-400 leading-tight">
+              Emitido sob os termos institucionais da Faculdade João Paulo II e Seminário Provincial.
+            </p>
+          </div>
+        </div>
+      ) : status === "VALID" && member?.roles?.includes("VISITANTE") && !member?.roles?.some(r => r !== "VISITANTE") && !isAdminLogged && !isMyID ? (
         <div id="validation-card-capture" className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-8 border-2 border-slate-200 dark:border-slate-800 shadow-xl flex flex-col items-center animate-success-pop text-center space-y-6">
           <div>
             <h3 className="text-xs font-black text-emerald-500 uppercase tracking-widest mb-2">Passe Visitante</h3>
@@ -673,7 +797,7 @@ export default function VerificationResult({
               onClick={handleExport}
               disabled={exporting}
               className={`flex-1 flex justify-center items-center py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-white transition-colors ${
-                status === "VALID" || status === "JUST_CHECKED_IN"
+                status === "VALID" || status === "JUST_CHECKED_IN" || status === "VALID_CERTIFICATE"
                   ? "bg-emerald-600 hover:bg-emerald-500"
                   : status === "INACTIVE" || status === "ALREADY_PRESENT"
                     ? "bg-amber-600 hover:bg-amber-500"
@@ -682,9 +806,11 @@ export default function VerificationResult({
             >
               {exporting
                 ? "..."
-                : isMyID && status === "VALID"
-                  ? "Baixar PDF"
-                  : "Baixar Imagem"}
+                : status === "VALID_CERTIFICATE"
+                  ? "Baixar Comprovante"
+                  : isMyID && status === "VALID"
+                    ? "Baixar PDF"
+                    : "Baixar Imagem"}
             </button>
           </div>
         </div>

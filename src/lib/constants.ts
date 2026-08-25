@@ -26,13 +26,17 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "7.2b";
-export const APP_BUILD = "11.08.2026";
+export const APP_VERSION = "7.3b";
+export const APP_BUILD = "25.08.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
   `artifacts/${appId}/public/data/students/_asset_${assetType}`;
 export const CHANGELOG = [
+  "Versão 7.3b - Emissão e Validação Avançada de Certificados",
+  "Suporte a logos e assinaturas com transparência, proporção estrita A4 Paisagem (297x210mm), novos temas ornamentados e correção na validação de participantes e organizadores.",
+  "Versão 7.2b - Simplificação de Abas do Seminário",
+  "Consolidação das opções de seminário na ID do aluno e alertas em tempo real.",
   "Versão 7.1b - Atualização de Atendimentos e Correções",
   "Renomeada a seção de Atendimentos para Seminário em todas as interfaces. Removida a opção Acadêmico do mural.",
   "Versão 7.0b - Fluxo de Eventos e Novidades",
