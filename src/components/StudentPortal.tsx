@@ -172,7 +172,7 @@ export default function StudentPortal({
 }: StudentPortalProps) {
   const { settings } = useSettings();
   const { showAlert, showConfirm } = useDialog();
-  const { isSupported, subscription, permission, isSubscribing, subscribe, unsubscribe } = usePushNotifications();
+  const { isSupported, subscription, permission, isSubscribing, lastError, subscribe, unsubscribe } = usePushNotifications();
   const [bondedId, setBondedId] = useState<string | null>(
     localStorage.getItem(STUDENT_BOND_KEY),
   );
@@ -192,12 +192,19 @@ export default function StudentPortal({
       if (sub) {
         await showAlert("Notificações Ativadas com Sucesso!", "Seu aparelho agora está conectado para receber avisos urgentes e comunicados da secretaria.");
       } else {
+        const isIOS = typeof navigator !== "undefined" && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+        const isStandalone = typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true);
+
         if (typeof window !== "undefined" && window.self !== window.top) {
-          await showAlert("Visualização em Prévia (Frame)", "Para ativar as notificações push do seu navegador, abra o aplicativo em uma nova aba fora do modo de pré-visualização.");
-        } else if (Notification.permission === "denied") {
-          await showAlert("Permissão Bloqueada", "Você bloqueou as notificações para este site. Clique no ícone de cadeado na barra de endereços do navegador e altere 'Notificações' para 'Permitir'.");
+          await showAlert("Visualização em Prévia (Janela Embutida)", "Para ativar as notificações push do seu navegador, abra o aplicativo em uma nova aba fora do modo de pré-visualização.");
+        } else if (isIOS && !isStandalone) {
+          await showAlert("Instalação no iPhone Necessária", "No iPhone (iOS), para ativar notificações você precisa instalar o app na Tela de Início: toque no botão Compartilhar (quadrado com seta) do Safari e escolha 'Adicionar à Tela de Início'.");
+        } else if (typeof Notification !== "undefined" && Notification.permission === "denied") {
+          await showAlert("Permissão Bloqueada no Navegador", "Você bloqueou as notificações para este site no seu celular. No topo do navegador (ao lado do link do site), toque no ícone de cadeado/opções 🔒 e altere 'Notificações' para 'Permitir'.");
+        } else if (lastError) {
+          await showAlert(lastError.title, `${lastError.message}\n\n${lastError.resolution}`);
         } else {
-          await showAlert("Aviso", "Não foi possível concluir a ativação de notificações neste momento. Verifique as permissões do seu navegador.");
+          await showAlert("Permissão do Navegador", "Para receber avisos, toque em 'Permitir' quando o navegador solicitar ou libere as notificações nas configurações do seu celular.");
         }
       }
     }

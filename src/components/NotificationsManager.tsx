@@ -128,10 +128,17 @@ export default function NotificationsManager() {
       if (sub) {
         showAlert("Notificações ativadas com sucesso neste dispositivo!", { type: "success" });
       } else {
+        const isIOS = typeof navigator !== "undefined" && (/iPad|iPhone|iPod/.test(navigator.userAgent) || (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+        const isStandalone = typeof window !== "undefined" && (window.matchMedia("(display-mode: standalone)").matches || (navigator as any).standalone === true);
+
         if (typeof window !== "undefined" && window.self !== window.top) {
           showAlert("Para ativar as notificações push nativas, abra o aplicativo em uma nova aba do navegador (fora da janela embutida de prévia).", { type: "warning" });
-        } else if (Notification.permission === "denied") {
+        } else if (isIOS && !isStandalone) {
+          showAlert("No iPhone (iOS), para receber notificações instale o app na Tela de Início (Compartilhar > Adicionar à Tela de Início).", { type: "warning" });
+        } else if (typeof Notification !== "undefined" && Notification.permission === "denied") {
           showAlert("Permissão bloqueada no navegador. Clique no ícone de cadeado na barra de endereço e marque 'Permitir' para notificações.", { type: "warning" });
+        } else if (lastError) {
+          showAlert(`${lastError.title}: ${lastError.message}`, { type: "warning" });
         } else {
           showAlert("Não foi possível ativar as notificações no momento. Verifique as configurações do seu navegador.", { type: "warning" });
         }
