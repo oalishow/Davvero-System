@@ -51,7 +51,23 @@ async function startServer() {
 
   // Routes for Push Notifications
   app.get("/api/push/public-key", (req, res) => {
-    res.json({ publicKey: vapidPublicKey });
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.json({ 
+      publicKey: vapidPublicKey,
+      configured: Boolean(vapidPublicKey && vapidPrivateKey)
+    });
+  });
+
+  app.get("/api/push/status", (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    res.json({
+      status: "online",
+      vapidConfigured: Boolean(vapidPublicKey && vapidPrivateKey),
+      publicKeyLength: vapidPublicKey ? vapidPublicKey.length : 0,
+      publicKeyPreview: vapidPublicKey ? `${vapidPublicKey.substring(0, 10)}...${vapidPublicKey.substring(vapidPublicKey.length - 6)}` : null,
+      contactEmail: "mailto:admblackjamf@gmail.com",
+      timestamp: new Date().toISOString()
+    });
   });
 
   // Delegate the broadcast to receive subscriptions from the frontend
@@ -60,28 +76,58 @@ async function startServer() {
     console.log(`[Broadcast] Iniciando envio: "${title}" para ${subscriptions?.length || 0} alvos.`);
     
     if (!subscriptions || subscriptions.length === 0) {
-      return res.status(200).json({ success: true, count: 0 });
+      return res.status(200).json({ success: true, count: 0, sent: 0 });
     }
 
-    const payload = { title, body: message, url: url || "/" };
+    const payload = { 
+      title: title || "Nova Notificação", 
+      body: message || "Você tem uma nova mensagem no DAVVERO.", 
+      url: url || "/" 
+    };
 
     try {
       const expiredEndpoints: string[] = [];
-      const notifications = subscriptions.map((subscription: any) => {
-        return webpush.sendNotification(subscription, JSON.stringify(payload))
+      let successCount = 0;
+      let failureCount = 0;
+
+      const notifications = subscriptions.map((subItem: any) => {
+        // Normalizar subscrição caso venha em formato plano ou aninhado
+        let targetSub = subItem;
+        if (subItem && subItem.subscription) {
+          targetSub = subItem.subscription;
+        }
+
+        // Se tiver endpoint mas não tiver keys (ex: formato incorreto), logar aviso
+        if (!targetSub || !targetSub.endpoint) {
+          console.warn("[Broadcast] Item de subscrição inválido (sem endpoint):", subItem);
+          failureCount++;
+          return Promise.resolve();
+        }
+
+        return webpush.sendNotification(targetSub, JSON.stringify(payload))
+          .then(() => {
+            successCount++;
+          })
           .catch(err => {
+            failureCount++;
             if (err.statusCode === 410 || err.statusCode === 404) {
               console.log(`[Broadcast] Subscrição expirada/inválida (${err.statusCode})`);
-              expiredEndpoints.push(subscription.endpoint);
+              expiredEndpoints.push(targetSub.endpoint);
             } else {
-              console.error(`[Broadcast] Erro push:`, err.message);
+              console.error(`[Broadcast] Erro push (${err.statusCode || 'desconhecido'}):`, err.message);
             }
           });
       });
 
       await Promise.allSettled(notifications);
-      console.log(`[Broadcast] Envio finalizado.`);
-      res.status(200).json({ success: true, expiredEndpoints });
+      console.log(`[Broadcast] Envio finalizado. Sucessos: ${successCount}, Falhas: ${failureCount}`);
+      res.status(200).json({ 
+        success: true, 
+        count: subscriptions.length,
+        sent: successCount,
+        failed: failureCount,
+        expiredEndpoints 
+      });
     } catch (error: any) {
       console.error("Error in broadcast:", error);
       res.status(500).json({ error: "Failed to broadcast notifications", details: error.message });
@@ -89,13 +135,28 @@ async function startServer() {
   });
 
   app.post("/api/push/send", async (req, res) => {
-    const { subscription, payload } = req.body;
+    const { subscription, payload, title, message, url } = req.body;
     try {
-      await webpush.sendNotification(subscription, JSON.stringify(payload));
-      res.status(200).json({ success: true });
-    } catch (error) {
+      let targetSub = subscription;
+      if (subscription && subscription.subscription) {
+        targetSub = subscription.subscription;
+      }
+
+      if (!targetSub || !targetSub.endpoint) {
+        return res.status(400).json({ error: "Subscription object with endpoint is required." });
+      }
+
+      const notificationPayload = payload || {
+        title: title || "Teste de Notificação DAVVERO",
+        body: message || "Sua conexão de notificações push está funcionando perfeitamente!",
+        url: url || "/"
+      };
+
+      await webpush.sendNotification(targetSub, JSON.stringify(notificationPayload));
+      res.status(200).json({ success: true, message: "Push sent successfully" });
+    } catch (error: any) {
       console.error("Error sending push:", error);
-      res.status(500).json({ error: "Failed to send notification" });
+      res.status(500).json({ error: "Failed to send notification", details: error.message, statusCode: error.statusCode });
     }
   });
 

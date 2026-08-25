@@ -59,7 +59,19 @@ export const db = dbInstance;
 
 export const auth = getAuth(app);
 export const storage = getStorage(app);
-export const messaging = typeof window !== "undefined" ? getMessaging(app) : null;
+
+// Safe messaging initialization
+let messagingInstance = null;
+if (typeof window !== "undefined") {
+  try {
+    if ("Notification" in window && "serviceWorker" in navigator) {
+      messagingInstance = getMessaging(app);
+    }
+  } catch (e) {
+    console.warn("[Firebase] Messaging não suportado ou desabilitado no ambiente atual:", e);
+  }
+}
+export const messaging = messagingInstance;
 setLogLevel("error");
 
 export const appId = firebaseConfig.projectId;
