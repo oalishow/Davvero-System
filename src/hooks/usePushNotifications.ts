@@ -425,7 +425,10 @@ export function usePushNotifications() {
 
       const res = await fetch("/api/push/send", {
         method: "POST",
-        headers: { "Content-Type": "application/json" },
+        headers: {
+          "Content-Type": "application/json",
+          "Accept": "application/json",
+        },
         body: JSON.stringify({
           subscription,
           title: "Teste de Push Server - DAVVERO",
@@ -434,11 +437,18 @@ export function usePushNotifications() {
         }),
       });
 
+      const contentType = res.headers.get("content-type") || "";
+      if (!contentType.includes("application/json")) {
+        const rawText = await res.text();
+        console.warn("[usePushNotifications] Servidor retornou conteúdo não-JSON:", res.status, rawText.substring(0, 100));
+        throw new Error(`O servidor retornou uma resposta não-JSON (HTTP ${res.status}). O serviço backend pode estar reiniciando.`);
+      }
+
       const data = await res.json();
       if (res.ok && data.success) {
         return true;
       } else {
-        throw new Error(data.error || data.details || "Falha desconhecida no servidor");
+        throw new Error(data.error || data.details || `Falha no servidor (HTTP ${res.status})`);
       }
     } catch (e: any) {
       console.warn("[usePushNotifications] Erro no teste do servidor:", e);
