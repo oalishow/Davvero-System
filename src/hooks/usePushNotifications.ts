@@ -1,6 +1,11 @@
 import { useState, useEffect, useCallback } from "react";
 import { db, auth } from "../lib/firebase";
 import { doc, setDoc, deleteDoc } from "firebase/firestore";
+import {
+  runAndLogNotificationDiagnostics,
+  getVapidPublicKeySafe,
+  urlBase64ToUint8Array,
+} from "../utils/notificationDiagnostic";
 
 export interface DiagnosticLog {
   id: string;
@@ -17,27 +22,6 @@ export interface NotificationError {
   message: string;
   resolution: string;
   raw?: any;
-}
-
-// Utility to convert VAPID base64 string to Uint8Array
-function urlBase64ToUint8Array(base64String: string) {
-  try {
-    const padding = "=".repeat((4 - (base64String.length % 4)) % 4);
-    const base64 = (base64String + padding)
-      .replace(/-/g, "+")
-      .replace(/_/g, "/");
-
-    const rawData = window.atob(base64);
-    const outputArray = new Uint8Array(rawData.length);
-
-    for (let i = 0; i < rawData.length; ++i) {
-      outputArray[i] = rawData.charCodeAt(i);
-    }
-    return outputArray;
-  } catch (err) {
-    console.warn("[usePushNotifications] Erro ao converter VAPID key:", err);
-    throw new Error("Formato da chave VAPID pública inválido");
-  }
 }
 
 // Helper to obtain or register an active ServiceWorker with timeout guard
@@ -139,6 +123,9 @@ export function usePushNotifications() {
     setLastError(null);
     setDiagnosticLogs([]);
 
+    // Execute full structured console diagnostics
+    await runAndLogNotificationDiagnostics("Push Toggle (Ativar Notificações)");
+
     try {
       addLog("Suporte do Navegador", "info", "Verificando APIs de Notificação e Service Worker...");
 
@@ -216,36 +203,15 @@ export function usePushNotifications() {
         return null;
       }
 
-      // Fetch VAPID Public Key from server
-      addLog("Chave VAPID", "info", "Obtendo credencial pública VAPID do servidor...");
-      let publicKey = "";
-      try {
-        const res = await fetch("/api/push/public-key", { cache: "no-store" });
-        if (!res.ok) {
-          throw new Error(`Servidor respondeu com status HTTP ${res.status}`);
-        }
-        const data = await res.json();
-        publicKey = data.publicKey;
-        if (!publicKey || typeof publicKey !== "string" || publicKey.trim().length === 0) {
-          throw new Error("Chave VAPID pública retornada vazia");
-        }
-        addLog("Chave VAPID", "ok", `Chave VAPID recebida (${publicKey.substring(0, 10)}...)`);
-      } catch (netErr: any) {
-        const isNetwork = !navigator.onLine || netErr?.message?.includes("Failed to fetch") || netErr?.message?.includes("NetworkError");
-        const err: NotificationError = {
-          type: isNetwork ? "NETWORK_ERROR" : "VAPID_CONFIG_ERROR",
-          title: isNetwork ? "Erro de conexão com o servidor" : "Falha na chave VAPID",
-          message: isNetwork
-            ? "Não foi possível contatar o servidor para obter a credencial de mensageria."
-            : `Erro ao obter VAPID: ${netErr.message}`,
-          resolution: isNetwork
-            ? "Verifique sua conexão com a internet e tente novamente."
-            : "Verifique a configuração do servidor backend.",
-          raw: netErr,
-        };
-        setLastError(err);
-        addLog("Chave VAPID", "warn", err.title, err.message);
-        return null;
+      // Fetch VAPID Public Key with safe JSON parsing & fallback
+      addLog("Chave VAPID", "info", "Obtendo e validando credencial pública VAPID...");
+      const vapidRes = await getVapidPublicKeySafe();
+      const publicKey = vapidRes.key;
+
+      if (vapidRes.source === "fallback") {
+        addLog("Chave VAPID", "info", `Utilizando chave VAPID institucional (${publicKey.substring(0, 10)}...)`, vapidRes.error);
+      } else {
+        addLog("Chave VAPID", "ok", `Chave VAPID recebida do servidor (${publicKey.substring(0, 10)}...)`);
       }
 
       // Convert VAPID and Subscribe via PushManager
@@ -309,6 +275,9 @@ export function usePushNotifications() {
       setSubscription(newSubscription);
       localStorage.setItem("davvero_push_subscribed", "true");
       addLog("Concluído", "ok", "Notificações Push ativadas com sucesso neste dispositivo!");
+      
+      // Re-log updated diagnostics
+      await runAndLogNotificationDiagnostics("Post-Subscribe Sucesso");
       return newSubscription;
     } catch (unexpectedErr: any) {
       console.warn("[usePushNotifications] Erro inesperado:", unexpectedErr);
@@ -329,6 +298,7 @@ export function usePushNotifications() {
 
   const unsubscribe = async (): Promise<boolean> => {
     setIsSubscribing(true);
+    await runAndLogNotificationDiagnostics("Push Toggle (Desativar Notificações)");
     try {
       if (subscription) {
         await subscription.unsubscribe();
@@ -358,10 +328,11 @@ export function usePushNotifications() {
     setDiagnosticLogs([]);
     setLastError(null);
 
+    const report = await runAndLogNotificationDiagnostics("Painel de Diagnóstico Manual");
+
     addLog("Diagnóstico", "info", "Iniciando diagnóstico completo do sistema de notificações...");
 
-    const isInIframe = typeof window !== "undefined" && window.self !== window.top;
-    if (isInIframe) {
+    if (report.environment.isInIframe) {
       addLog("Ambiente", "info", "Aplicação sendo executada em visualização de frame embutido.");
     }
 
@@ -373,66 +344,42 @@ export function usePushNotifications() {
     }
 
     // 2. Notification API
-    if (typeof window !== "undefined" && "Notification" in window) {
-      const perm = Notification.permission;
-      if (perm === "granted") {
+    if (report.permissions.notificationSupported) {
+      if (report.permissions.isGranted) {
         addLog("API Notificação", "ok", `API Notification disponível (Permissão concedida: 'granted')`);
       } else {
-        addLog("API Notificação", "info", `API Notification disponível (Permissão atual: '${perm}')`);
+        addLog("API Notificação", "info", `API Notification disponível (Permissão atual: '${report.permissions.state}')`);
       }
     } else {
       addLog("API Notificação", "warn", "API Notification não suportada pelo navegador.");
     }
 
     // 3. Service Worker
-    if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-      try {
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (reg) {
-          addLog("Service Worker", "ok", `Service Worker ativo no escopo: ${reg.scope}`);
-        } else {
-          addLog("Service Worker", "info", "Service Worker pronto para registro sob demanda.");
-        }
-      } catch (swE: any) {
-        addLog("Service Worker", "warn", "Service Worker aguardando ativação", swE?.message);
+    if (report.serviceWorker.swSupported) {
+      if (report.serviceWorker.hasActiveRegistration) {
+        addLog("Service Worker", "ok", `Service Worker ativo no escopo: ${report.serviceWorker.registrationScope}`);
+      } else {
+        addLog("Service Worker", "info", "Service Worker pronto para registro sob demanda.");
       }
     } else {
       addLog("Service Worker", "warn", "Service Worker não suportado.");
     }
 
     // 4. Server VAPID Status
-    try {
-      const res = await fetch("/api/push/status", { cache: "no-store" });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.vapidConfigured) {
-          addLog("Servidor VAPID", "ok", `Chave VAPID configurada no servidor (${data.publicKeyPreview})`);
-        } else {
-          addLog("Servidor VAPID", "warn", "VAPID não configurado no servidor.");
-        }
-      } else {
-        addLog("Servidor VAPID", "warn", `Servidor respondeu HTTP ${res.status} ao consultar status VAPID.`);
-      }
-    } catch (vapidErr: any) {
-      addLog("Servidor VAPID", "warn", "Falha de conexão com endpoint /api/push/status", vapidErr?.message);
+    if (report.vapid.isValidFormat) {
+      addLog("Chave VAPID", "ok", `Chave VAPID válida (${report.vapid.publicKeyPreview}) - Origem: ${report.vapid.keySource}`);
+    } else {
+      addLog("Chave VAPID", "warn", `Chave VAPID com problemas: ${report.vapid.error}`);
     }
 
     // 5. Existing Subscription
-    try {
-      if ("serviceWorker" in navigator) {
-        const reg = await navigator.serviceWorker.getRegistration();
-        if (reg) {
-          const currentSub = await reg.pushManager.getSubscription();
-          if (currentSub) {
-            addLog("Subscrição Atual", "ok", `Dispositivo inscrito: ${currentSub.endpoint.substring(0, 35)}...`);
-            setSubscription(currentSub);
-          } else {
-            addLog("Subscrição Atual", "info", "Nenhuma subscrição ativa encontrada no momento.");
-          }
-        }
+    if (report.subscription.isSubscribed) {
+      addLog("Subscrição Atual", "ok", `Dispositivo inscrito: ${report.subscription.endpointPreview}`);
+      if (report.subscription.rawSubscription) {
+        setSubscription(report.subscription.rawSubscription);
       }
-    } catch (subErr: any) {
-      addLog("Subscrição Atual", "info", "Nenhuma subscrição ativa encontrada.", subErr?.message);
+    } else {
+      addLog("Subscrição Atual", "info", "Nenhuma subscrição ativa encontrada no momento.");
     }
 
     addLog("Diagnóstico", "ok", "Diagnóstico finalizado.");
