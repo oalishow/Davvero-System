@@ -127,6 +127,14 @@ export default function NotificationsManager() {
       const sub = await subscribe();
       if (sub) {
         showAlert("Notificações ativadas com sucesso neste dispositivo!", { type: "success" });
+      } else {
+        if (typeof window !== "undefined" && window.self !== window.top) {
+          showAlert("Para ativar as notificações push nativas, abra o aplicativo em uma nova aba do navegador (fora da janela embutida de prévia).", { type: "warning" });
+        } else if (Notification.permission === "denied") {
+          showAlert("Permissão bloqueada no navegador. Clique no ícone de cadeado na barra de endereço e marque 'Permitir' para notificações.", { type: "warning" });
+        } else {
+          showAlert("Não foi possível ativar as notificações no momento. Verifique as configurações do seu navegador.", { type: "warning" });
+        }
       }
     }
   };

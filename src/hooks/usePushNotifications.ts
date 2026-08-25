@@ -40,6 +40,38 @@ function urlBase64ToUint8Array(base64String: string) {
   }
 }
 
+// Helper to obtain or register an active ServiceWorker with timeout guard
+async function getOrRegisterSW(): Promise<ServiceWorkerRegistration> {
+  if (typeof navigator === "undefined" || !("serviceWorker" in navigator)) {
+    throw new Error("Service Worker não é suportado neste navegador.");
+  }
+
+  // 1. Check existing registration
+  try {
+    const existing = await navigator.serviceWorker.getRegistration();
+    if (existing && existing.active) {
+      return existing;
+    }
+  } catch (e) {
+    console.warn("[usePushNotifications] Erro ao buscar registration existente:", e);
+  }
+
+  // 2. Try registering firebase-messaging-sw or standard sw
+  try {
+    await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
+  } catch (regErr) {
+    console.warn("[usePushNotifications] Registro de fallback sw:", regErr);
+  }
+
+  // 3. Await ready with timeout to avoid hanging indefinitely
+  const readyPromise = navigator.serviceWorker.ready;
+  const timeoutPromise = new Promise<ServiceWorkerRegistration>((_, reject) =>
+    setTimeout(() => reject(new Error("Tempo limite ao inicializar o Service Worker.")), 5000)
+  );
+
+  return await Promise.race([readyPromise, timeoutPromise]);
+}
+
 export function usePushNotifications() {
   const [isSupported, setIsSupported] = useState(false);
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
@@ -84,14 +116,16 @@ export function usePushNotifications() {
 
       if (supported) {
         try {
-          const reg = await navigator.serviceWorker.ready;
-          const existingSub = await reg.pushManager.getSubscription();
-          if (existingSub) {
-            setSubscription(existingSub);
-            localStorage.setItem("davvero_push_subscribed", "true");
+          const reg = await navigator.serviceWorker.getRegistration();
+          if (reg) {
+            const existingSub = await reg.pushManager.getSubscription();
+            if (existingSub) {
+              setSubscription(existingSub);
+              localStorage.setItem("davvero_push_subscribed", "true");
+            }
           }
         } catch (e) {
-          console.warn("[usePushNotifications] Erro ao verificar subscrição existente:", e);
+          console.warn("[usePushNotifications] Erro ao checar subscrição existente:", e);
         }
       }
     };
@@ -142,7 +176,7 @@ export function usePushNotifications() {
       try {
         currentPerm = await Notification.requestPermission();
       } catch (permErr: any) {
-        console.warn("[usePushNotifications] Erro ao solicitar permissão (possível restrição de iframe):", permErr);
+        console.warn("[usePushNotifications] Erro ao solicitar permissão:", permErr);
       }
       setPermission(currentPerm);
 
@@ -151,10 +185,10 @@ export function usePushNotifications() {
           type: isInIframe ? "IFRAME_RESTRICTION" : "PERMISSION_DENIED",
           title: isInIframe ? "Permissão em visualização de frame" : "Permissão não concedida",
           message: isInIframe
-            ? "O navegador pode bloquear solicitações de notificação embutidas em iframes de pré-visualização."
+            ? "O navegador bloqueia solicitações de notificação embutidas em iframes de pré-visualização."
             : `O status da permissão está como '${currentPerm}'.`,
           resolution: isInIframe
-            ? "Abra a aplicação em uma nova aba para permitir e testar as notificações nativas."
+            ? "Abra a aplicação em uma nova aba do navegador para permitir e ativar as notificações."
             : "Clique no ícone de cadeado na barra de endereços do navegador e altere 'Notificações' para 'Permitir'.",
         };
         setLastError(err);
@@ -163,17 +197,17 @@ export function usePushNotifications() {
       }
       addLog("Permissão", "ok", "Permissão concedida pelo usuário.");
 
-      // Check Service Worker
-      addLog("Service Worker", "info", "Aguardando Service Worker ativo...");
+      // Check / Register Service Worker
+      addLog("Service Worker", "info", "Inicializando Service Worker...");
       let registration: ServiceWorkerRegistration;
       try {
-        registration = await navigator.serviceWorker.ready;
+        registration = await getOrRegisterSW();
         addLog("Service Worker", "ok", "Service Worker pronto e ativo.");
       } catch (swErr: any) {
         const err: NotificationError = {
           type: "SW_ERROR",
           title: "Falha no Service Worker",
-          message: "Não foi possível registrar ou inicializar o Service Worker.",
+          message: "Não foi possível inicializar o Service Worker.",
           resolution: "Atualize a página e aguarde o carregamento completo do aplicativo.",
           raw: swErr,
         };
@@ -183,7 +217,7 @@ export function usePushNotifications() {
       }
 
       // Fetch VAPID Public Key from server
-      addLog("Chave VAPID", "info", "Obtendo chave pública VAPID do servidor (/api/push/public-key)...");
+      addLog("Chave VAPID", "info", "Obtendo credencial pública VAPID do servidor...");
       let publicKey = "";
       try {
         const res = await fetch("/api/push/public-key", { cache: "no-store" });
@@ -195,7 +229,7 @@ export function usePushNotifications() {
         if (!publicKey || typeof publicKey !== "string" || publicKey.trim().length === 0) {
           throw new Error("Chave VAPID pública retornada vazia");
         }
-        addLog("Chave VAPID", "ok", `Chave VAPID válida recebida (${publicKey.substring(0, 10)}...)`);
+        addLog("Chave VAPID", "ok", `Chave VAPID recebida (${publicKey.substring(0, 10)}...)`);
       } catch (netErr: any) {
         const isNetwork = !navigator.onLine || netErr?.message?.includes("Failed to fetch") || netErr?.message?.includes("NetworkError");
         const err: NotificationError = {
@@ -206,7 +240,7 @@ export function usePushNotifications() {
             : `Erro ao obter VAPID: ${netErr.message}`,
           resolution: isNetwork
             ? "Verifique sua conexão com a internet e tente novamente."
-            : "Verifique as variáveis de ambiente VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY no servidor.",
+            : "Verifique a configuração do servidor backend.",
           raw: netErr,
         };
         setLastError(err);
@@ -215,7 +249,7 @@ export function usePushNotifications() {
       }
 
       // Convert VAPID and Subscribe via PushManager
-      addLog("Inscrição Push", "info", "Criando subscrição de mensageria no PushManager do navegador...");
+      addLog("Inscrição Push", "info", "Criando subscrição no PushManager do navegador...");
       let newSubscription: PushSubscription;
       try {
         const convertedKey = urlBase64ToUint8Array(publicKey);
@@ -228,8 +262,8 @@ export function usePushNotifications() {
         const err: NotificationError = {
           type: "UNKNOWN",
           title: "Falha na subscrição push",
-          message: subErr?.message || "O navegador recusou a inscrição com a chave VAPID fornecida.",
-          resolution: "Tente recarregar a página ou abrir o aplicativo diretamente em uma nova aba.",
+          message: subErr?.message || "O navegador recusou a inscrição com a chave fornecida.",
+          resolution: "Tente abrir o aplicativo diretamente em uma aba do navegador.",
           raw: subErr,
         };
         setLastError(err);
@@ -294,6 +328,7 @@ export function usePushNotifications() {
   };
 
   const unsubscribe = async (): Promise<boolean> => {
+    setIsSubscribing(true);
     try {
       if (subscription) {
         await subscription.unsubscribe();
@@ -312,6 +347,8 @@ export function usePushNotifications() {
     } catch (err) {
       console.warn("[usePushNotifications] Erro ao desinscrever:", err);
       return false;
+    } finally {
+      setIsSubscribing(false);
     }
   };
 
@@ -350,10 +387,14 @@ export function usePushNotifications() {
     // 3. Service Worker
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
       try {
-        const reg = await navigator.serviceWorker.ready;
-        addLog("Service Worker", "ok", `Service Worker ativo no escopo: ${reg.scope}`);
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          addLog("Service Worker", "ok", `Service Worker ativo no escopo: ${reg.scope}`);
+        } else {
+          addLog("Service Worker", "info", "Service Worker pronto para registro sob demanda.");
+        }
       } catch (swE: any) {
-        addLog("Service Worker", "warn", "Service Worker aguardando ativação ou registro", swE?.message);
+        addLog("Service Worker", "warn", "Service Worker aguardando ativação", swE?.message);
       }
     } else {
       addLog("Service Worker", "warn", "Service Worker não suportado.");
@@ -367,7 +408,7 @@ export function usePushNotifications() {
         if (data.vapidConfigured) {
           addLog("Servidor VAPID", "ok", `Chave VAPID configurada no servidor (${data.publicKeyPreview})`);
         } else {
-          addLog("Servidor VAPID", "warn", "VAPID não configurado no servidor (.env ausente).");
+          addLog("Servidor VAPID", "warn", "VAPID não configurado no servidor.");
         }
       } else {
         addLog("Servidor VAPID", "warn", `Servidor respondeu HTTP ${res.status} ao consultar status VAPID.`);
@@ -379,13 +420,15 @@ export function usePushNotifications() {
     // 5. Existing Subscription
     try {
       if ("serviceWorker" in navigator) {
-        const reg = await navigator.serviceWorker.ready;
-        const currentSub = await reg.pushManager.getSubscription();
-        if (currentSub) {
-          addLog("Subscrição Atual", "ok", `Dispositivo inscrito: ${currentSub.endpoint.substring(0, 35)}...`);
-          setSubscription(currentSub);
-        } else {
-          addLog("Subscrição Atual", "info", "Nenhuma subscrição ativa encontrada no momento.");
+        const reg = await navigator.serviceWorker.getRegistration();
+        if (reg) {
+          const currentSub = await reg.pushManager.getSubscription();
+          if (currentSub) {
+            addLog("Subscrição Atual", "ok", `Dispositivo inscrito: ${currentSub.endpoint.substring(0, 35)}...`);
+            setSubscription(currentSub);
+          } else {
+            addLog("Subscrição Atual", "info", "Nenhuma subscrição ativa encontrada no momento.");
+          }
         }
       }
     } catch (subErr: any) {
@@ -413,7 +456,7 @@ export function usePushNotifications() {
       }
 
       if ("serviceWorker" in navigator) {
-        const reg = await navigator.serviceWorker.ready;
+        const reg = await getOrRegisterSW();
         await reg.showNotification("DAVVERO System", {
           body: "🔔 Teste de Notificação Local recebido com sucesso!",
           icon: "/logo192.png",

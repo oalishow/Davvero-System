@@ -172,7 +172,7 @@ export default function StudentPortal({
 }: StudentPortalProps) {
   const { settings } = useSettings();
   const { showAlert, showConfirm } = useDialog();
-  const { isSupported, subscription, permission, subscribe, unsubscribe } = usePushNotifications();
+  const { isSupported, subscription, permission, isSubscribing, subscribe, unsubscribe } = usePushNotifications();
   const [bondedId, setBondedId] = useState<string | null>(
     localStorage.getItem(STUDENT_BOND_KEY),
   );
@@ -180,6 +180,28 @@ export default function StudentPortal({
   const [isUnlocked, setIsUnlocked] = useState(() => {
     return sessionStorage.getItem("davveroId_unlocked") === "true";
   });
+
+  const handleTogglePush = async () => {
+    if (subscription) {
+      const ok = await unsubscribe();
+      if (ok) {
+        await showAlert("Notificações Desativadas", "Este dispositivo não receberá mais comunicados push.");
+      }
+    } else {
+      const sub = await subscribe();
+      if (sub) {
+        await showAlert("Notificações Ativadas com Sucesso!", "Seu aparelho agora está conectado para receber avisos urgentes e comunicados da secretaria.");
+      } else {
+        if (typeof window !== "undefined" && window.self !== window.top) {
+          await showAlert("Visualização em Prévia (Frame)", "Para ativar as notificações push do seu navegador, abra o aplicativo em uma nova aba fora do modo de pré-visualização.");
+        } else if (Notification.permission === "denied") {
+          await showAlert("Permissão Bloqueada", "Você bloqueou as notificações para este site. Clique no ícone de cadeado na barra de endereços do navegador e altere 'Notificações' para 'Permitir'.");
+        } else {
+          await showAlert("Aviso", "Não foi possível concluir a ativação de notificações neste momento. Verifique as permissões do seu navegador.");
+        }
+      }
+    }
+  };
 
   // Update sessionStorage whenever isUnlocked changes
   useEffect(() => {
@@ -2323,23 +2345,41 @@ export default function StudentPortal({
                           <div className="flex-shrink-0 w-full sm:w-auto">
                             {!subscription && permission !== "denied" ? (
                               <button
+                                type="button"
+                                disabled={isSubscribing}
                                 onClick={() => {
                                   playSound('click');
-                                  subscribe();
+                                  handleTogglePush();
                                 }}
-                                className="w-full sm:w-auto px-5 py-2.5 bg-sky-600 hover:bg-sky-700 text-white rounded-xl text-sm font-bold shadow-sm transition active:scale-95 whitespace-nowrap"
+                                className="w-full sm:w-auto px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white rounded-xl text-sm font-bold shadow-sm transition active:scale-95 whitespace-nowrap flex items-center justify-center gap-2"
                               >
-                                Ativar Notificações
+                                {isSubscribing ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>Conectando...</span>
+                                  </>
+                                ) : (
+                                  <span>Ativar Notificações</span>
+                                )}
                               </button>
                             ) : subscription ? (
                               <button
+                                type="button"
+                                disabled={isSubscribing}
                                 onClick={() => {
                                   playSound('click');
-                                  unsubscribe();
+                                  handleTogglePush();
                                 }}
-                                className="w-full sm:w-auto px-5 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold transition active:scale-95 whitespace-nowrap"
+                                className="w-full sm:w-auto px-5 py-2.5 bg-slate-200 hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-700 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 disabled:opacity-60 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold transition active:scale-95 whitespace-nowrap flex items-center justify-center gap-2"
                               >
-                                Desativar
+                                {isSubscribing ? (
+                                  <>
+                                    <Loader2 className="w-4 h-4 animate-spin" />
+                                    <span>Processando...</span>
+                                  </>
+                                ) : (
+                                  <span>Desativar</span>
+                                )}
                               </button>
                             ) : null}
                           </div>
