@@ -47,21 +47,44 @@ export function usePushNotifications() {
       // Try to get token. Wait for SW to be ready first.
       const registration = await navigator.serviceWorker.ready;
       
-      let fcmToken;
+      let fcmToken = null;
+      let publicKey = "";
+      
       try {
         const response = await fetch("/api/push/public-key");
-        const { publicKey } = await response.json();
-        
-        fcmToken = await getToken(messaging, { 
-          vapidKey: publicKey,
-          serviceWorkerRegistration: registration 
-        });
+        if (response.ok) {
+          const data = await response.json();
+          publicKey = data.publicKey || "";
+        }
+      } catch (keyErr) {
+        console.warn("Could not fetch public key from server:", keyErr);
+      }
+
+      try {
+        const tokenOptions: { vapidKey?: string; serviceWorkerRegistration?: ServiceWorkerRegistration } = {
+          serviceWorkerRegistration: registration,
+        };
+        if (publicKey && publicKey.trim().length > 0) {
+          tokenOptions.vapidKey = publicKey.trim();
+        }
+
+        fcmToken = await getToken(messaging, tokenOptions);
       } catch (err: any) {
-        console.error("FCM Token error", err);
-        // If vapid key is invalid or not provided, we fallback to requesting token without it, or using the server's key.
-        // Actually, if VAPID is missing, it will throw.
-        alert("Falha ao obter token do Firebase. Verifique a chave VAPID nas configurações.");
-        return;
+        console.error("FCM Token error:", err);
+        // If error was related to invalid VAPID, attempt without vapidKey fallback
+        if (publicKey) {
+          try {
+            console.log("Tentando fallback sem VAPID...");
+            fcmToken = await getToken(messaging, { serviceWorkerRegistration: registration });
+          } catch (fallbackErr) {
+            console.error("Fallback sem VAPID também falhou:", fallbackErr);
+          }
+        }
+        
+        if (!fcmToken) {
+          alert(`Não foi possível ativar as notificações push do Firebase (${err?.message || 'Verifique as permissões ou chaves de mensageria'}).`);
+          return;
+        }
       }
 
       if (fcmToken) {

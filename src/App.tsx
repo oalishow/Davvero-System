@@ -104,62 +104,57 @@ export default function App() {
 
     localStorage.setItem("app_version", APP_VERSION);
 
-    // Verificação via servidor para forçar a limpeza de cache se estamos usando versão antiga
-    fetch(`/api/version?t=${new Date().getTime()}`, { cache: 'no-store' })
-      .then(res => res.json())
-      .then(data => {
-        if (data.version && data.version !== APP_VERSION) {
-          const attemptKey = `update_attempted_${data.version}`;
-          const lastAttemptTimeStr = localStorage.getItem(`update_attempt_time_${data.version}`);
-          const lastAttemptTime = lastAttemptTimeStr ? parseInt(lastAttemptTimeStr, 10) : 0;
-          
-          // Se tentamos atualizar há menos de 1 minuto e falhou, não vamos tentar de novo num loop infinito
-          if (localStorage.getItem(attemptKey) && (Date.now() - lastAttemptTime) < 60000) {
-             console.log(`Atualização para ${data.version} tentada recentemente. Prevenindo loop.`);
-             return;
-          }
+    // Verificação contínua de versão com o servidor
+    const checkServerVersion = () => {
+      fetch(`/api/version?t=${Date.now()}`, { cache: 'no-store' })
+        .then(res => res.json())
+        .then(async (data) => {
+          if (data.version && data.version !== APP_VERSION) {
+            console.log(`Versão obsoleta (Local: ${APP_VERSION}, Server: ${data.version}). Forçando atualização.`);
+            setIsUpdating(true);
+            setTargetVersionText(data.version);
 
-          console.log(`Versão obsoleta (Local: ${APP_VERSION}, Server: ${data.version}). Limpando cache e recarregando.`);
-          setIsUpdating(true);
-          setTargetVersionText(data.version);
-          localStorage.setItem(attemptKey, "true");
-          localStorage.setItem(`update_attempt_time_${data.version}`, Date.now().toString());
-          
-          let progress = 0;
-          const progressInterval = setInterval(() => {
-            progress += 5;
-            if (progress <= 95) {
-              setUpdateProgress(progress);
-            }
-          }, 150);
-
-          setTimeout(async () => {
             try {
               if ('serviceWorker' in navigator) {
-                const registrations = await navigator.serviceWorker.getRegistrations();
-                for (let registration of registrations) {
-                  await registration.unregister();
+                const regs = await navigator.serviceWorker.getRegistrations();
+                for (const reg of regs) {
+                  await reg.unregister();
                 }
               }
               if ('caches' in window) {
-                 const keys = await caches.keys();
-                 for (const key of keys) {
-                     await caches.delete(key);
-                 }
+                const keys = await caches.keys();
+                for (const key of keys) {
+                  await caches.delete(key);
+                }
               }
             } catch (e) {
-              console.error('Falha ao limpar caches', e);
+              console.error('Falha ao limpar caches locais', e);
             }
-            clearInterval(progressInterval);
+
             setUpdateProgress(100);
-            
             setTimeout(() => {
-              window.location.href = window.location.pathname + '?v=' + new Date().getTime();
-            }, 600);
-          }, 3000);
-        }
-      })
-      .catch(() => console.log("Não foi possível verificar versão com servidor"));
+              window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
+            }, 400);
+          }
+        })
+        .catch(() => console.log("Verificação de versão online em segundo plano"));
+    };
+
+    checkServerVersion();
+
+    const onVisibilityOrFocus = () => {
+      if (document.visibilityState === 'visible') {
+        checkServerVersion();
+      }
+    };
+
+    window.addEventListener('focus', onVisibilityOrFocus);
+    document.addEventListener('visibilitychange', onVisibilityOrFocus);
+
+    return () => {
+      window.removeEventListener('focus', onVisibilityOrFocus);
+      document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+    };
   }, []);
 
   const handleGlobalVerify = (code: string) => {

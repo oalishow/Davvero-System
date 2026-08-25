@@ -528,6 +528,74 @@ export default function StudentPortal({
     }
   };
 
+  const handleDownloadExternalCertificate = (cert: { title: string; fileUrl: string }) => {
+    try {
+      if (!cert.fileUrl) return;
+
+      // Handle base64 or standard URL
+      if (cert.fileUrl.startsWith("data:")) {
+        // Parse base64 to Blob to avoid browser blocking data URL direct navigation
+        const parts = cert.fileUrl.split(";base64,");
+        const contentType = parts[0].replace("data:", "");
+        const raw = window.atob(parts[1]);
+        const rawLength = raw.length;
+        const uInt8Array = new Uint8Array(rawLength);
+        for (let i = 0; i < rawLength; ++i) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        const blob = new Blob([uInt8Array], { type: contentType });
+        const blobUrl = URL.createObjectURL(blob);
+
+        const a = document.createElement("a");
+        a.href = blobUrl;
+        const ext = contentType.includes("pdf") ? ".pdf" : contentType.includes("png") ? ".png" : ".jpg";
+        const cleanTitle = (cert.title || "Certificado_Anexado").replace(/[^a-zA-Z0-9_-]/g, "_");
+        a.download = cleanTitle.toLowerCase().endsWith(ext) ? cleanTitle : `${cleanTitle}${ext}`;
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 10000);
+      } else {
+        const a = document.createElement("a");
+        a.href = cert.fileUrl;
+        a.download = cert.title || "Certificado_Anexado";
+        a.target = "_blank";
+        a.rel = "noopener noreferrer";
+        document.body.appendChild(a);
+        a.click();
+        document.body.removeChild(a);
+      }
+    } catch (e: any) {
+      console.error("Erro ao baixar certificado anexado:", e);
+      // Fallback: direct window.open
+      window.open(cert.fileUrl, "_blank");
+    }
+  };
+
+  const handleOpenExternalCertificate = (cert: { title: string; fileUrl: string }) => {
+    try {
+      if (!cert.fileUrl) return;
+      if (cert.fileUrl.startsWith("data:")) {
+        const parts = cert.fileUrl.split(";base64,");
+        const contentType = parts[0].replace("data:", "");
+        const raw = window.atob(parts[1]);
+        const rawLength = raw.length;
+        const uInt8Array = new Uint8Array(rawLength);
+        for (let i = 0; i < rawLength; ++i) {
+          uInt8Array[i] = raw.charCodeAt(i);
+        }
+        const blob = new Blob([uInt8Array], { type: contentType });
+        const blobUrl = URL.createObjectURL(blob);
+        window.open(blobUrl, "_blank");
+        setTimeout(() => URL.revokeObjectURL(blobUrl), 30000);
+      } else {
+        window.open(cert.fileUrl, "_blank");
+      }
+    } catch (e) {
+      window.open(cert.fileUrl, "_blank");
+    }
+  };
+
   const handleDeleteExternalCertificate = async (certId: string) => {
     if (!member) return;
     
@@ -2042,8 +2110,27 @@ export default function StudentPortal({
                                   <p className="text-[9px] text-slate-500 uppercase">{formatDateTime(cert.uploadedAt)}</p>
                                 </div>
                                 <div className="flex items-center gap-2">
-                                  <a href={cert.fileUrl} target="_blank" rel="noopener noreferrer" className="p-2 text-sky-600 bg-sky-50 rounded-xl hover:bg-sky-100 transition-colors"><ExternalLink className="w-4 h-4" /></a>
-                                  <button onClick={() => handleDeleteExternalCertificate(cert.id)} className="p-2 text-rose-600 bg-rose-50 rounded-xl hover:bg-rose-100 transition-colors"><Trash2 className="w-4 h-4" /></button>
+                                  <button
+                                    onClick={() => handleDownloadExternalCertificate(cert)}
+                                    className="p-2 text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/30 rounded-xl hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors"
+                                    title="Baixar Certificado"
+                                  >
+                                    <Download className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleOpenExternalCertificate(cert)}
+                                    className="p-2 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
+                                    title="Visualizar Certificado"
+                                  >
+                                    <Eye className="w-4 h-4" />
+                                  </button>
+                                  <button
+                                    onClick={() => handleDeleteExternalCertificate(cert.id)}
+                                    className="p-2 text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
+                                    title="Excluir Certificado"
+                                  >
+                                    <Trash2 className="w-4 h-4" />
+                                  </button>
                                 </div>
                               </div>
                             ))}
