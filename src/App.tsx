@@ -46,6 +46,12 @@ export default function App() {
   const { settings } = useSettings();
   const { showAlert } = useDialog();
   const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.has("event") || params.has("cert") || params.has("verify")) {
+        return false;
+      }
+    }
     return localStorage.getItem("has_seen_welcome") !== "true";
   });
   const [activeTab, setActiveTab] = useState<

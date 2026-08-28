@@ -186,15 +186,192 @@ async function startServer() {
     }
   });
 
+  // Fetch Event data for Social Media / WhatsApp Link Preview
+  async function getEventData(eventId: string) {
+    try {
+      if (!eventId || typeof eventId !== "string") return null;
+      const cleanId = eventId.trim();
+      const docRef = db.doc(`artifacts/banco-de-dados-fajopa/public/data/events/${cleanId}`);
+      const snap = await docRef.get();
+      if (snap.exists) {
+        return { id: snap.id, ...snap.data() } as any;
+      }
+    } catch (e) {
+      console.warn("[SocialMeta] Erro ao buscar evento no Firestore:", e);
+    }
+    return null;
+  }
+
+  function injectSocialMetaTags(html: string, event: any, requestUrl: string) {
+    if (!event) return html;
+
+    const escapeHtml = (str: string) =>
+      String(str || "")
+        .replace(/&/g, "&amp;")
+        .replace(/"/g, "&quot;")
+        .replace(/'/g, "&#39;")
+        .replace(/</g, "&lt;")
+        .replace(/>/g, "&gt;");
+
+    const title = `${event.title || "Evento Acadêmico"} | DAVVERO System`;
+
+    const formatDate = (isoString?: string) => {
+      if (!isoString) return "";
+      const d = new Date(isoString);
+      return isNaN(d.getTime())
+        ? ""
+        : d.toLocaleDateString("pt-BR", {
+            day: "2-digit",
+            month: "long",
+            year: "numeric",
+          });
+    };
+    const formatTime = (isoString?: string) => {
+      if (!isoString) return "";
+      const d = new Date(isoString);
+      return isNaN(d.getTime())
+        ? ""
+        : d.toLocaleTimeString("pt-BR", {
+            hour: "2-digit",
+            minute: "2-digit",
+          });
+    };
+
+    const dateStr = formatDate(event.startDate);
+    const timeStr = formatTime(event.startDate);
+    const dateInfo = dateStr
+      ? timeStr
+        ? `Data: ${dateStr} às ${timeStr}`
+        : `Data: ${dateStr}`
+      : "";
+    const speakerInfo = event.speaker ? ` • Convidado: ${event.speaker}` : "";
+    const formatInfo =
+      event.format === "online"
+        ? "Online"
+        : event.format === "presencial"
+        ? "Presencial"
+        : "Híbrido";
+    const locInfo =
+      event.location || event.locationOrLink
+        ? ` (${event.location || event.locationOrLink})`
+        : "";
+
+    let description = `${dateInfo} • ${formatInfo}${locInfo}${speakerInfo}`;
+    if (event.description) {
+      const cleanDesc = event.description
+        .replace(/<[^>]*>/g, "")
+        .replace(/\s+/g, " ")
+        .trim();
+      if (cleanDesc) {
+        description = `${description} — ${cleanDesc.substring(0, 160)}`;
+      }
+    }
+
+    const imageUrl =
+      event.imageUrl ||
+      "https://ais-pre-5mjiobmfgqnxh35v67w7rb-51066803168.us-east1.run.app/icon.svg";
+
+    const escapedTitle = escapeHtml(title);
+    const escapedDesc = escapeHtml(description);
+    const escapedImg = escapeHtml(imageUrl);
+    const escapedUrl = escapeHtml(requestUrl);
+
+    const metaBlock = `
+    <!-- Dynamic Open Graph / WhatsApp / Facebook Meta Tags -->
+    <title>${escapedTitle}</title>
+    <meta name="description" content="${escapedDesc}" />
+    <meta property="og:type" content="website" />
+    <meta property="og:site_name" content="DAVVERO System" />
+    <meta property="og:title" content="${escapedTitle}" />
+    <meta property="og:description" content="${escapedDesc}" />
+    <meta property="og:image" content="${escapedImg}" />
+    <meta property="og:image:secure_url" content="${escapedImg}" />
+    <meta property="og:image:alt" content="${escapedTitle}" />
+    <meta property="og:url" content="${escapedUrl}" />
+
+    <!-- Twitter Card Meta Tags -->
+    <meta name="twitter:card" content="summary_large_image" />
+    <meta name="twitter:title" content="${escapedTitle}" />
+    <meta name="twitter:description" content="${escapedDesc}" />
+    <meta name="twitter:image" content="${escapedImg}" />
+  `;
+
+    let cleaned = html
+      .replace(/<title>[\s\S]*?<\/title>/gi, "")
+      .replace(/<meta\s+name=["']description["'][^>]*>/gi, "")
+      .replace(/<meta\s+property=["']og:[^"']*["'][^>]*>/gi, "")
+      .replace(/<meta\s+name=["']twitter:[^"']*["'][^>]*>/gi, "");
+
+    cleaned = cleaned.replace(/<head>/i, `<head>\n${metaBlock}`);
+    return cleaned;
+  }
+
   // Vite middleware for development
   if (process.env.NODE_ENV !== "production") {
     const vite = await createViteServer({
       server: { middlewareMode: true },
       appType: "spa",
     });
+
+    // Intercept event shared links before default SPA fallback
+    app.get(["/", "/event/:eventId", "/events"], async (req, res, next) => {
+      const eventId = (req.query.event as string) || req.params.eventId;
+      if (!eventId) return next();
+
+      try {
+        const event = await getEventData(eventId);
+        if (!event) return next();
+
+        const fs = await import("fs/promises");
+        const raw = await fs.readFile(path.join(process.cwd(), "index.html"), "utf-8");
+        const transformed = await vite.transformIndexHtml(req.originalUrl, raw);
+        const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+        const host = req.headers["x-forwarded-host"] || req.get("host") || "";
+        const fullUrl = `${protocol}://${host}${req.originalUrl}`;
+        const output = injectSocialMetaTags(transformed, event, fullUrl);
+
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+        return res.status(200).send(output);
+      } catch (err) {
+        console.error("[SocialMeta Dev] Error rendering social HTML:", err);
+        return next();
+      }
+    });
+
     app.use(vite.middlewares);
   } else {
     const distPath = path.join(process.cwd(), "dist");
+    
+    // Intercept event shared links in production
+    app.get(["/", "/event/:eventId", "/events"], async (req, res, next) => {
+      const eventId = (req.query.event as string) || req.params.eventId;
+      if (!eventId) return next();
+
+      try {
+        const event = await getEventData(eventId);
+        if (!event) return next();
+
+        const fs = await import("fs/promises");
+        const raw = await fs.readFile(path.join(distPath, "index.html"), "utf-8");
+        const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+        const host = req.headers["x-forwarded-host"] || req.get("host") || "";
+        const fullUrl = `${protocol}://${host}${req.originalUrl}`;
+        const output = injectSocialMetaTags(raw, event, fullUrl);
+
+        res.setHeader("Content-Type", "text/html; charset=utf-8");
+        res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+        res.setHeader("Pragma", "no-cache");
+        res.setHeader("Expires", "0");
+        return res.status(200).send(output);
+      } catch (err) {
+        console.error("[SocialMeta Prod] Error rendering social HTML:", err);
+        return next();
+      }
+    });
+
     app.use(express.static(distPath, {
       setHeaders: (res, filePath) => {
         // Enforce no-cache on HTML and service worker files to guarantee fresh version execution
@@ -205,7 +382,30 @@ async function startServer() {
         }
       }
     }));
-    app.get("*", (req, res) => {
+    app.get("*", async (req, res) => {
+      const eventId = req.query.event as string;
+      if (eventId) {
+        const event = await getEventData(eventId);
+        if (event) {
+          try {
+            const fs = await import("fs/promises");
+            const raw = await fs.readFile(path.join(distPath, "index.html"), "utf-8");
+            const protocol = req.headers["x-forwarded-proto"] || req.protocol || "https";
+            const host = req.headers["x-forwarded-host"] || req.get("host") || "";
+            const fullUrl = `${protocol}://${host}${req.originalUrl}`;
+            const output = injectSocialMetaTags(raw, event, fullUrl);
+
+            res.setHeader("Content-Type", "text/html; charset=utf-8");
+            res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+            res.setHeader("Pragma", "no-cache");
+            res.setHeader("Expires", "0");
+            return res.status(200).send(output);
+          } catch (e) {
+            console.error(e);
+          }
+        }
+      }
+
       res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
       res.setHeader("Pragma", "no-cache");
       res.setHeader("Expires", "0");

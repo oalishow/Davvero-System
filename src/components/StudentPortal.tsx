@@ -1562,7 +1562,7 @@ export default function StudentPortal({
                 activeTab === "events"
                   ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm"
                   : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-              } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
+              }`}
             >
               <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
               <span>Eventos</span>

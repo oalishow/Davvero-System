@@ -16,8 +16,11 @@ import {
   ExternalLink,
   MapPin,
   Pin,
+  QrCode,
+  Printer,
 } from "lucide-react";
 import ImageCropperModal from "./ImageCropperModal";
+import EventQrCodeModal from "./EventQrCodeModal";
 import {
   collection,
   addDoc,
@@ -95,6 +98,7 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
   const [presenceCloseMode, setPresenceCloseMode] = useState<"24h_after" | "1h_after" | "custom" | "manual">("24h_after");
   const [presenceCustomCloseTime, setPresenceCustomCloseTime] = useState("");
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
+  const [selectedQrEvent, setSelectedQrEvent] = useState<Event | null>(null);
   const [eventSearchQuery, setEventSearchQuery] = useState("");
   const [feedbackModal, setFeedbackModal] = useState<{ type: "success" | "error", title: string, msg: string } | null>(null);
   const [statusMsg, setStatusMsg] = useState<{
@@ -950,6 +954,14 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
                         <Search className="w-3.5 h-3.5 shrink-0" />{" "}
                         <span className="truncate">Inscritos</span>
                       </button>
+                      <button
+                        onClick={() => setSelectedQrEvent(event)}
+                        className="flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 hover:bg-white dark:hover:bg-slate-700 text-purple-600 dark:text-purple-400 text-xs font-bold rounded-md transition-colors"
+                        title="Gerar Cartaz / QR Code para Impressão"
+                      >
+                        <QrCode className="w-3.5 h-3.5 shrink-0" />{" "}
+                        <span className="truncate">Cartaz QR</span>
+                      </button>
                       {adminAccessLevel !== "LEITOR" && (
                         <>
                           <button
@@ -1084,6 +1096,13 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
           {confirmModal?.message}
         </p>
       </Modal>
+
+      {selectedQrEvent && (
+        <EventQrCodeModal
+          event={selectedQrEvent}
+          onClose={() => setSelectedQrEvent(null)}
+        />
+      )}
 
       {/* FEEDBACK MODAL (Success/Error Animation) */}
       <Modal

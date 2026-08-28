@@ -16,7 +16,11 @@ import {
   Share2,
   Edit,
   Settings,
-  Pin
+  Pin,
+  QrCode,
+  Printer,
+  Sparkles,
+  MessageCircle,
 } from "lucide-react";
 import {
   collection,
@@ -39,6 +43,8 @@ import PublicAttendeesModal from "./PublicAttendeesModal";
 import Modal from "./Modal";
 import PublicRequestModal from "./PublicRequestModal";
 import RegistrationSuccessModal from "./RegistrationSuccessModal";
+import EventQrCodeModal from "./EventQrCodeModal";
+import QuickEventEnrollModal from "./QuickEventEnrollModal";
 import { useDialog } from "../context/DialogContext";
 import PublicAppointmentsList from "./PublicAppointmentsList";
 import EventManagement from "./EventManagement";
@@ -60,6 +66,15 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
   const [showAdminEventModal, setShowAdminEventModal] = useState(false);
   const [showPublicReq, setShowPublicReq] = useState(false);
   const [showRegistrationSuccessModal, setShowRegistrationSuccessModal] = useState(false);
+  const [selectedQrEvent, setSelectedQrEvent] = useState<Event | null>(null);
+  const [quickEnrollEvent, setQuickEnrollEvent] = useState<Event | null>(null);
+  const [sharedEventId, setSharedEventId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      return params.get("event");
+    }
+    return null;
+  });
   const [events, setEvents] = useState<Event[]>([]);
   const [eventTypeTab, setEventTypeTab] = useState<"general" | "seminary" | "appointments">(renderSeminary ? "seminary" : "general");
   const [subTab, setSubTab] = useState<"upcoming" | "past">("upcoming");
@@ -76,7 +91,6 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     onConfirm: () => void;
   } | null>(null);
   const [paymentModalEvent, setPaymentModalEvent] = useState<Event | null>(null);
-  const [showLoginWarning, setShowLoginWarning] = useState(false);
 
   useEffect(() => {
     // Load student if logged in
@@ -219,7 +233,10 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
 
   const handleEnroll = async (eventId: string) => {
     if (!member) {
-      setShowLoginWarning(true);
+      const target = events.find((e) => e.id === eventId);
+      if (target) {
+        setQuickEnrollEvent(target);
+      }
       return;
     }
     setIsEnrollingInProgress(eventId);
@@ -281,7 +298,10 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
 
   const handleRegisterPresence = async (eventId: string) => {
     if (!member) {
-      setShowLoginWarning(true);
+      const target = events.find((e) => e.id === eventId);
+      if (target) {
+        setQuickEnrollEvent(target);
+      }
       return;
     }
     const myAttendance = myAttendances.find(a => a.eventId === eventId);
@@ -430,6 +450,40 @@ END:VCALENDAR`;
           </Modal>
         )}
       </AnimatePresence>
+
+      {/* Shared Event Banner */}
+      {sharedEventId && (() => {
+        const sharedEvent = events.find(e => e.id === sharedEventId);
+        if (!sharedEvent) return null;
+        return (
+          <div className="mb-4 p-4 bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+            <div className="flex items-center gap-3">
+              <div className="w-10 h-10 rounded-xl bg-sky-600 text-white flex items-center justify-center font-bold shrink-0">
+                <Calendar className="w-5 h-5" />
+              </div>
+              <div>
+                <span className="text-[10px] font-black uppercase tracking-wider text-sky-600 dark:text-sky-400">
+                  Evento Selecionado via Link
+                </span>
+                <h4 className="text-sm font-bold text-slate-800 dark:text-white leading-snug">
+                  {sharedEvent.title}
+                </h4>
+              </div>
+            </div>
+            <button
+              onClick={() => {
+                const url = new URL(window.location.href);
+                url.searchParams.delete("event");
+                window.history.replaceState({}, "", url.pathname);
+                setSharedEventId(null);
+              }}
+              className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline px-2 py-1 shrink-0"
+            >
+              Ver todos os eventos
+            </button>
+          </div>
+        );
+      })()}
 
       {!renderSeminary && (
         <div className="flex gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/50 rounded-2xl mb-2 shadow-inner no-print border border-slate-200/50 dark:border-slate-700/50">
@@ -746,21 +800,55 @@ END:VCALENDAR`;
                     <div className="flex flex-wrap gap-2 mt-3">
                       <button
                         onClick={() => exportToCalendar(event)}
-                        className="flex items-center justify-center sm:justify-start gap-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max"
+                        className="flex items-center justify-center sm:justify-start gap-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max"
                       >
-                        <CalendarPlus className="w-3.5 h-3.5" /> Adicionar ao Calendário
+                        <CalendarPlus className="w-3.5 h-3.5" /> Calendário
+                      </button>
+
+                      <button
+                        onClick={() => {
+                          const url = `${window.location.origin}${window.location.pathname}?event=${encodeURIComponent(event.id)}`;
+                          const shareMsg = `*${event.title}*\n${event.speaker ? `👤 Convidado: ${event.speaker}\n` : ''}📅 Data: ${new Date(event.startDate).toLocaleDateString('pt-BR')}\n📍 Formato: ${event.format === 'online' ? 'Online' : 'Presencial'}\n\n👉 Acesse e participe:\n${url}`;
+                          const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareMsg)}`;
+                          window.open(waUrl, '_blank', 'noopener,noreferrer');
+                        }}
+                        className="flex items-center justify-center sm:justify-start gap-1.5 bg-emerald-600 hover:bg-emerald-500 text-white px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max cursor-pointer"
+                        title="Compartilhar no WhatsApp com foto e dados"
+                      >
+                        <MessageCircle className="w-3.5 h-3.5" /> WhatsApp
                       </button>
                       
                       <button
-                        onClick={() => {
-                          const url = new URL(window.location.href);
-                          url.searchParams.set("event", event.id);
-                          navigator.clipboard.writeText(url.toString());
-                          showAlert("Link do evento copiado para a área de transferência!", { type: 'success' });
+                        onClick={async () => {
+                          const url = `${window.location.origin}${window.location.pathname}?event=${encodeURIComponent(event.id)}`;
+                          if (navigator.share) {
+                            try {
+                              await navigator.share({
+                                title: event.title,
+                                text: `Confira o evento acadêmico: ${event.title}`,
+                                url,
+                              });
+                            } catch {
+                              // user cancel
+                            }
+                          } else {
+                            await navigator.clipboard.writeText(url);
+                            showAlert("Link do evento copiado para a área de transferência!", { type: 'success' });
+                          }
                         }}
-                        className="flex items-center justify-center sm:justify-start gap-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max"
+                        className="flex items-center justify-center sm:justify-start gap-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max cursor-pointer"
+                        title="Compartilhar Link ou Redes Sociais"
                       >
-                        <Share2 className="w-3.5 h-3.5" /> Compartilhar Evento
+                        <Share2 className="w-3.5 h-3.5" /> Compartilhar
+                      </button>
+
+                      <button
+                        onClick={() => setSelectedQrEvent(event)}
+                        className="flex items-center justify-center sm:justify-start gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max cursor-pointer"
+                        title="Gerar Cartaz com Foto e QR Code para Impressão"
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                        <span>Cartaz / QR Code</span>
                       </button>
                     </div>
                   </div>
@@ -936,39 +1024,24 @@ END:VCALENDAR`;
         </div>
       </Modal>
 
-      <Modal
-        isOpen={showLoginWarning}
-        onClose={() => setShowLoginWarning(false)}
-        title="Inscrição Requer Cadastro"
-        confirmLabel="Já tenho cadastro (Minha ID)"
-        onConfirm={() => {
-          setShowLoginWarning(false);
-          if (onNavigateToStudent) {
-            onNavigateToStudent();
-          }
-        }}
-      >
-        <div className="text-center">
-          <p className="text-slate-600 dark:text-slate-400 py-3 font-medium">
-            Para se inscrever em eventos, você precisa estar cadastrado e com sua <strong>MINHA ID</strong> vinculada.
-          </p>
-          <div className="bg-sky-50 dark:bg-sky-500/10 border border-sky-100 dark:border-sky-500/30 rounded-xl p-3 mb-2 text-sm text-sky-700 dark:text-sky-300">
-            <strong>Já possui cadastro e código?</strong> Vincule sua identidade ou acompanhe seu pedido na aba Minha ID.
-          </div>
-          <div className="bg-amber-50 dark:bg-amber-500/10 border border-amber-100 dark:border-amber-500/30 rounded-xl p-3 text-sm text-amber-700 dark:text-amber-300">
-            <strong>Ainda não é cadastrado?</strong> Clique no botão abaixo para fazer o seu primeiro acesso. Mesmo que seu cadastro ainda aguarde aprovação da secretaria, você já conseguirá se inscrever neste evento após o pedido!
-            <button
-               onClick={() => {
-                 setShowLoginWarning(false);
-                 setShowPublicReq(true);
-               }}
-               className="mt-4 w-full py-2 bg-amber-600 hover:bg-amber-500 text-white font-bold rounded-lg text-xs tracking-wider uppercase transition-colors"
-            >
-               Fazer Primeiro Acesso
-            </button>
-          </div>
-        </div>
-      </Modal>
+      {selectedQrEvent && (
+        <EventQrCodeModal
+          event={selectedQrEvent}
+          onClose={() => setSelectedQrEvent(null)}
+        />
+      )}
+
+      {quickEnrollEvent && (
+        <QuickEventEnrollModal
+          event={quickEnrollEvent}
+          onClose={() => setQuickEnrollEvent(null)}
+          onSuccess={(createdMember) => {
+            setMember(createdMember);
+            setQuickEnrollEvent(null);
+            showAlert("Inscrição confirmada com sucesso!", { type: 'success' });
+          }}
+        />
+      )}
 
       {showPublicReq && (
         <PublicRequestModal
