@@ -78,17 +78,28 @@ service cloud.firestore {
             // Events
       match /events/{eventId} {
         allow read: if true;
-        allow create: if isSignedIn() && (isAdmin(appId) || isGerente(appId)) && request.resource.data.keys().hasAny(['title']);
-        allow update: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
-        allow delete: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
+        allow create: if isSignedIn() && request.resource.data.keys().hasAny(['title']);
+        allow update: if isSignedIn() && (
+          isAdmin(appId) || 
+          isGerente(appId) || 
+          (resource.data.createdBy != null && (resource.data.createdBy == request.auth.uid || resource.data.createdBy == request.auth.token.email)) ||
+          (resource.data.creatorEmail != null && resource.data.creatorEmail == request.auth.token.email) ||
+          request.resource.data.diff(resource.data).affectedKeys().hasOnly(['status', 'isRegistrationPaused', 'updatedAt'])
+        );
+        allow delete: if isSignedIn() && (
+          isAdmin(appId) || 
+          isGerente(appId) || 
+          (resource.data.createdBy != null && (resource.data.createdBy == request.auth.uid || resource.data.createdBy == request.auth.token.email)) ||
+          (resource.data.creatorEmail != null && resource.data.creatorEmail == request.auth.token.email)
+        );
       }
 
             // Attendances
       match /attendances/{attId} {
         allow read: if true;
-        allow create: if isSignedIn() && (isAdmin(appId) || isGerente(appId)) && request.resource.data.keys().hasAny(['eventId']);
-        allow update: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
-        allow delete: if isSignedIn() && (isAdmin(appId) || isGerente(appId));
+        allow create: if isSignedIn() && request.resource.data.keys().hasAny(['eventId']);
+        allow update: if isSignedIn();
+        allow delete: if isSignedIn();
       }
 
       // Availabilities

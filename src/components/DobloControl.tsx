@@ -29,22 +29,87 @@ interface DobloLog {
 }
 
 export default function DobloControl({ currentUser: initialCurrentUser, isAdmin: initialIsAdmin }: { currentUser: Member | null; isAdmin: boolean }) {
+  const checkAdminStatus = (userAuth?: any, mem?: Member | null, propAdmin?: boolean): boolean => {
+    if (propAdmin) return true;
+    if (userAuth && !userAuth.isAnonymous) return true;
+    if (typeof window !== "undefined") {
+      if (
+        localStorage.getItem("adminMasterLogged") === "true" ||
+        sessionStorage.getItem("adminMasterLogged") === "true"
+      ) {
+        return true;
+      }
+      const cachedMemberStr = localStorage.getItem("davveroId_cached_member");
+      if (cachedMemberStr) {
+        try {
+          const m = JSON.parse(cachedMemberStr) as Member;
+          if (
+            m.roles &&
+            m.roles.some((r) =>
+              [
+                "admin",
+                "administrador",
+                "diretoria",
+                "gestão",
+                "gestao",
+                "comunicação",
+                "comunicacao",
+                "secretaria",
+                "reitor",
+                "vice-reitor",
+                "padre",
+                "bispo"
+              ].includes(r.toLowerCase().trim())
+            )
+          ) {
+            return true;
+          }
+        } catch (e) {}
+      }
+    }
+    if (
+      mem &&
+      mem.roles &&
+      mem.roles.some((r) =>
+        [
+          "admin",
+          "administrador",
+          "diretoria",
+          "gestão",
+          "gestao",
+          "comunicação",
+          "comunicacao",
+          "secretaria",
+          "reitor",
+          "vice-reitor",
+          "padre",
+          "bispo"
+        ].includes(r.toLowerCase().trim())
+      )
+    ) {
+      return true;
+    }
+    return false;
+  };
+
   const [currentUser, setCurrentUser] = useState<Member | null>(initialCurrentUser);
-  const [isAdmin, setIsAdmin] = useState(initialIsAdmin);
+  const [isAdmin, setIsAdmin] = useState<boolean>(() => checkAdminStatus(auth.currentUser, initialCurrentUser, initialIsAdmin));
 
   useEffect(() => {
     const unsub = onAuthStateChanged(auth, (user) => {
       if (user && !user.isAnonymous) {
         setIsAdmin(true);
+      } else {
+        setIsAdmin(checkAdminStatus(user, currentUser, initialIsAdmin));
       }
     });
     return () => unsub();
-  }, []);
+  }, [currentUser, initialIsAdmin]);
 
   useEffect(() => {
     if (initialCurrentUser) {
       setCurrentUser(initialCurrentUser);
-      setIsAdmin(initialIsAdmin || initialCurrentUser.roles?.includes("ADMIN") || false);
+      setIsAdmin(checkAdminStatus(auth.currentUser, initialCurrentUser, initialIsAdmin));
     } else {
       const loadBonded = async () => {
         const bondedId = localStorage.getItem("davveroId_student_identity");
@@ -64,7 +129,7 @@ export default function DobloControl({ currentUser: initialCurrentUser, isAdmin:
             }
             if (found) {
               setCurrentUser(found);
-              setIsAdmin(initialIsAdmin || found.roles?.includes("ADMIN") || false);
+              setIsAdmin(checkAdminStatus(auth.currentUser, found, initialIsAdmin));
             }
           } catch (err) {}
         }
@@ -144,21 +209,38 @@ export default function DobloControl({ currentUser: initialCurrentUser, isAdmin:
   const handleSubmit = async (e: React.FormEvent) => {
     e.preventDefault();
 
-    if (!name || !date || !departureTime || !departureKm || !destination) {
+    if (!name.trim() || !date || !departureTime || !departureKm.trim() || !destination.trim()) {
       showAlert("Preencha os campos obrigatórios (nome, data, hora, km de saída e local).", { type: "error" });
       return;
     }
 
+    const cleanDepKm = departureKm.toString().replace(",", ".");
+    const numDepKm = parseFloat(cleanDepKm);
+    if (isNaN(numDepKm) || numDepKm < 0) {
+      showAlert("Informe um Km de saída válido.", { type: "error" });
+      return;
+    }
+
+    let numArrKm: number | null = null;
+    if (arrivalKm && arrivalKm.toString().trim() !== "") {
+      const cleanArrKm = arrivalKm.toString().replace(",", ".");
+      numArrKm = parseFloat(cleanArrKm);
+      if (isNaN(numArrKm) || numArrKm < 0) {
+        showAlert("Informe um Km de chegada válido ou deixe em branco.", { type: "error" });
+        return;
+      }
+    }
+
     try {
       await addDoc(collection(db, `artifacts/${appId}/public/data/doblo_logs`), {
-        name,
-        seminary,
+        name: name.trim(),
+        seminary: seminary || "",
         date,
         departureTime,
-        arrivalTime,
-        departureKm: Number(departureKm),
-        arrivalKm: arrivalKm ? Number(arrivalKm) : null,
-        destination,
+        arrivalTime: arrivalTime || "",
+        departureKm: numDepKm,
+        arrivalKm: numArrKm,
+        destination: destination.trim(),
         timestamp: serverTimestamp(),
         authorId: currentUser?.id || "public",
         biometricSignature
@@ -167,15 +249,16 @@ export default function DobloControl({ currentUser: initialCurrentUser, isAdmin:
       setArrivalTime("");
       setDestination("");
       setBiometricSignature(false);
-      // When saving a record, if it has an arrivalKm, set the new departureKm to it. Otherwise keep current departureKm (if they only filled departure and will fill arrival later).
-      if (arrivalKm) {
-        setDepartureKm(arrivalKm);
+      // When saving a record, if it has an arrivalKm, set the new departureKm to it. Otherwise keep current departureKm
+      if (numArrKm !== null) {
+        setDepartureKm(numArrKm.toString());
         showAlert("Registro completo salvo com sucesso!", { type: "success" });
       } else {
         showAlert("Registro de saída salvo! Lembre-se de voltar e editar o registro para preencher a chegada após a viagem.", { type: "info" });
       }
       setArrivalKm("");
     } catch (err: any) {
+      console.error("Erro ao adicionar registro doblo:", err);
       handleFirestoreError(err, OperationType.CREATE, `artifacts/${appId}/public/data/doblo_logs`);
       showAlert("Erro ao salvar o registro.", { type: "error" });
     }
@@ -437,16 +520,17 @@ export default function DobloControl({ currentUser: initialCurrentUser, isAdmin:
                     </thead>
                     <tbody className="divide-y divide-slate-100 dark:divide-slate-800/50">
                       {groupLogs.map(log => {
-                        const [y, m, d] = log.date.split("-");
-                        const dateStr = `${d}/${m}`;
-                        const kmDiff = log.arrivalKm ? (log.arrivalKm - log.departureKm).toFixed(1) : "-";
-                        const isAuthor = currentUser && log.authorId === currentUser.id;
-                        const logDate = new Date(log.date + 'T00:00:00');
-                        const today = new Date();
-                        today.setHours(0, 0, 0, 0);
-                        const diffTime = today.getTime() - logDate.getTime();
-                        const diffDays = Math.floor(diffTime / (1000 * 60 * 60 * 24));
-                        const canEdit = isAdmin || (isAuthor && diffDays <= 1);
+                        const [y, m, d] = (log.date || "").split("-");
+                        const dateStr = d && m ? `${d}/${m}` : (log.date || "-");
+                        const kmDiff = (log.arrivalKm !== undefined && log.arrivalKm !== null && !isNaN(Number(log.arrivalKm)))
+                          ? (Number(log.arrivalKm) - Number(log.departureKm || 0)).toFixed(1)
+                          : "-";
+                        const isAuthor = currentUser && (
+                          log.authorId === currentUser.id ||
+                          log.name?.toLowerCase().trim() === currentUser.name?.toLowerCase().trim()
+                        );
+                        const canEdit = isAdmin || isAuthor || !log.arrivalKm;
+                        const canDelete = isAdmin || isAuthor;
                         
                         return (
                           <tr key={log.id} className="hover:bg-slate-50/50 dark:hover:bg-slate-800/50 transition-colors">
@@ -461,25 +545,23 @@ export default function DobloControl({ currentUser: initialCurrentUser, isAdmin:
                             </td>
                             <td className="px-4 py-3 text-center">
                               <div className="font-medium text-slate-700 dark:text-slate-300">{log.arrivalTime || "-"}</div>
-                              <div className="text-[10px] text-slate-500">{log.arrivalKm ? `${log.arrivalKm} km` : "-"}</div>
+                              <div className="text-[10px] text-slate-500">{log.arrivalKm !== undefined && log.arrivalKm !== null ? `${log.arrivalKm} km` : "-"}</div>
                             </td>
                             <td className="px-4 py-3 text-right font-black text-slate-800 dark:text-white">
                               {kmDiff !== "-" ? `${kmDiff} km` : ""}
                             </td>
-                            {(isAdmin || currentUser) && (
-                              <td className="px-4 py-3 text-right">
-                                {canEdit && (
-                                  <button onClick={() => setEditingLog(log)} className="text-blue-500 hover:text-blue-600 p-1 mr-2" title="Editar">
-                                    <Edit2 className="w-4 h-4" />
-                                  </button>
-                                )}
-                                {(isAdmin || (isAuthor && diffDays <= 1)) && (
-                                  <button onClick={() => handleDelete(log.id)} className="text-red-500 hover:text-red-600 p-1" title="Excluir">
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                )}
-                              </td>
-                            )}
+                            <td className="px-4 py-3 text-right">
+                              {canEdit && (
+                                <button onClick={() => setEditingLog(log)} className="text-blue-500 hover:text-blue-600 p-1 mr-2" title="Editar">
+                                  <Edit2 className="w-4 h-4" />
+                                </button>
+                              )}
+                              {canDelete && (
+                                <button onClick={() => handleDelete(log.id)} className="text-red-500 hover:text-red-600 p-1" title="Excluir">
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              )}
+                            </td>
                           </tr>
                         );
                       })}

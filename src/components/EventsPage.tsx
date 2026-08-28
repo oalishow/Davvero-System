@@ -21,6 +21,16 @@ import {
   Printer,
   Sparkles,
   MessageCircle,
+  Church,
+  Plus,
+  Globe,
+  Award,
+  Crown,
+  ShieldCheck,
+  Trash2,
+  PauseCircle,
+  PlayCircle,
+  CheckCircle2,
 } from "lucide-react";
 import {
   collection,
@@ -37,20 +47,29 @@ import {
   appId,
   enrollStudent,
   unsubscribeFromEvent,
+  updateEvent,
+  deleteEvent,
 } from "../lib/firebase";
 import type { Event, Attendance, Member } from "../types";
+import { AVAILABLE_DIOCESES } from "../types";
 import PublicAttendeesModal from "./PublicAttendeesModal";
 import Modal from "./Modal";
 import PublicRequestModal from "./PublicRequestModal";
 import RegistrationSuccessModal from "./RegistrationSuccessModal";
 import EventQrCodeModal from "./EventQrCodeModal";
 import QuickEventEnrollModal from "./QuickEventEnrollModal";
+import CreateDioceseEventModal from "./CreateDioceseEventModal";
+import EventAttendeesModal from "./EventAttendeesModal";
+import CertificateEditor from "./CertificateEditor";
 import { useDialog } from "../context/DialogContext";
+import { useSettings } from "../context/SettingsContext";
+import { DEFAULT_PUBLIC_URL } from "../lib/constants";
 import PublicAppointmentsList from "./PublicAppointmentsList";
 import EventManagement from "./EventManagement";
 
 export default function EventsPage({ onNavigateToStudent, renderSeminary = false }: { onNavigateToStudent?: () => void, renderSeminary?: boolean }) {
   const { showAlert } = useDialog();
+  const { settings } = useSettings();
   const [isAdmin, setIsAdmin] = useState<boolean>(() => {
     const cachedMemberStr = localStorage.getItem("davveroId_cached_member");
     if (cachedMemberStr) {
@@ -64,6 +83,11 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     return false;
   });
   const [showAdminEventModal, setShowAdminEventModal] = useState(false);
+  const [showCreateDioceseModal, setShowCreateDioceseModal] = useState(false);
+  const [dioceseEventToEdit, setDioceseEventToEdit] = useState<Event | null>(null);
+  const [adminAttendeesEvent, setAdminAttendeesEvent] = useState<Event | null>(null);
+  const [certificateEditorEvent, setCertificateEditorEvent] = useState<{ event: Event, type: "participant" | "organizer" } | null>(null);
+  const [selectedDioceseFilter, setSelectedDioceseFilter] = useState<string>("all");
   const [showPublicReq, setShowPublicReq] = useState(false);
   const [showRegistrationSuccessModal, setShowRegistrationSuccessModal] = useState(false);
   const [selectedQrEvent, setSelectedQrEvent] = useState<Event | null>(null);
@@ -76,7 +100,7 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     return null;
   });
   const [events, setEvents] = useState<Event[]>([]);
-  const [eventTypeTab, setEventTypeTab] = useState<"general" | "seminary" | "appointments">(renderSeminary ? "seminary" : "general");
+  const [eventTypeTab, setEventTypeTab] = useState<"general" | "seminary" | "diocese" | "appointments">(renderSeminary ? "seminary" : "general");
   const [subTab, setSubTab] = useState<"upcoming" | "past">("upcoming");
   const [myAttendances, setMyAttendances] = useState<Attendance[]>([]);
   const [member, setMember] = useState<Member | null>(null);
@@ -184,6 +208,21 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
 
   const hasPrivilegedRole = member?.roles?.some(r => ["ADMIN", "COORDENADOR", "GERENTE", "REITOR", "VICE-REITOR", "DIRETOR ESPIRITUAL", "PADRE"].includes(r.toUpperCase()));
 
+  const isEventAdmin = (event: Event): boolean => {
+    if (isAdmin || hasPrivilegedRole) return true;
+    if (!member) return false;
+    if (event.createdBy && (event.createdBy === member.id || event.createdBy === member.ra || event.createdBy === member.email)) {
+      return true;
+    }
+    if (event.creatorEmail && member.email && event.creatorEmail.toLowerCase() === member.email.toLowerCase()) {
+      return true;
+    }
+    if (event.creatorRa && member.ra && event.creatorRa === member.ra) {
+      return true;
+    }
+    return false;
+  };
+
   const getEventComputedState = (e: any) => {
     if (e.status === "deleted") return "past";
     if (e.status === "cancelado") return "past";
@@ -211,8 +250,17 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
       if (!e.isSeminary) return false;
       if (e.seminaryId && e.seminaryId !== member?.seminary && !hasPrivilegedRole) return false;
       return true;
+    } else if (eventTypeTab === "diocese") {
+      if (!e.isDiocese) return false;
+      if (selectedDioceseFilter !== "all") {
+        const eventDiocese = (e.dioceseId || "").toUpperCase().trim();
+        const targetDiocese = selectedDioceseFilter.toUpperCase().trim();
+        if (eventDiocese !== targetDiocese) return false;
+      }
+      return true;
     } else {
-      return !e.isSeminary;
+      // Aba Acadêmico / Geral: Exibe eventos acadêmicos gerais e eventos diocesanos marcados como públicos!
+      return (!e.isSeminary && !e.isDiocese) || (e.isDiocese && Boolean(e.isPublic));
     }
   });
 
@@ -445,7 +493,7 @@ END:VCALENDAR`;
             title="Gerenciamento de Eventos"
           >
             <div className="max-h-[80vh] overflow-y-auto custom-scrollbar p-1">
-               <EventManagement adminAccessLevel="ADMIN" />
+               <EventManagement adminAccessLevel="ADMIN" member={member} />
             </div>
           </Modal>
         )}
@@ -507,6 +555,88 @@ END:VCALENDAR`;
           >
             SEMINÁRIO
           </button>
+          <button
+            onClick={() => setEventTypeTab("diocese")}
+            className={`flex-1 py-3 rounded-xl text-xs sm:text-sm font-black uppercase tracking-widest transition-all ${
+              eventTypeTab === "diocese"
+                ? "bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-md transform scale-[1.02]"
+                : "text-slate-400 hover:text-slate-600 hover:bg-slate-200/50 dark:hover:bg-slate-700/30"
+            }`}
+          >
+            DIOCESES
+          </button>
+        </div>
+      )}
+
+      {eventTypeTab === "diocese" && !renderSeminary && (
+        <div className="bg-gradient-to-br from-purple-50/90 via-white to-indigo-50/90 dark:from-purple-950/20 dark:via-slate-800/90 dark:to-indigo-950/20 border border-purple-200/80 dark:border-purple-800/40 p-4 sm:p-5 rounded-3xl mb-4 shadow-sm">
+          <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-4">
+            <div className="flex items-start sm:items-center gap-3">
+              <div className="p-2.5 bg-purple-600/10 dark:bg-purple-500/20 text-purple-600 dark:text-purple-400 rounded-2xl shrink-0">
+                <Church className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  Eventos das Dioceses
+                  {member?.diocese && (
+                    <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300">
+                      Sua: {member.diocese}
+                    </span>
+                  )}
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Encontros, formações, assembleias e retiros organizados por cada Diocese.
+                </p>
+              </div>
+            </div>
+
+            <button
+              onClick={() => setShowCreateDioceseModal(true)}
+              className="px-4 py-2.5 bg-gradient-to-r from-purple-600 to-indigo-600 hover:from-purple-700 hover:to-indigo-700 text-white rounded-xl text-xs font-bold shadow-md shadow-purple-500/20 active:scale-95 transition-all flex items-center justify-center gap-2 shrink-0"
+            >
+              <Plus className="w-4 h-4" />
+              <span>Criar Evento da Diocese</span>
+            </button>
+          </div>
+
+          {/* Diocese Filter Bar */}
+          <div className="mt-4 pt-3 border-t border-purple-100 dark:border-purple-900/30 flex items-center gap-2 overflow-x-auto pb-1 text-xs no-scrollbar">
+            <span className="text-[11px] font-bold uppercase tracking-wider text-slate-400 dark:text-slate-500 shrink-0">
+              Filtrar:
+            </span>
+            <button
+              onClick={() => setSelectedDioceseFilter("all")}
+              className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all ${
+                selectedDioceseFilter === "all"
+                  ? "bg-purple-600 text-white shadow-sm"
+                  : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 border border-slate-200 dark:border-slate-600"
+              }`}
+            >
+              Todas as Dioceses ({events.filter((e) => e.isDiocese).length})
+            </button>
+            {Array.from(
+              new Set([...AVAILABLE_DIOCESES, ...(settings.customDioceses || [])])
+            ).map((d) => {
+              const count = events.filter(
+                (e) =>
+                  e.isDiocese &&
+                  (e.dioceseId || "").toUpperCase() === d.toUpperCase()
+              ).length;
+              return (
+                <button
+                  key={d}
+                  onClick={() => setSelectedDioceseFilter(d)}
+                  className={`px-3 py-1.5 rounded-xl font-bold whitespace-nowrap transition-all ${
+                    selectedDioceseFilter === d
+                      ? "bg-purple-600 text-white shadow-sm"
+                      : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-purple-50 dark:hover:bg-purple-900/20 border border-slate-200 dark:border-slate-600"
+                  }`}
+                >
+                  {d} {count > 0 && <span className="opacity-75">({count})</span>}
+                </button>
+              );
+            })}
+          </div>
         </div>
       )}
 
@@ -618,6 +748,128 @@ END:VCALENDAR`;
                 key={event.id}
                 className="bg-white dark:bg-slate-800/80 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm relative overflow-hidden group hover:border-sky-300 dark:hover:border-sky-700 transition-colors"
               >
+                {/* Event Admin Management Bar */}
+                {isEventAdmin(event) && (
+                  <div className="mb-4 -mt-1 p-2.5 sm:p-3 bg-gradient-to-r from-purple-50 via-indigo-50/70 to-purple-50 dark:from-purple-950/40 dark:via-indigo-950/30 dark:to-purple-950/40 border border-purple-200 dark:border-purple-800/60 rounded-2xl flex flex-wrap items-center justify-between gap-2 shadow-xs">
+                    <div className="flex items-center gap-2">
+                      <div className="w-7 h-7 rounded-lg bg-purple-600 text-white flex items-center justify-center font-bold text-xs shadow-xs shrink-0">
+                        <Crown className="w-4 h-4" />
+                      </div>
+                      <div>
+                        <p className="text-[11px] font-black text-purple-900 dark:text-purple-200 flex items-center gap-1.5">
+                          <span>{isAdmin || hasPrivilegedRole ? "Painel de Gestão do Evento" : "Você é o Administrador deste Evento"}</span>
+                          {event.creatorName && (
+                            <span className="text-[10px] font-normal text-purple-700 dark:text-purple-300">
+                              (Criado por: {event.creatorName})
+                            </span>
+                          )}
+                        </p>
+                        <p className="text-[10px] text-purple-700/80 dark:text-purple-400">
+                          Gerencie inscritos, presenças, certificados e configurações.
+                        </p>
+                      </div>
+                    </div>
+
+                    <div className="flex flex-wrap items-center gap-1.5">
+                      {/* Manage Attendees & Presence */}
+                      <button
+                        onClick={() => setAdminAttendeesEvent(event)}
+                        className="px-2.5 py-1.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all shadow-xs"
+                        title="Gerenciar inscritos, lista de chamada e presença"
+                      >
+                        <Users className="w-3.5 h-3.5" />
+                        <span>Inscritos & Presença</span>
+                      </button>
+
+                      {/* Edit Event */}
+                      <button
+                        onClick={() => {
+                          if (event.isDiocese) {
+                            setDioceseEventToEdit(event);
+                            setShowCreateDioceseModal(true);
+                          } else {
+                            setShowAdminEventModal(true);
+                          }
+                        }}
+                        className="px-2.5 py-1.5 bg-white dark:bg-slate-800 text-purple-700 dark:text-purple-300 border border-purple-200 dark:border-purple-700 hover:bg-purple-50 dark:hover:bg-purple-950/40 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all"
+                        title="Editar dados e programação do evento"
+                      >
+                        <Edit className="w-3.5 h-3.5" />
+                        <span>Editar</span>
+                      </button>
+
+                      {/* Certificates Editor */}
+                      <button
+                        onClick={() => setCertificateEditorEvent({ event, type: "participant" })}
+                        className="px-2.5 py-1.5 bg-white dark:bg-slate-800 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-700 hover:bg-indigo-50 dark:hover:bg-indigo-950/40 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1.5 transition-all"
+                        title="Configurar modelo de certificado"
+                      >
+                        <Award className="w-3.5 h-3.5 text-amber-500" />
+                        <span>Certificado</span>
+                      </button>
+
+                      {/* Pause / Resume Registrations */}
+                      <button
+                        onClick={async () => {
+                          try {
+                            await updateEvent(event.id, {
+                              isRegistrationPaused: !event.isRegistrationPaused
+                            });
+                            showAlert(
+                              event.isRegistrationPaused
+                                ? "Inscrições reabertas com sucesso!"
+                                : "Inscrições pausadas com sucesso!",
+                              { type: "success" }
+                            );
+                          } catch (e) {
+                            showAlert("Erro ao alterar status das inscrições.", { type: "error" });
+                          }
+                        }}
+                        className={`px-2 py-1.5 rounded-lg text-[10px] font-bold uppercase tracking-wider flex items-center gap-1 transition-all border ${
+                          event.isRegistrationPaused
+                            ? "bg-emerald-50 text-emerald-700 border-emerald-200 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:text-emerald-300 dark:border-emerald-800"
+                            : "bg-amber-50 text-amber-700 border-amber-200 hover:bg-amber-100 dark:bg-amber-950/40 dark:text-amber-300 dark:border-amber-800"
+                        }`}
+                        title={event.isRegistrationPaused ? "Reabrir inscrições" : "Pausar inscrições temporariamente"}
+                      >
+                        {event.isRegistrationPaused ? (
+                          <>
+                            <PlayCircle className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Reabrir</span>
+                          </>
+                        ) : (
+                          <>
+                            <PauseCircle className="w-3.5 h-3.5" />
+                            <span className="hidden sm:inline">Pausar</span>
+                          </>
+                        )}
+                      </button>
+
+                      {/* Delete / Cancel Event */}
+                      <button
+                        onClick={() => {
+                          setConfirmModal({
+                            isOpen: true,
+                            message: `Deseja realmente excluir o evento "${event.title}"? Esta ação removerá o evento do sistema.`,
+                            onConfirm: async () => {
+                              try {
+                                await deleteEvent(event.id);
+                                showAlert("Evento excluído com sucesso!", { type: "success" });
+                              } catch (e) {
+                                showAlert("Erro ao excluir evento. Verifique suas permissões.", { type: "error" });
+                              }
+                            }
+                          });
+                        }}
+                        className="px-2 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/50 text-rose-600 dark:text-rose-400 border border-rose-200 dark:border-rose-800 rounded-lg text-[10px] font-bold uppercase transition-all"
+                        title="Excluir evento"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                      </button>
+                    </div>
+                  </div>
+                )}
+
                 <div className="flex flex-col sm:flex-row gap-5">
                   {/* Left Column - Dates */}
                   <div className="flex sm:flex-col items-center sm:items-start gap-4 sm:gap-1 shrink-0 w-full sm:w-32 border-b sm:border-b-0 sm:border-r border-slate-100 dark:border-slate-700/50 pb-4 sm:pb-0 sm:pr-4">
@@ -709,6 +961,26 @@ END:VCALENDAR`;
                         )}
                         {event.format === "hibrido" ? "Híbrido" : event.format}
                       </span>
+                      {event.isDiocese && (
+                        <span className="inline-flex items-center gap-1 bg-purple-100 text-purple-700 dark:bg-purple-900/40 dark:text-purple-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          <Church className="w-3 h-3" /> Diocese: {event.dioceseId || "Geral"}
+                        </span>
+                      )}
+                      {event.isPublic && (
+                        <span className="inline-flex items-center gap-1 bg-sky-100 text-sky-700 dark:bg-sky-900/40 dark:text-sky-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          <Globe className="w-3 h-3" /> Público
+                        </span>
+                      )}
+                      {event.creatorName && (
+                        <span className="inline-flex items-center gap-1 bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 text-[10px] font-medium px-2 py-0.5 rounded-full">
+                          <User className="w-3 h-3" /> Criado por: {event.creatorName}
+                        </span>
+                      )}
+                      {event.isSeminary && (
+                        <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 dark:bg-amber-900/40 dark:text-amber-300 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
+                          Seminário{event.seminaryId ? `: ${event.seminaryId}` : ""}
+                        </span>
+                      )}
                       {event.isPinned && (
                         <span className="inline-flex items-center gap-1 bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400 text-[10px] font-bold px-2 py-0.5 rounded-full uppercase tracking-wider">
                           <Pin className="w-3 h-3" /> Fixado
@@ -807,7 +1079,10 @@ END:VCALENDAR`;
 
                       <button
                         onClick={() => {
-                          const url = `${window.location.origin}${window.location.pathname}?event=${encodeURIComponent(event.id)}`;
+                          const baseUrl = settings.url?.trim()
+                            ? settings.url.trim().replace(/\/$/, "")
+                            : DEFAULT_PUBLIC_URL;
+                          const url = `${baseUrl}/?event=${encodeURIComponent(event.id)}`;
                           const shareMsg = `*${event.title}*\n${event.speaker ? `👤 Convidado: ${event.speaker}\n` : ''}📅 Data: ${new Date(event.startDate).toLocaleDateString('pt-BR')}\n📍 Formato: ${event.format === 'online' ? 'Online' : 'Presencial'}\n\n👉 Acesse e participe:\n${url}`;
                           const waUrl = `https://api.whatsapp.com/send?text=${encodeURIComponent(shareMsg)}`;
                           window.open(waUrl, '_blank', 'noopener,noreferrer');
@@ -820,16 +1095,41 @@ END:VCALENDAR`;
                       
                       <button
                         onClick={async () => {
-                          const url = `${window.location.origin}${window.location.pathname}?event=${encodeURIComponent(event.id)}`;
+                          const baseUrl = settings.url?.trim()
+                            ? settings.url.trim().replace(/\/$/, "")
+                            : DEFAULT_PUBLIC_URL;
+                          const url = `${baseUrl}/?event=${encodeURIComponent(event.id)}`;
                           if (navigator.share) {
                             try {
-                              await navigator.share({
+                              const shareData: ShareData = {
                                 title: event.title,
-                                text: `Confira o evento acadêmico: ${event.title}`,
+                                text: `Confira o evento acadêmico: ${event.title}\n${event.speaker ? `👤 Convidado: ${event.speaker}\n` : ''}${url}`,
                                 url,
-                              });
-                            } catch {
-                              // user cancel
+                              };
+
+                              if (event.imageUrl && typeof navigator.canShare === "function") {
+                                try {
+                                  const res = await fetch(event.imageUrl, { mode: "cors" });
+                                  if (res.ok) {
+                                    const blob = await res.blob();
+                                    const mime = blob.type || "image/jpeg";
+                                    const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+                                    const file = new File([blob], `evento-${event.id}.${ext}`, { type: mime });
+                                    if (navigator.canShare({ files: [file] })) {
+                                      shareData.files = [file];
+                                    }
+                                  }
+                                } catch (imgErr) {
+                                  console.log("Could not attach image to share:", imgErr);
+                                }
+                              }
+
+                              await navigator.share(shareData);
+                            } catch (err: any) {
+                              if (err?.name !== "AbortError") {
+                                await navigator.clipboard.writeText(url);
+                                showAlert("Link do evento copiado para a área de transferência!", { type: 'success' });
+                              }
                             }
                           } else {
                             await navigator.clipboard.writeText(url);
@@ -837,7 +1137,7 @@ END:VCALENDAR`;
                           }
                         }}
                         className="flex items-center justify-center sm:justify-start gap-1.5 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max cursor-pointer"
-                        title="Compartilhar Link ou Redes Sociais"
+                        title="Compartilhar com Foto nas Redes Sociais"
                       >
                         <Share2 className="w-3.5 h-3.5" /> Compartilhar
                       </button>
@@ -1057,6 +1357,49 @@ END:VCALENDAR`;
         <RegistrationSuccessModal 
           isOpen={showRegistrationSuccessModal} 
           onClose={() => setShowRegistrationSuccessModal(false)}
+        />
+      )}
+
+      {showCreateDioceseModal && (
+        <CreateDioceseEventModal
+          isOpen={showCreateDioceseModal}
+          onClose={() => {
+            setShowCreateDioceseModal(false);
+            setDioceseEventToEdit(null);
+          }}
+          onSuccess={(newEventId) => {
+            setShowCreateDioceseModal(false);
+            showAlert(
+              dioceseEventToEdit
+                ? "Evento da Diocese atualizado com sucesso!"
+                : "Evento da Diocese criado com sucesso!",
+              { type: "success" }
+            );
+            setDioceseEventToEdit(null);
+            setEventTypeTab("diocese");
+          }}
+          member={member}
+          eventToEdit={dioceseEventToEdit}
+          defaultDiocese={selectedDioceseFilter !== "all" ? selectedDioceseFilter : member?.diocese}
+        />
+      )}
+
+      {adminAttendeesEvent && (
+        <EventAttendeesModal
+          event={adminAttendeesEvent}
+          onClose={() => setAdminAttendeesEvent(null)}
+        />
+      )}
+
+      {certificateEditorEvent && (
+        <CertificateEditor
+          event={certificateEditorEvent.event}
+          type={certificateEditorEvent.type}
+          onClose={() => setCertificateEditorEvent(null)}
+          onSaved={() => {
+            setCertificateEditorEvent(null);
+            showAlert("Modelo de certificado salvo com sucesso!", { type: "success" });
+          }}
         />
       )}
     </div>

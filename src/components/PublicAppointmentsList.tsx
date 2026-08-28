@@ -210,7 +210,26 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
       )}
 
       {activeSubTab === "doblo" && (
-        <DobloControl currentUser={member} isAdmin={member?.roles?.includes("ADMIN") || false} />
+        <DobloControl
+          currentUser={member}
+          isAdmin={
+            member?.roles?.some((r) =>
+              [
+                "admin",
+                "administrador",
+                "diretoria",
+                "gestão",
+                "gestao",
+                "comunicação",
+                "comunicacao",
+                "secretaria",
+                "reitor",
+                "vice-reitor",
+                "padre",
+              ].includes(r.toLowerCase().trim())
+            ) || false
+          }
+        />
       )}
     </div>
   );

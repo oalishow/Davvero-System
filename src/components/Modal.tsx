@@ -13,6 +13,7 @@ interface ModalProps {
   confirmVariant?: 'primary' | 'danger' | 'success';
   hideFooter?: boolean;
   isConfirmValid?: boolean;
+  maxWidth?: string;
 }
 
 export default function Modal({ 
@@ -24,7 +25,8 @@ export default function Modal({
   onConfirm,
   confirmVariant = 'primary',
   hideFooter = false,
-  isConfirmValid = true
+  isConfirmValid = true,
+  maxWidth = 'max-w-md'
 }: ModalProps) {
   const [mounted, setMounted] = useState(false);
 
@@ -52,7 +54,7 @@ export default function Modal({
             initial={{ opacity: 0, scale: 0.95, y: 20 }}
             animate={{ opacity: 1, scale: 1, y: 0 }}
             exit={{ opacity: 0, scale: 0.95, y: 20 }}
-            className="relative w-full max-w-md bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] my-auto min-h-0"
+            className={`relative w-full ${maxWidth} bg-white dark:bg-slate-900 rounded-[2rem] shadow-2xl overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] my-auto min-h-0`}
           >
             <div className="p-6 sm:p-8 flex flex-col overflow-hidden max-h-full min-h-0">
               <div className="flex items-start justify-between mb-6 gap-4 shrink-0">

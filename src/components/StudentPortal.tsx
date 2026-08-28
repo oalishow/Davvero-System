@@ -83,8 +83,12 @@ const AsyncCertificateRenderer = memo(
 
       const needsAssets =
         initialTemplate.hasCustomBg ||
+        initialTemplate.hasCustomLogo ||
         initialTemplate.hasFajopaSignature ||
-        initialTemplate.hasRectorSignature;
+        initialTemplate.hasRectorSignature ||
+        initialTemplate.hasSignature1 ||
+        initialTemplate.hasSignature2 ||
+        initialTemplate.hasSignature3;
       if (!needsAssets) return;
 
       const fetchAssets = async () => {
@@ -116,6 +120,15 @@ const AsyncCertificateRenderer = memo(
                     ...(assets.seminarRectorSignatureUrl && {
                       seminarRectorSignatureUrl:
                         assets.seminarRectorSignatureUrl,
+                    }),
+                    ...(assets.signature1Url && {
+                      signature1Url: assets.signature1Url,
+                    }),
+                    ...(assets.signature2Url && {
+                      signature2Url: assets.signature2Url,
+                    }),
+                    ...(assets.signature3Url && {
+                      signature3Url: assets.signature3Url,
                     }),
                   }
                 : prev,

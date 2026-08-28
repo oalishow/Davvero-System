@@ -10,7 +10,7 @@ import {
   Search,
   Award,
   Image as ImageIcon,
-   Trash2,
+  Trash2,
   User,
   Download,
   ExternalLink,
@@ -18,6 +18,9 @@ import {
   Pin,
   QrCode,
   Printer,
+  Church,
+  Globe,
+  ShieldCheck,
 } from "lucide-react";
 import ImageCropperModal from "./ImageCropperModal";
 import EventQrCodeModal from "./EventQrCodeModal";
@@ -40,14 +43,22 @@ import {
   deleteEvent,
   createNotification,
 } from "../lib/firebase";
-import { type Event, type Attendance, AVAILABLE_SEMINARIES } from "../types";
+import { type Event, type Attendance, type Member, AVAILABLE_SEMINARIES, AVAILABLE_DIOCESES } from "../types";
+import { useSettings } from "../context/SettingsContext";
 import EventAttendeesModal from "./EventAttendeesModal";
 import CertificateEditor from "./CertificateEditor";
 import Modal from "./Modal";
 import { useDialog } from "../context/DialogContext";
 
-export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminAccessLevel?: "ADMIN" | "GERENTE" | "LEITOR" }) {
+export default function EventManagement({ 
+  adminAccessLevel = "ADMIN",
+  member = null
+}: { 
+  adminAccessLevel?: "ADMIN" | "GERENTE" | "LEITOR",
+  member?: Member | null
+}) {
   const { showAlert } = useDialog();
+  const { settings } = useSettings();
   const [events, setEvents] = useState<Event[]>([]);
   const [attendancesCount, setAttendancesCount] = useState<
     Record<string, number>
@@ -88,6 +99,9 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
   const [registrationDeadline, setRegistrationDeadline] = useState("");
   const [isSeminary, setIsSeminary] = useState(false);
   const [seminaryId, setSeminaryId] = useState(AVAILABLE_SEMINARIES[0]);
+  const [isDiocese, setIsDiocese] = useState(false);
+  const [dioceseId, setDioceseId] = useState(AVAILABLE_DIOCESES[0]);
+  const [isPublic, setIsPublic] = useState(false);
   const [isPaid, setIsPaid] = useState(false);
   const [price, setPrice] = useState("");
   const [googleFormsLink, setGoogleFormsLink] = useState("");
@@ -168,6 +182,9 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
     setRegistrationDeadline(event.registrationDeadline || "");
     setIsSeminary(event.isSeminary || false);
     setSeminaryId(event.seminaryId || "");
+    setIsDiocese(event.isDiocese || false);
+    setDioceseId(event.dioceseId || AVAILABLE_DIOCESES[0]);
+    setIsPublic(event.isPublic || false);
     setIsPaid(event.isPaid || false);
     setPrice(event.price ? event.price.toString() : "");
     setGoogleFormsLink(event.googleFormsLink || "");
@@ -206,6 +223,9 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
     setRegistrationDeadline("");
     setIsSeminary(false);
     setSeminaryId(AVAILABLE_SEMINARIES[0]);
+    setIsDiocese(false);
+    setDioceseId(AVAILABLE_DIOCESES[0]);
+    setIsPublic(false);
     setIsPaid(false);
     setPrice("");
     setGoogleFormsLink("");
@@ -251,6 +271,9 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
         schedulePdfUrl,
         isSeminary,
         seminaryId: isSeminary ? seminaryId : null,
+        isDiocese,
+        dioceseId: isDiocese ? dioceseId : null,
+        isPublic: Boolean(isPublic),
         isPaid,
         price: isPaid && price ? Number(price) : null,
         googleFormsLink: googleFormsLink || null,
@@ -263,6 +286,13 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
           customCloseTime: presenceCustomCloseTime || null,
         }
       };
+
+      if (!editingEventId) {
+        payload.createdBy = member?.id || member?.ra || member?.email || "admin";
+        payload.creatorName = member?.name || "Administrador";
+        payload.creatorEmail = member?.email || "";
+        payload.creatorRa = member?.ra || "";
+      }
       if (hours) {
         payload.hours = Number(hours);
       } else {
@@ -743,41 +773,109 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
           )}
         </div>
 
-        <div className="mt-4">
-          <label className="flex items-center gap-3 cursor-pointer p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div>
+            <label className="flex items-center gap-3 cursor-pointer p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl h-full">
+              <input
+                type="checkbox"
+                checked={isSeminary}
+                onChange={(e) => {
+                  setIsSeminary(e.target.checked);
+                  if (e.target.checked) setIsDiocese(false);
+                }}
+                className="w-5 h-5 text-amber-600 focus:ring-amber-500 rounded border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 focus:ring-2"
+              />
+              <div>
+                <p className="text-sm font-bold text-amber-900 dark:text-amber-500">Restrito ao Seminário</p>
+                <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 uppercase">Visível na aba Seminário para os seminaristas.</p>
+              </div>
+            </label>
+            
+            {isSeminary && (
+              <div className="mt-3 p-4 bg-amber-50/50 dark:bg-amber-900/5 border border-amber-200/50 dark:border-amber-800/30 rounded-xl">
+                 <label className="block text-[10px] sm:text-xs font-semibold text-amber-800 dark:text-amber-500 uppercase tracking-wider mb-2">
+                   Selecione o Seminário (Opcional)
+                 </label>
+                 <select
+                   value={seminaryId}
+                   onChange={(e) => setSeminaryId(e.target.value)}
+                   className="w-full bg-white dark:bg-slate-800 border fill-amber-200 border-amber-200 dark:border-amber-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm outline-none focus:border-amber-500 dark:focus:border-amber-500"
+                 >
+                   <option value="">Todos os Seminários (Geral)</option>
+                   {AVAILABLE_SEMINARIES.map(s => (
+                     <option key={s} value={s}>{s}</option>
+                   ))}
+                 </select>
+              </div>
+            )}
+          </div>
+
+          <div>
+            <label className="flex items-center gap-3 cursor-pointer p-4 bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800/50 rounded-xl h-full">
+              <input
+                type="checkbox"
+                checked={isDiocese}
+                onChange={(e) => {
+                  setIsDiocese(e.target.checked);
+                  if (e.target.checked) setIsSeminary(false);
+                }}
+                className="w-5 h-5 text-purple-600 focus:ring-purple-500 rounded border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 focus:ring-2"
+              />
+              <div>
+                <p className="text-sm font-bold text-purple-900 dark:text-purple-400">Evento da Diocese</p>
+                <p className="text-[10px] text-purple-700/80 dark:text-purple-400/80 uppercase">Visível na aba Dioceses para a diocese correspondente.</p>
+              </div>
+            </label>
+            
+            {isDiocese && (
+              <div className="mt-3 p-4 bg-purple-50/50 dark:bg-purple-900/5 border border-purple-200/50 dark:border-purple-800/30 rounded-xl">
+                 <label className="block text-[10px] sm:text-xs font-semibold text-purple-800 dark:text-purple-400 uppercase tracking-wider mb-2">
+                   Selecione a Diocese
+                 </label>
+                 <select
+                   value={dioceseId}
+                   onChange={(e) => setDioceseId(e.target.value)}
+                   className="w-full bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm outline-none focus:border-purple-500 dark:focus:border-purple-500 font-semibold"
+                 >
+                   {Array.from(new Set([...AVAILABLE_DIOCESES, ...(settings.customDioceses || [])])).map(d => (
+                     <option key={d} value={d}>Diocese de {d}</option>
+                   ))}
+                 </select>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Public Visibility Toggle */}
+        <div className="mt-4 p-4 bg-gradient-to-r from-sky-50 to-indigo-50 dark:from-sky-950/20 dark:to-indigo-950/20 border border-sky-200 dark:border-sky-800/50 rounded-xl">
+          <label className="flex items-start gap-3 cursor-pointer select-none">
             <input
               type="checkbox"
-              checked={isSeminary}
-              onChange={(e) => setIsSeminary(e.target.checked)}
-              className="w-5 h-5 text-amber-600 focus:ring-amber-500 rounded border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 focus:ring-2"
+              checked={isPublic}
+              onChange={(e) => setIsPublic(e.target.checked)}
+              className="w-5 h-5 mt-0.5 text-sky-600 focus:ring-sky-500 rounded border-sky-300 dark:border-sky-700 bg-white dark:bg-slate-900 focus:ring-2 cursor-pointer"
             />
-            <div>
-              <p className="text-sm font-bold text-amber-900 dark:text-amber-500">Restrito ao Seminário</p>
-              <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 uppercase">Este evento será visível apenas para funções do seminário.</p>
+            <div className="flex-1">
+              <div className="flex items-center gap-2">
+                <Globe className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                <span className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                  Tornar evento público (Visível para todos)
+                </span>
+                {isPublic && (
+                  <span className="text-[10px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                    Público
+                  </span>
+                )}
+              </div>
+              <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                {isPublic
+                  ? "Este evento será exibido no mural geral da faculdade/instituto para todos os alunos e visitantes, além das abas específicas."
+                  : "Este evento ficará visível conforme a categoria selecionada (Seminário, Diocese ou Acadêmico)."}
+              </p>
             </div>
           </label>
-          
-          {isSeminary && (
-            <div className="mt-3 p-4 bg-amber-50/50 dark:bg-amber-900/5 border border-amber-200/50 dark:border-amber-800/30 rounded-xl">
-               <label className="block text-[10px] sm:text-xs font-semibold text-amber-800 dark:text-amber-500 uppercase tracking-wider mb-2">
-                 Selecione o Seminário (Opcional)
-               </label>
-               <select
-                 value={seminaryId}
-                 onChange={(e) => setSeminaryId(e.target.value)}
-                 className="w-full bg-white dark:bg-slate-800 border fill-amber-200 border-amber-200 dark:border-amber-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm outline-none focus:border-amber-500 dark:focus:border-amber-500"
-               >
-                 <option value="">Todos os Seminários (Geral)</option>
-                 {AVAILABLE_SEMINARIES.map(s => (
-                   <option key={s} value={s}>{s}</option>
-                 ))}
-               </select>
-               <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 uppercase mt-2">
-                 Se deixar vazio, será visível para todos que tenham o papel de SEMINARISTA, REITOR, etc.
-               </p>
-            </div>
-          )}
         </div>
+
         <div className="mt-4 flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
           <button
             onClick={handleSaveEvent}
@@ -880,7 +978,22 @@ export default function EventManagement({ adminAccessLevel = "ADMIN" }: { adminA
                       )}
                       {event.isSeminary && (
                         <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-500/20 dark:text-amber-400">
-                          Seminário
+                          Seminário{event.seminaryId ? `: ${event.seminaryId}` : ""}
+                        </span>
+                      )}
+                      {event.isDiocese && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-500/20 dark:text-purple-300">
+                          Diocese{event.dioceseId ? `: ${event.dioceseId}` : ""}
+                        </span>
+                      )}
+                      {event.isPublic && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-sky-100 text-sky-700 dark:bg-sky-500/20 dark:text-sky-300 flex items-center gap-1">
+                          <Globe className="w-2.5 h-2.5" /> Público
+                        </span>
+                      )}
+                      {event.creatorName && (
+                        <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 flex items-center gap-1">
+                          <User className="w-2.5 h-2.5" /> Criado por: {event.creatorName}
                         </span>
                       )}
                     </div>

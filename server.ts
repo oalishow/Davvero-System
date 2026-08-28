@@ -269,12 +269,12 @@ async function startServer() {
 
     const imageUrl =
       event.imageUrl ||
-      "https://ais-pre-5mjiobmfgqnxh35v67w7rb-51066803168.us-east1.run.app/icon.svg";
+      "https://davvero.netlify.app/icon.svg";
 
     const escapedTitle = escapeHtml(title);
     const escapedDesc = escapeHtml(description);
     const escapedImg = escapeHtml(imageUrl);
-    const escapedUrl = escapeHtml(requestUrl);
+    const escapedUrl = escapeHtml(requestUrl.includes("localhost") || requestUrl.includes("run.app") ? requestUrl : `https://davvero.netlify.app/?event=${encodeURIComponent(event.id)}`);
 
     const metaBlock = `
     <!-- Dynamic Open Graph / WhatsApp / Facebook Meta Tags -->

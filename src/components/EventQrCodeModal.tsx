@@ -21,6 +21,7 @@ import {
 import { QRCodeCanvas } from "qrcode.react";
 import { useSettings } from "../context/SettingsContext";
 import { useDialog } from "../context/DialogContext";
+import { DEFAULT_PUBLIC_URL } from "../lib/constants";
 import type { Event } from "../types";
 
 interface EventQrCodeModalProps {
@@ -37,9 +38,10 @@ export default function EventQrCodeModal({
   const [copied, setCopied] = useState(false);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
 
-  const eventUrl = `${window.location.origin}${window.location.pathname}?event=${encodeURIComponent(
-    event.id
-  )}`;
+  const baseUrl = settings.url?.trim()
+    ? settings.url.trim().replace(/\/$/, "")
+    : DEFAULT_PUBLIC_URL;
+  const eventUrl = `${baseUrl}/?event=${encodeURIComponent(event.id)}`;
 
   const formatDate = (isoString?: string) => {
     if (!isoString) return "";
@@ -107,13 +109,35 @@ export default function EventQrCodeModal({
   const handleShare = async () => {
     if (navigator.share) {
       try {
-        await navigator.share({
+        const shareData: ShareData = {
           title: event.title,
-          text: `Confira o evento: ${event.title}`,
+          text: `Confira o evento acadêmico: ${event.title}\n${event.speaker ? `👤 Convidado: ${event.speaker}\n` : ''}${eventUrl}`,
           url: eventUrl,
-        });
-      } catch {
-        // Ignored or cancelled
+        };
+
+        // Try to attach image file if available so WhatsApp/social apps immediately show the photo in share sheet
+        if (event.imageUrl && typeof navigator.canShare === "function") {
+          try {
+            const res = await fetch(event.imageUrl, { mode: "cors" });
+            if (res.ok) {
+              const blob = await res.blob();
+              const mime = blob.type || "image/jpeg";
+              const ext = mime.includes("png") ? "png" : mime.includes("webp") ? "webp" : "jpg";
+              const file = new File([blob], `evento-${event.id}.${ext}`, { type: mime });
+              if (navigator.canShare({ files: [file] })) {
+                shareData.files = [file];
+              }
+            }
+          } catch (imgErr) {
+            console.log("Could not attach image file to share sheet:", imgErr);
+          }
+        }
+
+        await navigator.share(shareData);
+      } catch (e: any) {
+        if (e?.name !== "AbortError") {
+          handleCopyLink();
+        }
       }
     } else {
       handleCopyLink();
@@ -240,34 +264,28 @@ export default function EventQrCodeModal({
             {/* Top Border Accent */}
             <div className="absolute top-0 left-0 right-0 h-3 bg-gradient-to-r from-sky-500 via-indigo-500 to-sky-600 print:bg-sky-600" />
 
-            {/* Institution Header */}
+            {/* App / Event Header */}
             <div className="flex flex-col items-center justify-center pt-2 mb-3 w-full">
-              {settings.instLogo ? (
-                <img
-                  src={settings.instLogo}
-                  alt="Instituição"
-                  className="h-12 sm:h-14 object-contain mb-2 print:h-12"
-                />
-              ) : (
-                <div className="w-10 h-10 rounded-2xl bg-sky-100 text-sky-700 flex items-center justify-center mb-2 font-black">
-                  <GraduationCap className="w-6 h-6 text-sky-600" />
-                </div>
-              )}
-              <p className="text-xs font-extrabold tracking-widest uppercase text-slate-500">
-                {settings.instName || "INSTITUIÇÃO DE ENSINO"}
+              <img
+                src={settings.instLogo || "/icon.svg"}
+                alt="DAVVERO System"
+                className="h-12 sm:h-14 object-contain mb-2 print:h-12 rounded-xl"
+              />
+              <p className="text-xs font-extrabold tracking-widest uppercase text-slate-700">
+                DAVVERO System
               </p>
               <p className="text-[10px] font-bold text-sky-600 uppercase tracking-widest mt-0.5">
-                {event.isSeminary ? "Seminário Maior" : "Portal Acadêmico"}
+                {event.isSeminary ? "Eventos • Seminário Maior" : "Eventos"}
               </p>
             </div>
 
-            {/* EVENT PHOTO / BANNER (PROMINENT FOR PRINT & DISPLAY) */}
+            {/* EVENT PHOTO / BANNER (FULL IMAGE DISPLAY - NO CROPPING) */}
             {event.imageUrl ? (
-              <div className="w-full max-w-md my-2.5 rounded-2xl overflow-hidden border border-slate-200 shadow-sm bg-slate-100 flex items-center justify-center print:border-slate-300 print:shadow-none print:my-2">
+              <div className="w-full max-w-lg my-3 rounded-2xl overflow-hidden border border-slate-200/90 shadow-sm bg-slate-50/80 p-1.5 flex items-center justify-center print:border-slate-300 print:shadow-none print:my-2 print:bg-transparent print:p-0">
                 <img
                   src={event.imageUrl}
                   alt={event.title}
-                  className="w-full max-h-48 sm:max-h-56 object-cover print:max-h-44 print:object-contain"
+                  className="w-full h-auto max-h-[400px] object-contain rounded-xl print:max-h-[300px] print:w-auto mx-auto block"
                   crossOrigin="anonymous"
                 />
               </div>

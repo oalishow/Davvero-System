@@ -8,6 +8,17 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v7.4b',
+      title: 'Estabilidade no Controle da Doblô e Otimizações',
+      changes: [
+        'Correção de permissões administrativas no painel da Doblô, garantindo edição e exclusão irrestritas para administradores.',
+        'Suporte aprimorado para edição de Origem/Seminário, datas, horários e destinos no modal de edição.',
+        'Tratamento automático para quilometragem com vírgula ou ponto decimal, evitando falhas de gravação.',
+        'Persistência otimizada e sincronização em tempo real de logs de uso do veículo.'
+      ],
+      current: true,
+    },
+    {
       version: 'v7.3b',
       title: 'Emissão, Design e Validação de Certificados',
       changes: [
@@ -18,7 +29,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Subtítulo e nomenclatura dinâmica ao baixar comprovantes de validação institucional.',
         'Portal de Certificados integrado com verificação dupla (FAJOPA Plus e Davvero System).'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v7.2b',

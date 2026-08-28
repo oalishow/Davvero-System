@@ -26,13 +26,15 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "7.3b";
-export const APP_BUILD = "25.08.2026";
+export const APP_VERSION = "7.4b";
+export const APP_BUILD = "28.08.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
   `artifacts/${appId}/public/data/students/_asset_${assetType}`;
 export const CHANGELOG = [
+  "Versão 7.4b - Estabilidade do Controle da Doblô e Otimizações",
+  "Correção e aprimoramento no gerenciamento de registros da Doblô para administradores e condutores, persistência completa de seminários e quilometragem decimal.",
   "Versão 7.3b - Emissão e Validação Avançada de Certificados",
   "Suporte a logos e assinaturas com transparência, proporção estrita A4 Paisagem (297x210mm), novos temas ornamentados e correção na validação de participantes e organizadores.",
   "Versão 7.2b - Simplificação de Abas do Seminário",

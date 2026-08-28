@@ -77,22 +77,34 @@ export default function CertificateEditor({
   const { settings } = useSettings();
   const { showAlert, showConfirm } = useDialog();
 
+  const isDioceseEvent = Boolean(event.isDiocese || event.dioceseId);
+
   const [activeTab, setActiveTab] = useState<"text" | "design" | "logo" | "signatures">("text");
 
+  const existingTemplate = (type === "organizer" ? event.organizationCertificateTemplate : event.certificateTemplate);
+
   const [template, setTemplate] = useState<CertificateTemplate>(
-    (type === "organizer" ? event.organizationCertificateTemplate : event.certificateTemplate) || {
+    existingTemplate || {
       bodyText: "",
       fontFamily: "serif",
       bgStyle: "theme-classic",
+      isApproved: false,
+      showFajopaDirectorSignature: !isDioceseEvent,
+      fajopaDirectorName: "",
+      showSeminarRectorSignature: !isDioceseEvent,
+      seminarRectorName: "",
+      // Diocese / Custom signatures
+      showSignature1: isDioceseEvent ? true : false,
+      signature1Name: "",
+      signature1Role: isDioceseEvent ? "Coordenador(a) Diocesano(a)" : "",
       signatureName: "",
       signatureRole: "",
+      showSignature2: isDioceseEvent ? true : false,
       signature2Name: "",
-      signature2Role: "",
-      isApproved: false,
-      showFajopaDirectorSignature: true,
-      fajopaDirectorName: "",
-      showSeminarRectorSignature: true,
-      seminarRectorName: "",
+      signature2Role: isDioceseEvent ? "Bispo Diocesano / Assessor Eclesial" : "",
+      showSignature3: false,
+      signature3Name: "",
+      signature3Role: "",
       fontSize: 26,
       isBold: false,
       textAlign: "justify",
@@ -142,6 +154,9 @@ export default function CertificateEditor({
             ...(assetsData.seminarRectorSignatureUrl && {
               seminarRectorSignatureUrl: assetsData.seminarRectorSignatureUrl,
             }),
+            ...(assetsData.signature1Url && { signature1Url: assetsData.signature1Url }),
+            ...(assetsData.signature2Url && { signature2Url: assetsData.signature2Url }),
+            ...(assetsData.signature3Url && { signature3Url: assetsData.signature3Url }),
           }));
           return;
         }
@@ -307,6 +322,42 @@ Instruções RIGOROSAS:
         finalTemplate.hasRectorSignature = false;
       }
       delete finalTemplate.seminarRectorSignatureUrl;
+
+      // 5. Custom / Diocese Responsible 1 Signature
+      if (template.signature1Url) {
+        assetsData.signature1Url = template.signature1Url;
+        hasAnyAssets = true;
+        finalTemplate.hasSignature1 = true;
+      } else {
+        finalTemplate.hasSignature1 = false;
+      }
+      delete finalTemplate.signature1Url;
+
+      // 6. Custom / Diocese Responsible 2 Signature
+      if (template.signature2Url) {
+        assetsData.signature2Url = template.signature2Url;
+        hasAnyAssets = true;
+        finalTemplate.hasSignature2 = true;
+      } else {
+        finalTemplate.hasSignature2 = false;
+      }
+      delete finalTemplate.signature2Url;
+
+      // 7. Custom / Diocese Responsible 3 Signature
+      if (template.signature3Url) {
+        assetsData.signature3Url = template.signature3Url;
+        hasAnyAssets = true;
+        finalTemplate.hasSignature3 = true;
+      } else {
+        finalTemplate.hasSignature3 = false;
+      }
+      delete finalTemplate.signature3Url;
+
+      // Sync legacy fields
+      if (template.signature1Name) finalTemplate.signatureName = template.signature1Name;
+      if (template.signature1Role) finalTemplate.signatureRole = template.signature1Role;
+      if (template.signature2Name) finalTemplate.signature2Name = template.signature2Name;
+      if (template.signature2Role) finalTemplate.signature2Role = template.signature2Role;
 
       // Update assets document
       const assetDocId = type === "organizer" ? `cert_assets_org_${event.id}` : `cert_assets_${event.id}`;
@@ -946,117 +997,474 @@ Instruções RIGOROSAS:
                     </div>
                   </div>
 
-                  {/* Assinatura 1: Diretor FAJOPA */}
-                  <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="showFajopaDirector"
-                          checked={template.showFajopaDirectorSignature ?? true}
-                          onChange={(e) =>
-                            setTemplate({ ...template, showFajopaDirectorSignature: e.target.checked })
-                          }
-                          className="rounded text-sky-600 focus:ring-sky-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer"
-                        />
-                        <label
-                          htmlFor="showFajopaDirector"
-                          className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase cursor-pointer"
-                        >
-                          Diretor de Ensino FAJOPA
-                        </label>
+                  {/* SE FOR EVENTO DE DIOCESE: NÃO DISPONIBILIZAR DIRETOR E REITOR, E SIM OS RESPONSÁVEIS DIOCESANOS */}
+                  {isDioceseEvent ? (
+                    <div className="space-y-3">
+                      <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-2xl">
+                        <div className="flex items-center gap-2 text-amber-800 dark:text-amber-300 font-bold text-xs">
+                          <PenTool className="w-4 h-4 text-amber-600 shrink-0" />
+                          <span>Assinaturas Oficiais da Diocese</span>
+                        </div>
+                        <p className="text-[11px] text-amber-700/90 dark:text-amber-400/90 mt-1 leading-relaxed">
+                          Para eventos diocesanos, edite os nomes e funções e envie as imagens das assinaturas dos responsáveis (Coordenadores, Assessores Eclesiais, Bispo Diocesano, etc.).
+                        </p>
                       </div>
-                    </div>
 
-                    {(template.showFajopaDirectorSignature ?? true) && (
-                      <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-850">
-                        <input
-                          type="text"
-                          placeholder={settings.directorName || "Nome do Diretor FAJOPA"}
-                          value={template.fajopaDirectorName || ""}
-                          onChange={(e) => setTemplate({ ...template, fajopaDirectorName: e.target.value })}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
-                        />
-                        <div className="flex items-center justify-between gap-2">
-                          <label className="text-[11px] text-sky-600 dark:text-sky-400 font-bold cursor-pointer hover:underline flex items-center gap-1">
-                            <Upload className="w-3 h-3" />
-                            {template.fajopaDirectorSignatureUrl ? "Trocar Imagem Assinatura" : "Enviar Imagem Assinatura"}
+                      {/* Responsável 1 */}
+                      <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
                             <input
-                              type="file"
-                              className="hidden"
-                              accept="image/*"
-                              onChange={(e) => handleUploadImage(e, "fajopaDirectorSignatureUrl")}
+                              type="checkbox"
+                              id="showSig1"
+                              checked={template.showSignature1 ?? true}
+                              onChange={(e) =>
+                                setTemplate({ ...template, showSignature1: e.target.checked })
+                              }
+                              className="rounded text-sky-600 focus:ring-sky-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer"
                             />
-                          </label>
-                          {template.fajopaDirectorSignatureUrl && (
-                            <button
-                              type="button"
-                              onClick={() => setTemplate({ ...template, fajopaDirectorSignatureUrl: undefined })}
-                              className="text-[10px] text-red-500 hover:underline"
+                            <label
+                              htmlFor="showSig1"
+                              className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase cursor-pointer"
                             >
-                              Remover imagem
-                            </button>
+                              Responsável 1 (Principal)
+                            </label>
+                          </div>
+                          {(template.showSignature1 ?? true) && (
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
+                              Ativo
+                            </span>
                           )}
                         </div>
-                      </div>
-                    )}
-                  </div>
 
-                  {/* Assinatura 2: Reitor do Seminário */}
-                  <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
-                    <div className="flex items-center justify-between">
-                      <div className="flex items-center gap-2">
-                        <input
-                          type="checkbox"
-                          id="showSeminarRector"
-                          checked={template.showSeminarRectorSignature ?? true}
-                          onChange={(e) =>
-                            setTemplate({ ...template, showSeminarRectorSignature: e.target.checked })
-                          }
-                          className="rounded text-sky-600 focus:ring-sky-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer"
-                        />
-                        <label
-                          htmlFor="showSeminarRector"
-                          className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase cursor-pointer"
-                        >
-                          Reitor do Seminário
-                        </label>
-                      </div>
-                    </div>
+                        {(template.showSignature1 ?? true) && (
+                          <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-850">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                                Nome do(a) Responsável 1:
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ex: Pe. Carlos Eduardo / Maria José Silva"
+                                value={template.signature1Name ?? template.signatureName ?? ""}
+                                onChange={(e) =>
+                                  setTemplate({
+                                    ...template,
+                                    signature1Name: e.target.value,
+                                    signatureName: e.target.value,
+                                  })
+                                }
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                              />
+                            </div>
 
-                    {(template.showSeminarRectorSignature ?? true) && (
-                      <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-850">
-                        <input
-                          type="text"
-                          placeholder={settings.rectorName || "Nome do Reitor"}
-                          value={template.seminarRectorName || ""}
-                          onChange={(e) => setTemplate({ ...template, seminarRectorName: e.target.value })}
-                          className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
-                        />
-                        <div className="flex items-center justify-between gap-2">
-                          <label className="text-[11px] text-sky-600 dark:text-sky-400 font-bold cursor-pointer hover:underline flex items-center gap-1">
-                            <Upload className="w-3 h-3" />
-                            {template.seminarRectorSignatureUrl ? "Trocar Imagem Assinatura" : "Enviar Imagem Assinatura"}
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                                Cargo ou Função:
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ex: Coordenador(a) Diocesano(a) de Pastoral"
+                                value={template.signature1Role ?? template.signatureRole ?? ""}
+                                onChange={(e) =>
+                                  setTemplate({
+                                    ...template,
+                                    signature1Role: e.target.value,
+                                    signatureRole: e.target.value,
+                                  })
+                                }
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                              />
+                            </div>
+
+                            {/* Imagem da Assinatura 1 */}
+                            <div className="pt-1.5">
+                              {template.signature1Url ? (
+                                <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-10 w-24 bg-white rounded-lg border border-slate-200 flex items-center justify-center p-1 overflow-hidden">
+                                      <img
+                                        src={template.signature1Url}
+                                        alt="Assinatura 1"
+                                        className="h-full w-full object-contain"
+                                      />
+                                    </div>
+                                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                      Assinatura carregada
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-[11px] text-sky-600 dark:text-sky-400 font-bold cursor-pointer hover:underline">
+                                      Trocar
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        accept="image/*"
+                                        onChange={(e) => handleUploadImage(e, "signature1Url")}
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTemplate({ ...template, signature1Url: undefined })}
+                                      className="text-[11px] text-red-500 hover:underline"
+                                    >
+                                      Remover
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <label className="w-full py-2.5 px-3 border border-dashed border-sky-300 dark:border-sky-800/60 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl flex items-center justify-center gap-2 cursor-pointer hover:bg-sky-50 transition-colors">
+                                  <Upload className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                                  <span className="text-xs font-bold text-sky-700 dark:text-sky-300">
+                                    Subir Imagem da Assinatura do Responsável 1 (PNG/JPG)
+                                  </span>
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/*"
+                                    onChange={(e) => handleUploadImage(e, "signature1Url")}
+                                  />
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Responsável 2 */}
+                      <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
                             <input
-                              type="file"
-                              className="hidden"
-                              accept="image/*"
-                              onChange={(e) => handleUploadImage(e, "seminarRectorSignatureUrl")}
+                              type="checkbox"
+                              id="showSig2"
+                              checked={template.showSignature2 ?? true}
+                              onChange={(e) =>
+                                setTemplate({ ...template, showSignature2: e.target.checked })
+                              }
+                              className="rounded text-sky-600 focus:ring-sky-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer"
                             />
-                          </label>
-                          {template.seminarRectorSignatureUrl && (
-                            <button
-                              type="button"
-                              onClick={() => setTemplate({ ...template, seminarRectorSignatureUrl: undefined })}
-                              className="text-[10px] text-red-500 hover:underline"
+                            <label
+                              htmlFor="showSig2"
+                              className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase cursor-pointer"
                             >
-                              Remover imagem
-                            </button>
+                              Responsável 2 (Bispo / Assessor / Pároco)
+                            </label>
+                          </div>
+                          {(template.showSignature2 ?? true) && (
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
+                              Ativo
+                            </span>
                           )}
                         </div>
+
+                        {(template.showSignature2 ?? true) && (
+                          <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-850">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                                Nome do(a) Responsável 2:
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ex: Dom Moacir Silva / Pe. Anderson"
+                                value={template.signature2Name || ""}
+                                onChange={(e) => setTemplate({ ...template, signature2Name: e.target.value })}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                                Cargo ou Função:
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ex: Bispo Diocesano / Assessor Eclesial"
+                                value={template.signature2Role || ""}
+                                onChange={(e) => setTemplate({ ...template, signature2Role: e.target.value })}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                              />
+                            </div>
+
+                            {/* Imagem da Assinatura 2 */}
+                            <div className="pt-1.5">
+                              {template.signature2Url ? (
+                                <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-10 w-24 bg-white rounded-lg border border-slate-200 flex items-center justify-center p-1 overflow-hidden">
+                                      <img
+                                        src={template.signature2Url}
+                                        alt="Assinatura 2"
+                                        className="h-full w-full object-contain"
+                                      />
+                                    </div>
+                                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                      Assinatura carregada
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-[11px] text-sky-600 dark:text-sky-400 font-bold cursor-pointer hover:underline">
+                                      Trocar
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        accept="image/*"
+                                        onChange={(e) => handleUploadImage(e, "signature2Url")}
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTemplate({ ...template, signature2Url: undefined })}
+                                      className="text-[11px] text-red-500 hover:underline"
+                                    >
+                                      Remover
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <label className="w-full py-2.5 px-3 border border-dashed border-sky-300 dark:border-sky-800/60 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl flex items-center justify-center gap-2 cursor-pointer hover:bg-sky-50 transition-colors">
+                                  <Upload className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                                  <span className="text-xs font-bold text-sky-700 dark:text-sky-300">
+                                    Subir Imagem da Assinatura do Responsável 2 (PNG/JPG)
+                                  </span>
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/*"
+                                    onChange={(e) => handleUploadImage(e, "signature2Url")}
+                                  />
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                        )}
                       </div>
-                    )}
-                  </div>
+
+                      {/* Responsável 3 (Opcional) */}
+                      <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="showSig3"
+                              checked={template.showSignature3 ?? false}
+                              onChange={(e) =>
+                                setTemplate({ ...template, showSignature3: e.target.checked })
+                              }
+                              className="rounded text-sky-600 focus:ring-sky-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer"
+                            />
+                            <label
+                              htmlFor="showSig3"
+                              className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase cursor-pointer"
+                            >
+                              Responsável 3 (Opcional)
+                            </label>
+                          </div>
+                          {(template.showSignature3 ?? false) && (
+                            <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-950/40 px-2 py-0.5 rounded-full">
+                              Ativo
+                            </span>
+                          )}
+                        </div>
+
+                        {(template.showSignature3 ?? false) && (
+                          <div className="space-y-2.5 pt-2 border-t border-slate-100 dark:border-slate-850">
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                                Nome do(a) Responsável 3:
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ex: Nome do Secretário / Terceiro Responsável"
+                                value={template.signature3Name || ""}
+                                onChange={(e) => setTemplate({ ...template, signature3Name: e.target.value })}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                              />
+                            </div>
+
+                            <div>
+                              <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                                Cargo ou Função:
+                              </label>
+                              <input
+                                type="text"
+                                placeholder="Ex: Secretário(a) Executivo(a)"
+                                value={template.signature3Role || ""}
+                                onChange={(e) => setTemplate({ ...template, signature3Role: e.target.value })}
+                                className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                              />
+                            </div>
+
+                            {/* Imagem da Assinatura 3 */}
+                            <div className="pt-1.5">
+                              {template.signature3Url ? (
+                                <div className="flex items-center justify-between p-2.5 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl">
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-10 w-24 bg-white rounded-lg border border-slate-200 flex items-center justify-center p-1 overflow-hidden">
+                                      <img
+                                        src={template.signature3Url}
+                                        alt="Assinatura 3"
+                                        className="h-full w-full object-contain"
+                                      />
+                                    </div>
+                                    <span className="text-xs font-medium text-emerald-600 dark:text-emerald-400">
+                                      Assinatura carregada
+                                    </span>
+                                  </div>
+                                  <div className="flex items-center gap-2">
+                                    <label className="text-[11px] text-sky-600 dark:text-sky-400 font-bold cursor-pointer hover:underline">
+                                      Trocar
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        accept="image/*"
+                                        onChange={(e) => handleUploadImage(e, "signature3Url")}
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => setTemplate({ ...template, signature3Url: undefined })}
+                                      className="text-[11px] text-red-500 hover:underline"
+                                    >
+                                      Remover
+                                    </button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <label className="w-full py-2.5 px-3 border border-dashed border-sky-300 dark:border-sky-800/60 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl flex items-center justify-center gap-2 cursor-pointer hover:bg-sky-50 transition-colors">
+                                  <Upload className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                                  <span className="text-xs font-bold text-sky-700 dark:text-sky-300">
+                                    Subir Imagem da Assinatura do Responsável 3 (PNG/JPG)
+                                  </span>
+                                  <input
+                                    type="file"
+                                    className="hidden"
+                                    accept="image/*"
+                                    onChange={(e) => handleUploadImage(e, "signature3Url")}
+                                  />
+                                </label>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  ) : (
+                    /* SE FOR EVENTO ACADÊMICO / SEMINÁRIO INSTITUCIONAL */
+                    <>
+                      {/* Assinatura 1: Diretor FAJOPA */}
+                      <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="showFajopaDirector"
+                              checked={template.showFajopaDirectorSignature ?? true}
+                              onChange={(e) =>
+                                setTemplate({ ...template, showFajopaDirectorSignature: e.target.checked })
+                              }
+                              className="rounded text-sky-600 focus:ring-sky-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer"
+                            />
+                            <label
+                              htmlFor="showFajopaDirector"
+                              className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase cursor-pointer"
+                            >
+                              Diretor de Ensino FAJOPA
+                            </label>
+                          </div>
+                        </div>
+
+                        {(template.showFajopaDirectorSignature ?? true) && (
+                          <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-850">
+                            <input
+                              type="text"
+                              placeholder={settings.directorName || "Nome do Diretor FAJOPA"}
+                              value={template.fajopaDirectorName || ""}
+                              onChange={(e) => setTemplate({ ...template, fajopaDirectorName: e.target.value })}
+                              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                            />
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="text-[11px] text-sky-600 dark:text-sky-400 font-bold cursor-pointer hover:underline flex items-center gap-1">
+                                <Upload className="w-3 h-3" />
+                                {template.fajopaDirectorSignatureUrl ? "Trocar Imagem Assinatura" : "Enviar Imagem Assinatura"}
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept="image/*"
+                                  onChange={(e) => handleUploadImage(e, "fajopaDirectorSignatureUrl")}
+                                />
+                              </label>
+                              {template.fajopaDirectorSignatureUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => setTemplate({ ...template, fajopaDirectorSignatureUrl: undefined })}
+                                  className="text-[10px] text-red-500 hover:underline"
+                                >
+                                  Remover imagem
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+
+                      {/* Assinatura 2: Reitor do Seminário */}
+                      <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                        <div className="flex items-center justify-between">
+                          <div className="flex items-center gap-2">
+                            <input
+                              type="checkbox"
+                              id="showSeminarRector"
+                              checked={template.showSeminarRectorSignature ?? true}
+                              onChange={(e) =>
+                                setTemplate({ ...template, showSeminarRectorSignature: e.target.checked })
+                              }
+                              className="rounded text-sky-600 focus:ring-sky-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer"
+                            />
+                            <label
+                              htmlFor="showSeminarRector"
+                              className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase cursor-pointer"
+                            >
+                              Reitor do Seminário
+                            </label>
+                          </div>
+                        </div>
+
+                        {(template.showSeminarRectorSignature ?? true) && (
+                          <div className="space-y-2 pt-2 border-t border-slate-100 dark:border-slate-850">
+                            <input
+                              type="text"
+                              placeholder={settings.rectorName || "Nome do Reitor"}
+                              value={template.seminarRectorName || ""}
+                              onChange={(e) => setTemplate({ ...template, seminarRectorName: e.target.value })}
+                              className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                            />
+                            <div className="flex items-center justify-between gap-2">
+                              <label className="text-[11px] text-sky-600 dark:text-sky-400 font-bold cursor-pointer hover:underline flex items-center gap-1">
+                                <Upload className="w-3 h-3" />
+                                {template.seminarRectorSignatureUrl ? "Trocar Imagem Assinatura" : "Enviar Imagem Assinatura"}
+                                <input
+                                  type="file"
+                                  className="hidden"
+                                  accept="image/*"
+                                  onChange={(e) => handleUploadImage(e, "seminarRectorSignatureUrl")}
+                                />
+                              </label>
+                              {template.seminarRectorSignatureUrl && (
+                                <button
+                                  type="button"
+                                  onClick={() => setTemplate({ ...template, seminarRectorSignatureUrl: undefined })}
+                                  className="text-[10px] text-red-500 hover:underline"
+                                >
+                                  Remover imagem
+                                </button>
+                              )}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
                 </div>
               )}
             </div>

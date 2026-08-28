@@ -16,10 +16,28 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     const { settings } = useSettings();
 
     // Signatures URLs and names fallback
-    const fajopaSigUrl = template.fajopaDirectorSignatureUrl || settings.instSignature;
-    const rectorSigUrl = template.seminarRectorSignatureUrl || settings.rectorSignature;
-    const fajopaName = template.fajopaDirectorName || settings.directorName;
-    const rectorName = template.seminarRectorName || settings.rectorName;
+    const isDioceseEvent = Boolean(event.isDiocese || event.dioceseId);
+
+    const fajopaSigUrl = !isDioceseEvent ? (template.fajopaDirectorSignatureUrl || settings.instSignature) : undefined;
+    const rectorSigUrl = !isDioceseEvent ? (template.seminarRectorSignatureUrl || settings.rectorSignature) : undefined;
+    const fajopaName = !isDioceseEvent ? (template.fajopaDirectorName || settings.directorName) : undefined;
+    const rectorName = !isDioceseEvent ? (template.seminarRectorName || settings.rectorName) : undefined;
+
+    // Custom / Diocese Responsibles
+    const sig1Name = template.signature1Name ?? template.signatureName;
+    const sig1Role = template.signature1Role ?? template.signatureRole;
+    const sig1Url = template.signature1Url;
+    const showSig1 = template.showSignature1 ?? (isDioceseEvent || Boolean(sig1Name || sig1Role || sig1Url));
+
+    const sig2Name = template.signature2Name;
+    const sig2Role = template.signature2Role;
+    const sig2Url = template.signature2Url;
+    const showSig2 = template.showSignature2 ?? (isDioceseEvent && Boolean(sig2Name || sig2Role || sig2Url));
+
+    const sig3Name = template.signature3Name;
+    const sig3Role = template.signature3Role;
+    const sig3Url = template.signature3Url;
+    const showSig3 = template.showSignature3 ?? Boolean(sig3Name || sig3Role || sig3Url);
 
     // Font Family resolution
     const fontClass = 
@@ -411,8 +429,8 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
             transform: `translateY(${sigOffsetY}px)`,
           }}
         >
-          {/* Assinatura 1: Diretor FAJOPA */}
-          {(template.showFajopaDirectorSignature ?? false) && (
+          {/* Se NÃO for evento de Diocese e estiver ativado Diretor FAJOPA */}
+          {!isDioceseEvent && (template.showFajopaDirectorSignature ?? false) && (
             <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
               <div 
                 className="w-full flex items-end justify-center mb-1.5"
@@ -440,8 +458,8 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
             </div>
           )}
           
-          {/* Assinatura 2: Reitor do Seminário */}
-          {(template.showSeminarRectorSignature ?? false) && (
+          {/* Se NÃO for evento de Diocese e estiver ativado Reitor do Seminário */}
+          {!isDioceseEvent && (template.showSeminarRectorSignature ?? false) && (
             <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
               <div 
                 className="w-full flex items-end justify-center mb-1.5"
@@ -469,41 +487,92 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
             </div>
           )}
 
-          {/* Assinaturas personalizadas caso ativadas */}
-          {(!(template.showFajopaDirectorSignature ?? false) && !(template.showSeminarRectorSignature ?? false)) && (
+          {/* Assinaturas dos Responsáveis da Diocese ou Personalizadas */}
+          {(isDioceseEvent || (!(template.showFajopaDirectorSignature ?? false) && !(template.showSeminarRectorSignature ?? false))) && (
             <>
-              {(template.signatureName || template.signatureRole) && (
+              {/* Responsável 1 */}
+              {showSig1 && (
                 <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
                   <div 
                     className="w-full flex items-end justify-center mb-1.5"
                     style={{ height: `${sigHeight}px` }}
                   >
-                    <div className="w-full h-px" />
+                    {sig1Url ? (
+                      <img 
+                        src={sig1Url} 
+                        style={{ maxHeight: `${sigHeight}px` }}
+                        className="max-w-[220px] object-contain mix-blend-multiply" 
+                        crossOrigin="anonymous" 
+                        alt="Assinatura Responsável 1" 
+                      />
+                    ) : (
+                      <div className="w-full h-px" />
+                    )}
                   </div>
                   <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
                   <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
-                    {template.signatureName || "Nome do Responsável"}
+                    {sig1Name || "Nome do Responsável"}
                   </h3>
                   <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
-                    {template.signatureRole || "Cargo / Instituição"}
+                    {sig1Role || (isDioceseEvent ? "Coordenador(a) Diocesano(a)" : "Cargo / Função")}
                   </p>
                 </div>
               )}
               
-              {(template.signature2Name || template.signature2Role) && (
+              {/* Responsável 2 */}
+              {showSig2 && (
                 <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
                   <div 
                     className="w-full flex items-end justify-center mb-1.5"
                     style={{ height: `${sigHeight}px` }}
                   >
-                    <div className="w-full h-px" />
+                    {sig2Url ? (
+                      <img 
+                        src={sig2Url} 
+                        style={{ maxHeight: `${sigHeight}px` }}
+                        className="max-w-[220px] object-contain mix-blend-multiply" 
+                        crossOrigin="anonymous" 
+                        alt="Assinatura Responsável 2" 
+                      />
+                    ) : (
+                      <div className="w-full h-px" />
+                    )}
                   </div>
                   <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
                   <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
-                    {template.signature2Name || ""}
+                    {sig2Name || (isDioceseEvent ? "Bispo / Assessor Eclesial" : "Segundo Responsável")}
                   </h3>
                   <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
-                    {template.signature2Role || ""}
+                    {sig2Role || (isDioceseEvent ? "Diocese / Pastoral" : "Cargo / Função")}
+                  </p>
+                </div>
+              )}
+
+              {/* Responsável 3 (Opcional) */}
+              {showSig3 && (
+                <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
+                  <div 
+                    className="w-full flex items-end justify-center mb-1.5"
+                    style={{ height: `${sigHeight}px` }}
+                  >
+                    {sig3Url ? (
+                      <img 
+                        src={sig3Url} 
+                        style={{ maxHeight: `${sigHeight}px` }}
+                        className="max-w-[220px] object-contain mix-blend-multiply" 
+                        crossOrigin="anonymous" 
+                        alt="Assinatura Responsável 3" 
+                      />
+                    ) : (
+                      <div className="w-full h-px" />
+                    )}
+                  </div>
+                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
+                  <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+                    {sig3Name || "Terceiro Responsável"}
+                  </h3>
+                  <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+                    {sig3Role || "Cargo / Função"}
                   </p>
                 </div>
               )}

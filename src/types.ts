@@ -6,6 +6,17 @@ export const AVAILABLE_SEMINARIES = [
   "Sem Vínculo de Seminário"
 ];
 
+export const AVAILABLE_DIOCESES = [
+  "MARÍLIA",
+  "ASSIS",
+  "LINS",
+  "BAURU",
+  "OURINHOS",
+  "PRESIDENTE PRUDENTE",
+  "ARAÇATUBA",
+  "BOTUCATU"
+];
+
 export interface Member {
   id: string;
   name: string;
@@ -63,6 +74,23 @@ export interface CertificateTemplate {
   hasFajopaSignature?: boolean;
   hasRectorSignature?: boolean;
 
+  // Custom / Diocese Event Signatures
+  signature1Name?: string;
+  signature1Role?: string;
+  signature1Url?: string;
+  showSignature1?: boolean;
+  hasSignature1?: boolean;
+  
+  signature2Url?: string;
+  showSignature2?: boolean;
+  hasSignature2?: boolean;
+
+  signature3Name?: string;
+  signature3Role?: string;
+  signature3Url?: string;
+  showSignature3?: boolean;
+  hasSignature3?: boolean;
+
   // Visual, Logo & Typography Customizations
   logoUrl?: string;
   showLogo?: boolean;
@@ -106,8 +134,15 @@ export interface Event {
   deletedAt?: string;
   speaker?: string;
   schedulePdfUrl?: string;
-  isSeminary?: boolean; // NEW: Indicates if it's a seminary event
+  isSeminary?: boolean; // Indicates if it's a seminary event
   seminaryId?: string; // SPSCJ, Marília, Bauru, or ALL
+  isDiocese?: boolean; // NEW: Indicates if it's a diocese event
+  dioceseId?: string; // Specific Diocese name or empty for all
+  isPublic?: boolean; // Se true, o evento fica visível para todos (no mural geral e para todas as dioceses)
+  createdBy?: string; // ID ou RA do usuário que criou o evento
+  creatorName?: string; // Nome de quem criou o evento
+  creatorEmail?: string; // E-mail de quem criou o evento
+  creatorRa?: string; // RA de quem criou o evento
   isPaid?: boolean; // Pagamento: true se for evento pago
   price?: number;   // Pagamento: valor do evento
   googleFormsLink?: string; // Link externo para Forms
