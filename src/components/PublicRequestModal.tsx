@@ -4,6 +4,7 @@ import { X, Save, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
 import { db, appId, enrollStudent, createNotification } from '../lib/firebase';
 import { checkAutoApproval } from '../lib/approval';
+import { sendEmailNotification, generateEmailTemplate, getCompiledEmail, parseEmailList } from '../lib/emailService';
 import { useSettings } from '../context/SettingsContext';
 import type { Member } from '../types';
 import ImageCropperModal from './ImageCropperModal';
@@ -163,6 +164,37 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId }
         } catch (notifErr) {
           console.warn("Notification trigger failed:", notifErr);
         }
+
+        // Enviar e-mail de alerta para a Secretaria (suporte a múltiplos e-mails)
+        if (settings.emailNotificationsEnabled !== false && settings.notifySecretariatOnNewRequest !== false) {
+          const rawSecretariat = settings.secretariatNotificationEmail || "secretaria@fajopa.edu.br";
+          const secretariatEmails = parseEmailList(rawSecretariat);
+
+          if (secretariatEmails.length > 0) {
+            const compiledSecretariat = getCompiledEmail({
+              templateKey: 'newRequestSecretariat',
+              customTemplates: settings.emailTemplates,
+              vars: {
+                name: name.trim(),
+                roles: roles.join(', ') || 'Não especificado',
+                course: course || 'Não especificado',
+                diocese: diocese || '',
+                seminary: seminary || '',
+                email: email.trim(),
+                ra: formattedRa || 'Não informado',
+                alphaCode: alphaCode
+              },
+              settings,
+              buttonUrl: `${window.location.origin}/?admin=true`
+            });
+
+            sendEmailNotification({
+              to: secretariatEmails,
+              subject: compiledSecretariat.subject,
+              html: compiledSecretariat.fullHtml
+            }, settings.smtpConfig).catch(e => console.warn("Erro ao notificar secretaria:", e));
+          }
+        }
       }
 
       // If tied to an event enrollment, enroll student right away
@@ -179,15 +211,31 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId }
         }
       }
 
-      if (email.trim()) {
+      // Enviar e-mail de confirmação para o Aluno
+      if (email.trim() && settings.emailNotificationsEnabled !== false && settings.notifyStudentOnPending !== false) {
         try {
-          await addDoc(collection(db, 'mail'), {
-            to: email.trim(),
-            message: {
-              subject: "Recebemos sua Solicitação de Cadastro",
-              html: `<h3>Olá, ${name.trim()}!</h3><p>Sua solicitação de Identidade Estudantil foi recebida em nosso sistema e está em análise pela secretaria.</p><p>Código de Acompanhamento: <b>${alphaCode}</b></p><p>Você pode acompanhar o status da sua solicitação através do portal "Acompanhar Pedido" na tela inicial usando seu RA ou CPF.</p>`
-            }
+          const compiledStudent = getCompiledEmail({
+            templateKey: isAutoApproved ? 'approvedStudent' : 'pendingStudent',
+            customTemplates: settings.emailTemplates,
+            vars: {
+              name: name.trim(),
+              roles: roles.join(', ') || 'Aluno(a)',
+              course: course || 'Não especificado',
+              diocese: diocese || '',
+              seminary: seminary || '',
+              email: email.trim(),
+              ra: formattedRa || '',
+              alphaCode: alphaCode
+            },
+            settings,
+            buttonUrl: `${window.location.origin}/?id=${alphaCode}`
           });
+
+          await sendEmailNotification({
+            to: email.trim(),
+            subject: compiledStudent.subject,
+            html: compiledStudent.fullHtml
+          }, settings.smtpConfig);
         } catch(mailErr) {
           console.warn("Mail trigger failed, continuing...", mailErr);
         }

@@ -3,7 +3,7 @@ import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db, appId } from '../lib/firebase';
 import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH } from '../lib/constants';
 
-interface AppSettings {
+export interface AppSettings {
   url: string;
   directorName: string;
   rectorName: string;
@@ -79,6 +79,38 @@ interface AppSettings {
   autoApproveEnabled?: boolean;
   autoApproveWhitelist?: string[];
   autoApproveWhitelistText?: string;
+  emailNotificationsEnabled?: boolean;
+  emailHeaderName?: string;
+  emailLogoMode?: 'davvero' | 'institution' | 'custom' | 'none';
+  emailCustomLogoUrl?: string;
+  notifyStudentOnPending?: boolean;
+  notifyStudentOnApproved?: boolean;
+  notifyStudentOnRejected?: boolean;
+  notifyStudentOnDeactivated?: boolean;
+  notifyOrganizerOnCertificate?: boolean;
+  notifySecretariatOnNewRequest?: boolean;
+  secretariatNotificationEmail?: string;
+  notifySecretariatOnEditSuggestion?: boolean;
+  editSuggestionNotificationEmail?: string;
+  emailTemplates?: {
+    pendingStudent?: { subject: string; title: string; body: string; buttonText: string };
+    approvedStudent?: { subject: string; title: string; body: string; buttonText: string };
+    rejectedStudent?: { subject: string; title: string; body: string; buttonText: string };
+    deactivatedStudent?: { subject: string; title: string; body: string; buttonText: string };
+    newRequestSecretariat?: { subject: string; title: string; body: string; buttonText: string };
+    editSuggestionSecretariat?: { subject: string; title: string; body: string; buttonText: string };
+    certificateAvailableOrganizer?: { subject: string; title: string; body: string; buttonText: string };
+    certificateAvailableAttendee?: { subject: string; title: string; body: string; buttonText: string };
+  };
+  smtpConfig?: {
+    host?: string;
+    port?: number;
+    secure?: boolean;
+    user?: string;
+    pass?: string;
+    fromName?: string;
+    fromEmail?: string;
+  };
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -171,6 +203,28 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoApproveEnabled: false,
   autoApproveWhitelist: [],
   autoApproveWhitelistText: '',
+  emailNotificationsEnabled: true,
+  emailHeaderName: 'DAVVERO System',
+  emailLogoMode: 'davvero',
+  emailCustomLogoUrl: '',
+  notifyStudentOnPending: true,
+  notifyStudentOnApproved: true,
+  notifyStudentOnRejected: true,
+  notifyStudentOnDeactivated: true,
+  notifyOrganizerOnCertificate: true,
+  notifySecretariatOnNewRequest: true,
+  secretariatNotificationEmail: 'secretaria@fajopa.edu.br',
+  notifySecretariatOnEditSuggestion: true,
+  editSuggestionNotificationEmail: '',
+  smtpConfig: {
+    host: '',
+    port: 587,
+    secure: false,
+    user: '',
+    pass: '',
+    fromName: 'DAVVERO System',
+    fromEmail: ''
+  }
 };
 
 interface SettingsContextType {

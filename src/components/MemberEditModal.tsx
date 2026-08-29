@@ -5,6 +5,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db, appId, createNotification } from '../lib/firebase';
 import { logAdminAction } from '../lib/audit';
 import { useSettings } from '../context/SettingsContext';
+import { sendEmailNotification, getCompiledEmail } from '../lib/emailService';
 import { type Member, AVAILABLE_SEMINARIES } from '../types';
 import { QRCodeCanvas } from 'qrcode.react';
 import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL } from '../lib/constants';
@@ -36,6 +37,7 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
   const [validity, setValidity] = useState(member.validityDate || '');
   const [legacyQrCode, setLegacyQrCode] = useState(member.legacyQrCode || '');
   const [isActive, setIsActive] = useState(member.isActive !== false);
+  const [deactivationReason, setDeactivationReason] = useState('Suspensão administrativa para regularização cadastral/acadêmica.');
   const [course, setCourse] = useState(member.course || '');
   const [diocese, setDiocese] = useState(member.diocese || '');
   const [seminary, setSeminary] = useState(member.seminary || '');
@@ -111,6 +113,8 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
     setError('');
     
     const photoUrl = photoBase64 || member.photoUrl;
+    const wasActive = member.isActive !== false;
+    const isNowDeactivated = wasActive && !isActive;
 
     try {
       const docRef = doc(db, `artifacts/${appId}/public/data/students`, member.id);
@@ -120,15 +124,42 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
         photoUrl: photoUrl || null
       });
 
-      // Notificar o membro sobre a alteração
+      // Notificar o membro sobre a alteração no app
       await createNotification({
         recipientId: member.id,
-        title: "Perfil Atualizado",
-        message: "Sua ficha cadastral foi atualizada pela administração.",
-        type: "edicao"
+        title: !isActive ? "Carteirinha Desativada" : "Perfil Atualizado",
+        message: !isActive 
+          ? `Sua carteirinha foi suspensa: ${deactivationReason}` 
+          : "Sua ficha cadastral foi atualizada pela administração.",
+        type: !isActive ? "carteirinha" : "edicao"
       }).catch(console.error);
 
-      await logAdminAction("MEMBER_UPDATED", `Atualizou os dados de ${name} (RA: ${ra})`, member.id);
+      // Se foi desativada e possui e-mail cadastrado, disparar e-mail de aviso
+      if (isNowDeactivated && (email || member.email) && settings.notifyStudentOnDeactivated !== false && settings.emailNotificationsEnabled !== false) {
+        const targetEmail = email || member.email;
+        if (targetEmail) {
+          const compiled = getCompiledEmail({
+            templateKey: 'deactivatedStudent',
+            customTemplates: settings.emailTemplates,
+            vars: {
+              name: name || member.name || 'Estudante',
+              ra: ra || member.ra || '',
+              reason: deactivationReason || 'Suspensão administrativa para regularização cadastral.',
+              email: targetEmail,
+              alphaCode: member.alphaCode || ''
+            },
+            settings,
+            buttonUrl: `${window.location.origin}/`
+          });
+          await sendEmailNotification({
+            to: targetEmail,
+            subject: compiled.subject,
+            html: compiled.fullHtml
+          }, settings.smtpConfig).catch(console.warn);
+        }
+      }
+
+      await logAdminAction("MEMBER_UPDATED", `Atualizou os dados de ${name} (RA: ${ra})${isNowDeactivated ? ` - Status alterado para SUSPENSO (Motivo: ${deactivationReason})` : ''}`, member.id);
 
       onUpdate();
     } catch (err) {
@@ -142,7 +173,30 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
     setLoading(true);
     try {
       const docRef = doc(db, `artifacts/${appId}/public/data/students`, member.id);
-      await updateDoc(docRef, { deletedAt: new Date().toISOString() });
+      await updateDoc(docRef, { deletedAt: new Date().toISOString(), isActive: false });
+      
+      // Notificar por e-mail sobre desativação/remoção se aplicável
+      if (member.email && settings.notifyStudentOnDeactivated !== false && settings.emailNotificationsEnabled !== false) {
+        const compiled = getCompiledEmail({
+          templateKey: 'deactivatedStudent',
+          customTemplates: settings.emailTemplates,
+          vars: {
+            name: member.name || 'Estudante',
+            ra: member.ra || '',
+            reason: 'Cadastro arquivado/removido pela administração.',
+            email: member.email,
+            alphaCode: member.alphaCode || ''
+          },
+          settings,
+          buttonUrl: `${window.location.origin}/`
+        });
+        await sendEmailNotification({
+          to: member.email,
+          subject: compiled.subject,
+          html: compiled.fullHtml
+        }, settings.smtpConfig).catch(console.warn);
+      }
+
       await logAdminAction("MEMBER_DELETED", `Moveu ${member.name} (RA: ${member.ra}) para a lixeira`, member.id);
       onUpdate();
     } catch (err) {
@@ -228,6 +282,20 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
                   </select>
                 </div>
               </div>
+              {!isActive && (
+                <div className="bg-amber-50 dark:bg-amber-950/40 p-3 rounded-lg border border-amber-200 dark:border-amber-800/40 animated-fade-in">
+                  <label className="text-xs font-bold text-amber-800 dark:text-amber-300 mb-1 block">
+                    Motivo da Suspensão / Desativação (notificado por e-mail):
+                  </label>
+                  <input
+                    type="text"
+                    value={deactivationReason}
+                    onChange={e => setDeactivationReason(e.target.value)}
+                    placeholder="Ex: Trancamento de matrícula, pendência documental..."
+                    className="input-modern w-full rounded-lg py-1.5 px-2.5 text-xs"
+                  />
+                </div>
+              )}
               <div className="grid grid-cols-1 gap-3">
                 <div>
                   <label className="text-xs font-medium text-slate-500 mb-1 block">CPF</label>

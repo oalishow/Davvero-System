@@ -4,6 +4,7 @@ import { X } from 'lucide-react';
 import { collection, query, getDocs, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { db, appId, createNotification } from '../lib/firebase';
 import { logAdminAction } from '../lib/audit';
+import { sendEmailNotification, generateEmailTemplate, getCompiledEmail } from '../lib/emailService';
 import type { Member } from '../types';
 import Modal from './Modal';
 import { useSettings } from '../context/SettingsContext';
@@ -16,6 +17,8 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
   // Modal State
   const [modalRejectOpen, setModalRejectOpen] = useState(false);
   const [selectedReject, setSelectedReject] = useState<{id: string, isEdit: boolean} | null>(null);
+  const [rejectReason, setRejectReason] = useState<string>('Foto fora do padrão exigido (sem nitidez, corte inadequado ou fundo não neutro).');
+  const [customRejectReason, setCustomRejectReason] = useState<string>('');
   const [errorMessage, setErrorMessage] = useState<string | null>(null);
 
   const fetchRequests = async () => {
@@ -49,18 +52,16 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
     return () => { document.body.style.overflow = 'unset'; };
   }, []);
 
-  const sendEmailNotification = async (toEmail: string, subject: string, htmlHtml: string) => {
-    if (!toEmail) return;
+  const dispatchEmail = async (toEmail: string, subject: string, htmlBody: string) => {
+    if (!toEmail || !toEmail.includes('@') || settings.emailNotificationsEnabled === false) return;
     try {
-      await addDoc(collection(db, 'mail'), {
+      await sendEmailNotification({
         to: toEmail,
-        message: {
-          subject: subject,
-          html: htmlHtml
-        }
-      });
+        subject,
+        html: htmlBody,
+      }, settings.smtpConfig);
     } catch(e) {
-      console.error("Falha ao registrar envio de e-mail:", e);
+      console.warn("Falha ao registrar envio de e-mail:", e);
     }
   };
 
@@ -99,8 +100,27 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
 
       await logAdminAction("MEMBER_APPROVED", `Aprovou a solicitação de carteirinha`, member.id);
 
-      // Email Notification
-      await sendEmailNotification(member.email || '', "Sua Carteirinha de Estudante Foi Aprovada!", `<h3>Parabéns!</h3><p>Sua solicitação para a identidade estudantil DAVVERO System foi <b>Aprovada</b>.</p><p>O seu código de uso no aplicativo é: <b>${alphaCode}</b></p><p>Acesse o portal e valide a sua identidade.</p>`);
+      // Email Notification para o Aluno
+      if (settings.notifyStudentOnApproved !== false && member.email) {
+        const compiled = getCompiledEmail({
+          templateKey: 'approvedStudent',
+          customTemplates: settings.emailTemplates,
+          vars: {
+            name: member.name || 'Estudante',
+            roles: member.roles?.join(', ') || 'Estudante',
+            course: member.course || 'Não especificado',
+            diocese: member.diocese || '',
+            seminary: member.seminary || '',
+            email: member.email,
+            ra: member.ra || '',
+            alphaCode: alphaCode
+          },
+          settings,
+          buttonUrl: `${window.location.origin}/?id=${alphaCode}`
+        });
+
+        await dispatchEmail(member.email, compiled.subject, compiled.fullHtml);
+      }
     } catch (err) {
       console.error(err);
       setErrorMessage('Erro ao aprovar membro.');
@@ -149,7 +169,22 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
 
       // Email Notification
       if (member.email || updatePayload.email) {
-          await sendEmailNotification(updatePayload.email || member.email, "Edição Concluída", `<h3>Atualização Aprovada!</h3><p>As edições que você sugeriu na sua carteirinha de estudante foram validadas e atualizadas no sistema com sucesso.</p><p>Atualize a página na sua Minha ID para ver as mudanças.</p>`);
+        const targetEmail = updatePayload.email || member.email;
+        const emailHtml = generateEmailTemplate({
+          title: "Atualização Aprovada! 📝",
+          preheader: "As alterações dos dados da sua carteirinha foram validadas.",
+          institutionName: settings.instName || "DAVVERO System",
+          institutionColor: settings.instColor || "#0ea5e9",
+          contentHtml: `
+            <p>Olá, <strong>${updatePayload.name || member.name}</strong>!</p>
+            <p>As edições e sugestões de dados que você solicitou em sua carteirinha foram validadas e atualizadas no sistema com sucesso.</p>
+            <p>Abra o portal do aluno para consultar sua carteirinha atualizada.</p>
+          `,
+          buttonText: "Acessar Carteirinha",
+          buttonUrl: `${window.location.origin}/?id=${member.alphaCode || member.ra || member.cpf}`
+        });
+
+        await dispatchEmail(targetEmail, `Atualização de Carteirinha Concluída - ${settings.instName || "DAVVERO"}`, emailHtml);
       }
     } catch (e) {
       console.error(e);
@@ -164,20 +199,66 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
     // Check if we can find the email before we delete it
     const memberObj = requests.find(r => r.id === id);
     const emailToNotify = memberObj?.email;
+    const effectiveReason = rejectReason === 'OUTRO' 
+      ? (customRejectReason.trim() || 'Dados em desacordo com as diretrizes acadêmicas.')
+      : rejectReason;
 
     try {
       const mRef = doc(db, `artifacts/${appId}/public/data/students`, id);
       if (isEdit) {
         await updateDoc(mRef, { pendingChanges: null, hasPendingAction: false });
-        await logAdminAction("MEMBER_EDIT_REJECTED", `Recusou as sugestões de edição de dados`, id);
-        if (emailToNotify) await sendEmailNotification(emailToNotify, "Atualização Recusada", `<p>A sua sugestão de edição de dados não foi aceita pela instituição após a devida comprovação cadastral.</p>`);
+        await logAdminAction("MEMBER_EDIT_REJECTED", `Recusou as sugestões de edição de dados. Motivo: ${effectiveReason}`, id);
+        if (emailToNotify && settings.notifyStudentOnRejected !== false) {
+          const emailHtml = generateEmailTemplate({
+            title: "Aviso sobre Alteração de Cadastro",
+            preheader: "A solicitação de alteração de dados não foi homologada.",
+            headerName: settings.emailHeaderName || "DAVVERO System",
+            institutionName: settings.instName || "DAVVERO System",
+            institutionColor: settings.instColor || "#0ea5e9",
+            logoMode: settings.emailLogoMode,
+            customLogoUrl: settings.emailCustomLogoUrl,
+            institutionLogo: settings.instLogo || undefined,
+            contentHtml: `
+              <p>Olá, <strong>${memberObj?.name || 'Estudante'}</strong>.</p>
+              <p>A sua solicitação de alteração de dados cadastrais no <strong>${settings.instName || "DAVVERO"}</strong> não foi homologada pela secretaria.</p>
+              <div class="highlight-card" style="border-left-color: #ef4444; background: #fef2f2;">
+                <p style="margin: 0 0 4px; font-size: 12px; color: #dc2626; font-weight: 700; text-transform: uppercase;">Motivo / Observação:</p>
+                <p style="margin: 0; font-size: 14px; color: #991b1b;">${effectiveReason}</p>
+              </div>
+              <p>Caso necessite de correções em seus dados, realize uma nova solicitação ou procure a secretaria.</p>
+            `,
+            buttonText: "Acessar Sistema",
+            buttonUrl: `${window.location.origin}/?id=${memberObj?.alphaCode || memberObj?.ra || ''}`
+          });
+          await dispatchEmail(emailToNotify, `Aviso sobre Alteração de Cadastro - ${settings.emailHeaderName || settings.instName || "DAVVERO"}`, emailHtml);
+        }
       } else {
         await deleteDoc(mRef);
-        await logAdminAction("MEMBER_REJECTED", `Recusou a solicitação de carteirinha`, id);
-        if (emailToNotify) await sendEmailNotification(emailToNotify, "Cadastro Não Aprovado", `<p>A sua solicitação de identidade estudantil não pôde ser aprovada neste momento.</p><p>Fale diretamente com os responsáveis do seu seminário/dioceses se achar que existe algum erro.</p>`);
+        await logAdminAction("MEMBER_REJECTED", `Recusou a solicitação de carteirinha. Motivo: ${effectiveReason}`, id);
+        if (emailToNotify && settings.notifyStudentOnRejected !== false) {
+          const compiled = getCompiledEmail({
+            templateKey: 'rejectedStudent',
+            customTemplates: settings.emailTemplates,
+            vars: {
+              name: memberObj?.name || 'Estudante',
+              roles: memberObj?.roles?.join(', ') || 'Estudante',
+              course: memberObj?.course || 'Não especificado',
+              diocese: memberObj?.diocese || '',
+              seminary: memberObj?.seminary || '',
+              email: memberObj?.email || '',
+              ra: memberObj?.ra || '',
+              alphaCode: memberObj?.alphaCode || '',
+              reason: effectiveReason
+            },
+            settings,
+            buttonUrl: `${window.location.origin}/`
+          });
+          await dispatchEmail(emailToNotify, compiled.subject, compiled.fullHtml);
+        }
       }
       setModalRejectOpen(false);
       setSelectedReject(null);
+      setCustomRejectReason('');
       fetchRequests();
     } catch(e) {
       console.error(e);
@@ -187,6 +268,8 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
 
   const handleReject = (id: string, isEdit: boolean) => {
     setSelectedReject({ id, isEdit });
+    setRejectReason('Foto fora do padrão exigido (sem nitidez, corte inadequado ou fundo não neutro).');
+    setCustomRejectReason('');
     setModalRejectOpen(true);
   };
 
@@ -195,14 +278,55 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
       <Modal 
         isOpen={modalRejectOpen} 
         onClose={() => setModalRejectOpen(false)} 
-        title={selectedReject?.isEdit ? "Rejeitar Alterações" : "Recusar Cadastro"}
-        confirmLabel="Confirmar Rejeição"
+        title={selectedReject?.isEdit ? "Rejeitar Alterações de Perfil" : "Recusar Solicitação de Carteirinha"}
+        confirmLabel="Confirmar e Notificar"
         confirmVariant="danger"
         onConfirm={confirmReject}
       >
-        {selectedReject?.isEdit 
-          ? "Deseja ignorar as sugestões de edição enviadas pelo aluno? Os dados atuais permanecerão inalterados." 
-          : "Deseja recusar este cadastro? Os dados enviados serão eliminados permanentemente da base de dados."}
+        <div className="space-y-3 text-left">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            {selectedReject?.isEdit 
+              ? "Deseja recusar as sugestões de edição enviadas pelo aluno? Os dados originais permanecerão intactos." 
+              : "Deseja recusar esta solicitação? O solicitante receberá um e-mail com a justificativa e os dados serão excluídos da lista pendente."}
+          </p>
+
+          <div>
+            <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+              Motivo da Recusa (enviado ao aluno por e-mail):
+            </label>
+            <select
+              value={rejectReason}
+              onChange={(e) => setRejectReason(e.target.value)}
+              className="input-modern w-full text-xs py-2 px-3 rounded-lg mb-2"
+            >
+              <option value="Foto fora do padrão exigido (sem nitidez, corte inadequado ou fundo não neutro).">
+                📷 Foto fora do padrão (sem nitidez, corte inadequado ou selfie casual)
+              </option>
+              <option value="Dados cadastrais divergentes dos registros acadêmicos oficiais.">
+                📋 Dados cadastrais divergentes dos registros acadêmicos oficiais
+              </option>
+              <option value="Registro de Matrícula (RA) ou CPF não localizado na base discente.">
+                🔍 RA ou CPF não localizado na base discente
+              </option>
+              <option value="Solicitação duplicada para o mesmo período letivo.">
+                📑 Solicitação duplicada
+              </option>
+              <option value="OUTRO">
+                ✍️ Outro motivo (escrever justificativa personalizada)
+              </option>
+            </select>
+
+            {rejectReason === 'OUTRO' && (
+              <textarea
+                value={customRejectReason}
+                onChange={(e) => setCustomRejectReason(e.target.value)}
+                placeholder="Descreva detalhadamente o motivo da recusa para orientar o estudante..."
+                rows={3}
+                className="input-modern w-full text-xs p-2.5 rounded-lg"
+              />
+            )}
+          </div>
+        </div>
       </Modal>
 
       <Modal 
@@ -256,7 +380,7 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
                                setRequests(p => p.filter(x => x.id !== req.id));
                                // Try to send notification
                                if (req.email) {
-                                  sendEmailNotification(req.email, "Exclusão de Conta - FAJOPA", `
+                                  dispatchEmail(req.email, "Exclusão de Conta - FAJOPA", `
                                     <p>Sua solicitação de exclusão de dados sob a LGPD foi aprovada.</p>
                                     <p>Todos os seus dados foram removidos dos sistemas de produção e constam apenas em backup frio por retenção legal (se aplicável).</p>
                                   `);

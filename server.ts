@@ -3,6 +3,7 @@ import { createServer as createViteServer } from "vite";
 import path from "path";
 import webpush from "web-push";
 import dotenv from "dotenv";
+import nodemailer from "nodemailer";
 import admin from "firebase-admin";
 import { APP_VERSION } from "./src/lib/constants.ts";
 
@@ -157,6 +158,180 @@ async function startServer() {
     } catch (error: any) {
       console.error("Error sending push:", error);
       res.status(500).json({ error: "Failed to send notification", details: error.message, statusCode: error.statusCode });
+    }
+  });
+
+  // Helper to build nodemailer transporter from settings or env
+  function getMailTransporter(customSmtp?: any) {
+    let host = (customSmtp?.host || process.env.SMTP_HOST || "").trim();
+    const port = Number(customSmtp?.port || process.env.SMTP_PORT || 587);
+    const secure = customSmtp?.secure !== undefined 
+      ? Boolean(customSmtp.secure) 
+      : (process.env.SMTP_SECURE === "true" || port === 465);
+    
+    let user = (customSmtp?.user || process.env.SMTP_USER || "").trim();
+    let pass = (customSmtp?.pass || process.env.SMTP_PASS || "").trim();
+
+    // Auto-clean Google App Passwords if pasted with spaces (e.g. "abcd efgh ijkl mnop" -> "abcdefghijklmnop")
+    if (host.includes("gmail") || host.includes("google") || user.endsWith("@gmail.com") || user.endsWith("@fajopa.edu.br")) {
+      pass = pass.replace(/\s+/g, "");
+    }
+
+    if (!host || !user || !pass) {
+      return null;
+    }
+
+    if (host.includes("gmail") || host.includes("google") || user.endsWith("@gmail.com") || user.endsWith("@fajopa.edu.br")) {
+      return nodemailer.createTransport({
+        service: "gmail",
+        auth: {
+          user,
+          pass,
+        },
+        tls: {
+          rejectUnauthorized: false
+        }
+      });
+    }
+
+    return nodemailer.createTransport({
+      host,
+      port,
+      secure,
+      auth: {
+        user,
+        pass,
+      },
+      tls: {
+        rejectUnauthorized: false
+      }
+    });
+  }
+
+  function formatSmtpError(err: any): string {
+    const rawMsg = err?.message || String(err);
+    if (rawMsg.includes("535") || rawMsg.includes("BadCredentials") || rawMsg.includes("Username and Password not accepted")) {
+      return "Erro de Autenticação do Gmail (535): O Google não aceita a sua senha comum de login. É obrigatório usar uma 'Senha de App' de 16 letras gerada em sua Conta Google (myaccount.google.com/apppasswords).";
+    }
+    if (rawMsg.includes("ETIMEDOUT") || rawMsg.includes("ECONNREFUSED")) {
+      return "Não foi possível conectar ao servidor SMTP. Verifique o endereço do Host e o número da Porta (ex: 587).";
+    }
+    return rawMsg;
+  }
+
+  // Send Email Notification Endpoint
+  app.post("/api/email/send", async (req, res) => {
+    const { to, subject, html, text, customSmtp } = req.body;
+
+    if (!to || !subject || (!html && !text)) {
+      return res.status(400).json({ error: "Missing required fields: to, subject, html/text" });
+    }
+
+    const rawList = Array.isArray(to) ? to : String(to).split(/[,;\n\r\t]+/);
+    const recipients = rawList
+      .map((e: any) => String(e).trim())
+      .filter((e: string) => e.length > 3 && e.includes("@"));
+
+    if (recipients.length === 0) {
+      return res.status(400).json({ error: "Nenhum endereço de e-mail válido foi fornecido." });
+    }
+
+    try {
+      const transporter = getMailTransporter(customSmtp);
+      const fromName = customSmtp?.fromName || process.env.SMTP_FROM_NAME || "DAVVERO System";
+      const fromEmail = customSmtp?.fromEmail || customSmtp?.user || process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "secretaria@fajopa.edu.br";
+
+      if (!transporter) {
+        // Se SMTP não estiver parametrizado com senha/servidor, salvar em fallback Firestore collection('mail')
+        console.log(`[Email] SMTP não configurado. Salvando requisição na fila Firestore para: ${recipients.join(', ')}`);
+        try {
+          await db.collection("artifacts").doc("banco-de-dados-fajopa").collection("public").doc("data").collection("mail").add({
+            to: recipients,
+            subject,
+            html,
+            text: text || "",
+            createdAt: new Date().toISOString(),
+            status: "queued"
+          });
+        } catch (dbErr) {
+          console.warn("[Email] Falha ao registrar fila secundária:", dbErr);
+        }
+
+        return res.status(200).json({
+          success: true,
+          mode: "queued",
+          message: "Notificação enfileirada no banco de dados com sucesso."
+        });
+      }
+
+      const info = await transporter.sendMail({
+        from: `"${fromName}" <${fromEmail}>`,
+        to: recipients.join(", "),
+        subject,
+        text: text || "",
+        html: html || undefined
+      });
+
+      console.log(`[Email] Mensagem enviada com sucesso para [${recipients.join(', ')}]. MessageId: ${info.messageId}`);
+      return res.status(200).json({
+        success: true,
+        mode: "smtp",
+        messageId: info.messageId,
+        recipients,
+        message: "E-mail disparado com sucesso!"
+      });
+    } catch (err: any) {
+      console.error("[Email] Erro ao enviar e-mail via SMTP:", err);
+      return res.status(500).json({
+        success: false,
+        error: formatSmtpError(err)
+      });
+    }
+  });
+
+  // Test SMTP Connection Endpoint
+  app.post("/api/email/test-connection", async (req, res) => {
+    const { customSmtp, testRecipient } = req.body;
+    try {
+      const transporter = getMailTransporter(customSmtp);
+      if (!transporter) {
+        return res.status(400).json({ 
+          success: false, 
+          error: "Preencha Servidor Host, Usuário e Senha para testar a conexão SMTP." 
+        });
+      }
+
+      await transporter.verify();
+      
+      if (testRecipient) {
+        const fromName = customSmtp?.fromName || "DAVVERO System";
+        const fromEmail = customSmtp?.fromEmail || customSmtp?.user;
+        await transporter.sendMail({
+          from: `"${fromName}" <${fromEmail}>`,
+          to: testRecipient,
+          subject: "🧪 Teste de Conexão de E-mail - DAVVERO",
+          html: `
+            <div style="font-family: sans-serif; padding: 20px; color: #1e293b;">
+              <h2 style="color: #0284c7;">Conexão SMTP Bem-Sucedida!</h2>
+              <p>Este é um e-mail de teste enviado pelo <strong>DAVVERO System</strong>.</p>
+              <p>As configurações de envio automático de e-mails para alunos e secretaria estão funcionando perfeitamente.</p>
+              <hr style="border: 0; border-top: 1px solid #e2e8f0; margin: 20px 0;" />
+              <small style="color: #64748b;">Enviado em: ${new Date().toLocaleString("pt-BR")}</small>
+            </div>
+          `
+        });
+      }
+
+      return res.status(200).json({ 
+        success: true, 
+        message: testRecipient ? `Conexão válida e e-mail de teste enviado com sucesso para ${testRecipient}!` : "Conexão com o servidor SMTP estabelecida com sucesso!" 
+      });
+    } catch (err: any) {
+      console.error("[Email] Erro no teste SMTP:", err);
+      return res.status(500).json({ 
+        success: false, 
+        error: formatSmtpError(err)
+      });
     }
   });
 

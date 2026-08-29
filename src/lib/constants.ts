@@ -26,13 +26,17 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "7.5b";
-export const APP_BUILD = "28.08.2026";
+export const APP_VERSION = "7.7b";
+export const APP_BUILD = "29.08.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
   `artifacts/${appId}/public/data/students/_asset_${assetType}`;
 export const CHANGELOG = [
+  "Versão 7.7b - Branding Davvero System & Notificações de Certificados e Carteirinhas",
+  "Padronização da identidade visual de e-mails com a logo do Davvero System, notificações automatizadas para organizadores e participantes sobre disponibilidade de certificados, e disparo de e-mails para alunos quando a carteirinha for recusada ou desativada.",
+  "Versão 7.6b - Multi-E-mails de Notificações & Sugestões de Edição",
+  "Suporte a múltiplos destinatários para notificações da secretaria com gerenciador visual de e-mails (tags), disparo automático de alertas em sugestões de alteração de perfil e novo modelo de e-mail personalizável para edição cadastral com suporte a provedor Google Workspace (FAJOPA).",
   "Versão 7.5b - Otimização e Limpeza",
   "Limpeza minuciosa no código fonte, remoção de lixos gerados e bibliotecas obsoletas otimizando a velocidade e o tamanho da aplicação. Integração aprimorada do modal de confirmação de inscrição para eventos do Google Forms.",
   "Versão 7.4b - Estabilidade do Controle da Doblô e Otimizações",

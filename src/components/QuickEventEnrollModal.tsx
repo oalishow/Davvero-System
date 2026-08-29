@@ -37,6 +37,7 @@ import {
 } from "firebase/firestore";
 import { db, appId, enrollStudent, createNotification } from "../lib/firebase";
 import { checkAutoApproval } from "../lib/approval";
+import { sendEmailNotification, generateEmailTemplate } from "../lib/emailService";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import type { Event, Member } from "../types";
@@ -384,6 +385,74 @@ export default function QuickEventEnrollModal({
           } catch (e) {
             console.warn("Notification error:", e);
           }
+
+          // Enviar e-mail para a secretaria informando novo cadastro pelo evento
+          if (settings.emailNotificationsEnabled !== false && settings.notifySecretariatOnNewRequest !== false) {
+            const secretariatEmail = settings.secretariatNotificationEmail || "secretaria@fajopa.edu.br";
+            const secretariatEmailHtml = generateEmailTemplate({
+              title: "Novo Cadastro de Participante via Evento 📬",
+              preheader: `Participante ${name.trim()} cadastrou-se pelo evento ${event.title}`,
+              institutionName: settings.instName || "DAVVERO System",
+              institutionColor: settings.instColor || "#0ea5e9",
+              contentHtml: `
+                <p>Olá, equipe da <strong>Secretaria</strong>!</p>
+                <p>Um novo participante realizou cadastro pelo evento <strong>${event.title}</strong> e aguarda homologação da carteirinha.</p>
+                
+                <div class="highlight-card">
+                  <p style="margin:0 0 4px;"><strong>Nome:</strong> ${name.trim()}</p>
+                  <p style="margin:0 0 4px;"><strong>Vínculo:</strong> ${roleToUse}</p>
+                  <p style="margin:0 0 4px;"><strong>E-mail:</strong> ${cleanEmail}</p>
+                  ${phone.trim() ? `<p style="margin:0 0 4px;"><strong>Telefone/WhatsApp:</strong> ${phone.trim()}</p>` : ''}
+                  <p style="margin:0 0 4px;"><strong>Evento:</strong> ${event.title}</p>
+                  <p style="margin:0;"><strong>Código:</strong> ${generatedAlphaCode}</p>
+                </div>
+
+                <p>Acesse o Painel Administrativo para analisar os dados.</p>
+              `,
+              buttonText: "Acessar Painel da Secretaria",
+              buttonUrl: `${window.location.origin}/?admin=true`
+            });
+
+            sendEmailNotification({
+              to: secretariatEmail,
+              subject: `[DAVVERO] Novo Cadastro via Evento: ${name.trim()}`,
+              html: secretariatEmailHtml
+            }, settings.smtpConfig).catch(err => console.warn("Erro ao notificar secretaria:", err));
+          }
+        }
+
+        // E-mail de confirmação para o participante
+        if (cleanEmail && settings.emailNotificationsEnabled !== false && settings.notifyStudentOnPending !== false) {
+          const studentEmailHtml = generateEmailTemplate({
+            title: isAutoApproved ? "Inscrição e Cadastro Confirmados! 🎉" : "Inscrição no Evento Realizada! ⏳",
+            preheader: `Sua inscrição em ${event.title} foi concluída com sucesso.`,
+            institutionName: settings.instName || "DAVVERO System",
+            institutionColor: settings.instColor || "#0ea5e9",
+            contentHtml: `
+              <p>Olá, <strong>${name.trim()}</strong>!</p>
+              <p>Sua inscrição no evento <strong>${event.title}</strong> foi confirmada!</p>
+
+              <div class="highlight-card">
+                <p style="margin:0 0 4px;"><strong>Evento:</strong> ${event.title}</p>
+                <p style="margin:0 0 4px;"><strong>Código de Acesso (AlphaCode):</strong> <span style="color:#0284c7;font-weight:900;">${generatedAlphaCode}</span></p>
+                <p style="margin:0;"><strong>Status da Carteirinha:</strong> ${isAutoApproved ? "Aprovada e Ativa" : "Em análise pela Secretaria"}</p>
+              </div>
+
+              ${!isAutoApproved ? `
+                <p>A sua solicitação de identificação institucional foi encaminhada para homologação da secretaria. Assim que aprovada, você receberá um e-mail de liberação da sua carteirinha.</p>
+              ` : `
+                <p>A sua carteirinha digital já se encontra ativa no sistema.</p>
+              `}
+            `,
+            buttonText: "Ver Minha Inscrição",
+            buttonUrl: `${window.location.origin}/?id=${generatedAlphaCode}`
+          });
+
+          sendEmailNotification({
+            to: cleanEmail,
+            subject: `Confirmação de Inscrição: ${event.title} - ${settings.instName || "DAVVERO"}`,
+            html: studentEmailHtml
+          }, settings.smtpConfig).catch(err => console.warn("Erro ao notificar aluno:", err));
         }
       } else {
         // Update existing member's RA if not set and provided now

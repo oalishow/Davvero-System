@@ -27,11 +27,29 @@ import {
   Sparkles,
   MessageCircle,
   HeartHandshake,
+  Mail,
+  Send,
+  CheckCircle2,
+  AlertCircle,
+  Clock,
+  Eye,
+  Edit3,
+  Code,
+  Copy,
+  Check,
+  ExternalLink,
+  RefreshCw,
+  Smartphone,
+  Monitor,
+  Variable,
+  GraduationCap,
+  Award,
 } from "lucide-react";
 import FajopaIDCard from "./FajopaIDCard";
 import BackupModal from "./BackupModal";
 import WhatsappMuralView from "./WhatsappMuralView";
 import { useSettings } from "../context/SettingsContext";
+import { DEFAULT_EMAIL_TEMPLATES, getCompiledEmail, EmailTemplatesSettings, EmailTemplateKey, parseEmailList } from "../lib/emailService";
 import { AVAILABLE_SEMINARIES } from "../types";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
 import {
@@ -206,7 +224,34 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     cloudSettings.autoApproveWhitelistText || (cloudSettings.autoApproveWhitelist ? cloudSettings.autoApproveWhitelist.join("\n") : "")
   );
 
-  const [activeTab, setActiveTab] = useState<"visual" | "content" | "database" | "system" | "mural" | "appointments">(
+  // Email Notification States
+  const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(cloudSettings.emailNotificationsEnabled ?? true);
+  const [notifyStudentOnPending, setNotifyStudentOnPending] = useState(cloudSettings.notifyStudentOnPending ?? true);
+  const [notifyStudentOnApproved, setNotifyStudentOnApproved] = useState(cloudSettings.notifyStudentOnApproved ?? true);
+  const [notifySecretariatOnNewRequest, setNotifySecretariatOnNewRequest] = useState(cloudSettings.notifySecretariatOnNewRequest ?? true);
+  const [secretariatNotificationEmail, setSecretariatNotificationEmail] = useState(cloudSettings.secretariatNotificationEmail || 'secretaria@fajopa.edu.br');
+  const [notifySecretariatOnEditSuggestion, setNotifySecretariatOnEditSuggestion] = useState(cloudSettings.notifySecretariatOnEditSuggestion ?? true);
+  const [editSuggestionNotificationEmail, setEditSuggestionNotificationEmail] = useState(cloudSettings.editSuggestionNotificationEmail ?? '');
+  const [emailHeaderName, setEmailHeaderName] = useState(cloudSettings.emailHeaderName || 'DAVVERO System');
+  const [emailTemplates, setEmailTemplates] = useState<EmailTemplatesSettings>(cloudSettings.emailTemplates || {});
+  const [emailSubTab, setEmailSubTab] = useState<'smtp' | 'templates'>('smtp');
+  const [selectedTemplateKey, setSelectedTemplateKey] = useState<EmailTemplateKey>('pendingStudent');
+  const [emailPreviewDevice, setEmailPreviewDevice] = useState<'desktop' | 'mobile'>('desktop');
+  const [copiedTag, setCopiedTag] = useState<string | null>(null);
+  const [sendingDemoEmail, setSendingDemoEmail] = useState(false);
+  const [demoEmailResult, setDemoEmailResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [smtpHost, setSmtpHost] = useState(cloudSettings.smtpConfig?.host || '');
+  const [smtpPort, setSmtpPort] = useState(cloudSettings.smtpConfig?.port || 587);
+  const [smtpSecure, setSmtpSecure] = useState(cloudSettings.smtpConfig?.secure ?? false);
+  const [smtpUser, setSmtpUser] = useState(cloudSettings.smtpConfig?.user || '');
+  const [smtpPass, setSmtpPass] = useState(cloudSettings.smtpConfig?.pass || '');
+  const [smtpFromName, setSmtpFromName] = useState(cloudSettings.smtpConfig?.fromName || 'DAVVERO System');
+  const [smtpFromEmail, setSmtpFromEmail] = useState(cloudSettings.smtpConfig?.fromEmail || '');
+  const [testEmailRecipient, setTestEmailRecipient] = useState('');
+  const [testingSmtp, setTestingSmtp] = useState(false);
+  const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
+
+  const [activeTab, setActiveTab] = useState<"visual" | "content" | "database" | "system" | "mural" | "appointments" | "email">(
     "visual",
   );
 
@@ -323,6 +368,24 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           .map(s => s.trim())
           .filter(Boolean),
         autoApproveWhitelistText,
+        emailNotificationsEnabled,
+        notifyStudentOnPending,
+        notifyStudentOnApproved,
+        notifySecretariatOnNewRequest,
+        secretariatNotificationEmail,
+        notifySecretariatOnEditSuggestion,
+        editSuggestionNotificationEmail,
+        emailHeaderName: emailHeaderName.trim() || 'DAVVERO System',
+        emailTemplates,
+        smtpConfig: {
+          host: smtpHost.trim(),
+          port: Number(smtpPort) || 587,
+          secure: smtpSecure,
+          user: smtpUser.trim(),
+          pass: smtpPass.trim(),
+          fromName: smtpFromName.trim(),
+          fromEmail: smtpFromEmail.trim(),
+        },
       });
 
       // Legacy fallback
@@ -777,6 +840,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 { id: "content", label: "Campos/Textos", icon: FileText },
                 { id: "database", label: "Banco de Dados", icon: Link },
                 { id: "system", label: "Sistema", icon: Settings },
+                { id: "email", label: "E-mails", icon: Mail },
                 { id: "mural", label: "Mural", icon: MessageCircle },
                 { id: "appointments", label: "Seminário", icon: HeartHandshake },
               ].map((tab) => (
@@ -2785,6 +2849,1128 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
                   </div>
+                </div>
+              )}
+
+              {activeTab === "email" && (
+                <div className="space-y-6 animate-in fade-in transition-all duration-300">
+                  {/* Status Global de E-mails */}
+                  {/* Top Bar: Ativar/Desativar Disparos */}
+                  <div className="bg-sky-50/50 dark:bg-sky-900/10 p-5 rounded-2xl border border-sky-100 dark:border-sky-500/20">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-3">
+                        <div className="p-2.5 bg-sky-600 text-white rounded-xl shadow-md shadow-sky-500/20">
+                          <Mail className="w-5 h-5" />
+                        </div>
+                        <div>
+                          <h3 className="text-sm font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                            Disparos Automáticos de E-mail
+                          </h3>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                            Notifique alunos e a secretaria em cada etapa do cadastro e aprovação
+                          </p>
+                        </div>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={emailNotificationsEnabled}
+                          onChange={(e) => setEmailNotificationsEnabled(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all dark:border-slate-600 peer-checked:bg-sky-600"></div>
+                      </label>
+                    </div>
+                  </div>
+
+                  {/* Sub-Navegação: Servidor SMTP vs Modelos de E-mail */}
+                  <div className="flex items-center gap-2 border-b border-slate-200 dark:border-slate-700 pb-2">
+                    <button
+                      type="button"
+                      onClick={() => setEmailSubTab('smtp')}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                        emailSubTab === 'smtp'
+                          ? 'bg-sky-600 text-white shadow-md shadow-sky-500/20'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Settings className="w-3.5 h-3.5" />
+                      Servidor SMTP & Gatilhos
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setEmailSubTab('templates')}
+                      className={`px-4 py-2 rounded-xl text-xs font-bold transition-all flex items-center gap-2 ${
+                        emailSubTab === 'templates'
+                          ? 'bg-sky-600 text-white shadow-md shadow-sky-500/20'
+                          : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700'
+                      }`}
+                    >
+                      <Edit3 className="w-3.5 h-3.5" />
+                      Modelos de E-mail (Editor & Preview ao Vivo)
+                    </button>
+                  </div>
+
+                  {/* ABA 1: SERVIDOR SMTP & GATILHOS */}
+                  {emailSubTab === 'smtp' && (
+                    <>
+                      {/* Regras e Gatilhos de Notificação */}
+                      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                        <h4 className="text-xs font-bold text-slate-400 uppercase tracking-wider">
+                          Eventos e Gatilhos Automáticos
+                        </h4>
+
+                        <div className="space-y-3">
+                          {/* 1. Aluno: Cadastro Recebido / Pendente */}
+                          <div className="flex items-start justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50">
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 rounded-lg bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-400 mt-0.5">
+                                <Clock className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-slate-800 dark:text-white">
+                                  Avisar Aluno quando o Cadastro for Recebido (Pendente)
+                                </p>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                  Envia e-mail automático com o código de identificação (AlphaCode) informando que o pedido está em análise.
+                                </p>
+                              </div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={notifyStudentOnPending}
+                              onChange={(e) => setNotifyStudentOnPending(e.target.checked)}
+                              className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                            />
+                          </div>
+
+                          {/* 2. Aluno: Carteirinha Aprovada */}
+                          <div className="flex items-start justify-between p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50">
+                            <div className="flex items-start gap-3">
+                              <div className="p-2 rounded-lg bg-emerald-100 dark:bg-emerald-900/30 text-emerald-600 dark:text-emerald-400 mt-0.5">
+                                <CheckCircle2 className="w-4 h-4" />
+                              </div>
+                              <div>
+                                <p className="text-xs font-bold text-slate-800 dark:text-white">
+                                  Avisar Aluno quando a Carteirinha for Aprovada
+                                </p>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                  Envia e-mail de boas-vindas com o link direto para emissão e visualização da carteirinha digital.
+                                </p>
+                              </div>
+                            </div>
+                            <input
+                              type="checkbox"
+                              checked={notifyStudentOnApproved}
+                              onChange={(e) => setNotifyStudentOnApproved(e.target.checked)}
+                              className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                            />
+                          </div>
+
+                          {/* 3. Secretaria: Alerta de Novos Pedidos */}
+                          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50 space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-start gap-3">
+                                <div className="p-2 rounded-lg bg-sky-100 dark:bg-sky-900/30 text-sky-600 dark:text-sky-400 mt-0.5">
+                                  <BellRing className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800 dark:text-white">
+                                    Notificar a Secretaria sobre Novos Cadastros / Solicitações
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Dispara um e-mail para a equipe sempre que um novo aluno ou participante solicitar carteirinha.
+                                  </p>
+                                </div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={notifySecretariatOnNewRequest}
+                                onChange={(e) => setNotifySecretariatOnNewRequest(e.target.checked)}
+                                className="mt-1 h-4 w-4 rounded border-slate-300 text-sky-600 focus:ring-sky-500"
+                              />
+                            </div>
+
+                            {notifySecretariatOnNewRequest && (() => {
+                              const emailList = parseEmailList(secretariatNotificationEmail);
+                              const removeEmail = (emailToRemove: string) => {
+                                const remaining = emailList.filter(e => e.toLowerCase() !== emailToRemove.toLowerCase());
+                                setSecretariatNotificationEmail(remaining.join(', '));
+                              };
+                              const addPreset = (preset: string) => {
+                                if (!emailList.map(e => e.toLowerCase()).includes(preset.toLowerCase())) {
+                                  setSecretariatNotificationEmail(prev => prev ? `${prev}, ${preset}` : preset);
+                                }
+                              };
+
+                              return (
+                                <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 space-y-2">
+                                  <div className="flex items-center justify-between">
+                                    <label className="text-[10.5px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
+                                      E-mails de Destino ({emailList.length} cadastrado{emailList.length !== 1 ? 's' : ''})
+                                    </label>
+                                    <div className="flex items-center gap-1">
+                                      <button
+                                        type="button"
+                                        onClick={() => addPreset('comunicacao@fajopa.edu.br')}
+                                        className="text-[10px] text-sky-600 hover:text-sky-700 font-bold px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800"
+                                      >
+                                        + comunicacao@fajopa.edu.br
+                                      </button>
+                                      <button
+                                        type="button"
+                                        onClick={() => addPreset('secretaria@fajopa.edu.br')}
+                                        className="text-[10px] text-sky-600 hover:text-sky-700 font-bold px-1.5 py-0.5 rounded bg-sky-50 dark:bg-sky-950/50 border border-sky-200 dark:border-sky-800"
+                                      >
+                                        + secretaria@fajopa.edu.br
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Badges de e-mails ativos */}
+                                  {emailList.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 p-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700/80">
+                                      {emailList.map(emailItem => (
+                                        <span
+                                          key={emailItem}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800/60"
+                                        >
+                                          <Mail className="w-3 h-3 text-sky-500 shrink-0" />
+                                          <span className="font-mono">{emailItem}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => removeEmail(emailItem)}
+                                            className="ml-0.5 p-0.5 rounded-full hover:bg-sky-200 dark:hover:bg-sky-800 text-sky-600 hover:text-rose-600 transition-colors"
+                                            title="Remover e-mail"
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <input
+                                    type="text"
+                                    value={secretariatNotificationEmail}
+                                    onChange={(e) => setSecretariatNotificationEmail(e.target.value)}
+                                    placeholder="Digite um ou mais e-mails separados por vírgula (ex: secretaria@fajopa.edu.br, coord@fajopa.edu.br)"
+                                    className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                                  />
+                                  <p className="text-[10px] text-slate-400">
+                                    Adicione múltiplos destinatários separando por vírgula ou ponto e vírgula. Todos receberão o alerta de novo cadastro em tempo real.
+                                  </p>
+                                </div>
+                              );
+                            })()}
+                          </div>
+
+                          {/* 4. Secretaria: Alerta de Sugestões de Edição */}
+                          <div className="p-3.5 rounded-xl bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700/50 space-y-3">
+                            <div className="flex items-start justify-between">
+                              <div className="flex items-start gap-3">
+                                <div className="p-2 rounded-lg bg-indigo-100 dark:bg-indigo-900/30 text-indigo-600 dark:text-indigo-400 mt-0.5">
+                                  <Edit3 className="w-4 h-4" />
+                                </div>
+                                <div>
+                                  <p className="text-xs font-bold text-slate-800 dark:text-white">
+                                    Notificar a Secretaria sobre Sugestões de Edição de Dados
+                                  </p>
+                                  <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                                    Dispara um e-mail para a equipe sempre que um usuário autenticado sugerir correções no próprio perfil.
+                                  </p>
+                                </div>
+                              </div>
+                              <input
+                                type="checkbox"
+                                checked={notifySecretariatOnEditSuggestion}
+                                onChange={(e) => setNotifySecretariatOnEditSuggestion(e.target.checked)}
+                                className="mt-1 h-4 w-4 rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
+                              />
+                            </div>
+
+                            {notifySecretariatOnEditSuggestion && (() => {
+                              const activeEmailString = editSuggestionNotificationEmail || secretariatNotificationEmail || '';
+                              const emailList = parseEmailList(activeEmailString);
+                              const isInheriting = !editSuggestionNotificationEmail;
+
+                              const removeEmail = (emailToRemove: string) => {
+                                const currentList = parseEmailList(editSuggestionNotificationEmail || secretariatNotificationEmail);
+                                const remaining = currentList.filter(e => e.toLowerCase() !== emailToRemove.toLowerCase());
+                                setEditSuggestionNotificationEmail(remaining.join(', '));
+                              };
+
+                              const addPreset = (preset: string) => {
+                                const current = editSuggestionNotificationEmail || secretariatNotificationEmail || '';
+                                const list = parseEmailList(current);
+                                if (!list.map(e => e.toLowerCase()).includes(preset.toLowerCase())) {
+                                  setEditSuggestionNotificationEmail(current ? `${current}, ${preset}` : preset);
+                                }
+                              };
+
+                              return (
+                                <div className="pt-2 border-t border-slate-200 dark:border-slate-700/60 space-y-2">
+                                  <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1">
+                                    <label className="text-[10.5px] uppercase font-bold text-slate-500 dark:text-slate-400 block">
+                                      E-mails para Sugestões de Edição ({emailList.length} destinatário{emailList.length !== 1 ? 's' : ''})
+                                    </label>
+                                    <div className="flex items-center gap-1.5">
+                                      {isInheriting ? (
+                                        <span className="text-[10px] text-slate-500 bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded font-medium">
+                                          (Usando e-mails padrão da Secretaria)
+                                        </span>
+                                      ) : (
+                                        <button
+                                          type="button"
+                                          onClick={() => setEditSuggestionNotificationEmail('')}
+                                          className="text-[10px] text-amber-600 hover:underline font-bold"
+                                        >
+                                          Restaurar mesmo de Novos Pedidos
+                                        </button>
+                                      )}
+                                      <button
+                                        type="button"
+                                        onClick={() => addPreset('comunicacao@fajopa.edu.br')}
+                                        className="text-[10px] text-indigo-600 hover:text-indigo-700 font-bold px-1.5 py-0.5 rounded bg-indigo-50 dark:bg-indigo-950/50 border border-indigo-200 dark:border-indigo-800"
+                                      >
+                                        + comunicacao@fajopa.edu.br
+                                      </button>
+                                    </div>
+                                  </div>
+
+                                  {/* Badges de e-mails ativos */}
+                                  {emailList.length > 0 && (
+                                    <div className="flex flex-wrap gap-1.5 p-2 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700/80">
+                                      {emailList.map(emailItem => (
+                                        <span
+                                          key={emailItem}
+                                          className="inline-flex items-center gap-1 px-2.5 py-1 rounded-lg text-[11px] font-medium bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60"
+                                        >
+                                          <Mail className="w-3 h-3 text-indigo-500 shrink-0" />
+                                          <span className="font-mono">{emailItem}</span>
+                                          <button
+                                            type="button"
+                                            onClick={() => removeEmail(emailItem)}
+                                            className="ml-0.5 p-0.5 rounded-full hover:bg-indigo-200 dark:hover:bg-indigo-800 text-indigo-600 hover:text-rose-600 transition-colors"
+                                            title="Remover e-mail"
+                                          >
+                                            <X className="w-3 h-3" />
+                                          </button>
+                                        </span>
+                                      ))}
+                                    </div>
+                                  )}
+
+                                  <input
+                                    type="text"
+                                    value={editSuggestionNotificationEmail}
+                                    onChange={(e) => setEditSuggestionNotificationEmail(e.target.value)}
+                                    placeholder={secretariatNotificationEmail ? `Deixe em branco para usar: ${secretariatNotificationEmail}` : "ex: comunicacao@fajopa.edu.br, secretaria@fajopa.edu.br"}
+                                    className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-200 focus:border-indigo-500 outline-none"
+                                  />
+                                  <p className="text-[10px] text-slate-400">
+                                    Caso queira direcionar sugestões de alteração para outros responsáveis ou adicionar mais destinatários, insira acima.
+                                  </p>
+                                </div>
+                              );
+                            })()}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Servidor de Envio SMTP */}
+                      <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 space-y-4">
+                        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-2">
+                          <div>
+                            <h4 className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-2">
+                              <Settings className="w-4 h-4 text-sky-600" />
+                              Configuração do Servidor SMTP (Envio de E-mails)
+                            </h4>
+                            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-0.5">
+                              Configure seu provedor (Gmail, Google Workspace, Outlook, Locaweb, etc.) para disparo real.
+                            </p>
+                          </div>
+                          
+                          {/* Botões de Preenchimento Rápido */}
+                          <div className="flex items-center gap-2">
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSmtpHost('smtp.gmail.com');
+                                setSmtpPort(587);
+                                setSmtpSecure(false);
+                                if (!smtpUser) setSmtpUser('comunicacao@fajopa.edu.br');
+                                if (!smtpFromName) setSmtpFromName('FAJOPA e SPSCJ - Comunicação');
+                              }}
+                              className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800 hover:bg-sky-100 transition-colors flex items-center gap-1"
+                            >
+                              ⚡ Preencher Google / FAJOPA
+                            </button>
+                            <button
+                              type="button"
+                              onClick={() => {
+                                setSmtpHost('smtp.office365.com');
+                                setSmtpPort(587);
+                                setSmtpSecure(false);
+                                if (!smtpFromName) setSmtpFromName('DAVVERO System - FAJOPA');
+                              }}
+                              className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-slate-100 dark:bg-slate-700 text-slate-700 dark:text-slate-300 border border-slate-200 dark:border-slate-600 hover:bg-slate-200 transition-colors"
+                            >
+                              Outlook / 365
+                            </button>
+                          </div>
+                        </div>
+
+                        {/* Alerta de Ajuda Especial para Google Workspace / FAJOPA */}
+                        {(smtpHost.includes("gmail") || smtpUser.includes("@gmail.com") || smtpUser.includes("@fajopa.edu.br")) && (
+                          <div className="p-3.5 rounded-xl bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-700/50 space-y-2 text-xs">
+                            <div className="flex items-center justify-between">
+                              <span className="font-bold text-amber-800 dark:text-amber-300 flex items-center gap-1.5">
+                                <AlertCircle className="w-4 h-4 text-amber-600" />
+                                Google Workspace (FAJOPA): Use a "Senha de App" de 16 letras
+                              </span>
+                              <a
+                                href="https://myaccount.google.com/apppasswords"
+                                target="_blank"
+                                rel="noopener noreferrer"
+                                className="px-2.5 py-1 rounded-lg bg-amber-600 hover:bg-amber-700 text-white font-bold text-[10.5px] transition-colors shadow-sm inline-flex items-center gap-1"
+                              >
+                                Abrir Senhas de App no Google ↗
+                              </a>
+                            </div>
+                            <p className="text-amber-700 dark:text-amber-300/90 text-[11px] leading-relaxed">
+                              Para a conta <strong>comunicacao@fajopa.edu.br</strong> (Google Workspace), o Google exige uma <strong>Senha de App</strong> de 16 letras. Logado na conta do Google da FAJOPA, acesse o link acima, crie a senha com o nome <strong>Davvero</strong> e cole o código de 16 caracteres no campo de senha abaixo.
+                            </p>
+                          </div>
+                        )}
+
+                        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 pt-1">
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                              Nome do Remetente (Como aparece para o aluno)
+                            </label>
+                            <input
+                              type="text"
+                              value={smtpFromName}
+                              onChange={(e) => setSmtpFromName(e.target.value)}
+                              placeholder="Ex: FAJOPA e SPSCJ - Comunicação"
+                              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                              Servidor SMTP (Host)
+                            </label>
+                            <input
+                              type="text"
+                              value={smtpHost}
+                              onChange={(e) => setSmtpHost(e.target.value)}
+                              placeholder="Ex: smtp.gmail.com ou smtp.office365.com"
+                              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none font-mono"
+                            />
+                          </div>
+
+                          <div className="grid grid-cols-2 gap-2">
+                            <div>
+                              <label className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                                Porta
+                              </label>
+                              <input
+                                type="number"
+                                value={smtpPort}
+                                onChange={(e) => setSmtpPort(Number(e.target.value))}
+                                placeholder="587 ou 465"
+                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none font-mono"
+                              />
+                            </div>
+                            <div>
+                              <label className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                                SSL/TLS Seguro
+                              </label>
+                              <select
+                                value={smtpSecure ? "true" : "false"}
+                                onChange={(e) => setSmtpSecure(e.target.value === "true")}
+                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                              >
+                                <option value="false">STARTTLS (587)</option>
+                                <option value="true">SSL Direto (465)</option>
+                              </select>
+                            </div>
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                              Usuário SMTP (E-mail de Login)
+                            </label>
+                            <input
+                              type="text"
+                              value={smtpUser}
+                              onChange={(e) => setSmtpUser(e.target.value)}
+                              placeholder="ex: comunicacao@fajopa.edu.br"
+                              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none font-mono"
+                            />
+                          </div>
+
+                          <div>
+                            <label className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                              Senha ou Senha de Aplicativo (16 Letras)
+                            </label>
+                            <input
+                              type="password"
+                              value={smtpPass}
+                              onChange={(e) => setSmtpPass(e.target.value)}
+                              placeholder="••••••••••••••••"
+                              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none font-mono"
+                            />
+                          </div>
+
+                          <div className="sm:col-span-2">
+                            <label className="text-[10px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                              E-mail de Envio / Remetente (Opcional - caso difira do login)
+                            </label>
+                            <input
+                              type="email"
+                              value={smtpFromEmail}
+                              onChange={(e) => setSmtpFromEmail(e.target.value)}
+                              placeholder="ex: comunicacao@fajopa.edu.br"
+                              className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                            />
+                          </div>
+                        </div>
+
+                        {/* Teste de Disparo em Tempo Real */}
+                        <div className="pt-3 border-t border-slate-200 dark:border-slate-700/60 flex flex-col sm:flex-row gap-2 items-center">
+                          <input
+                            type="email"
+                            value={testEmailRecipient}
+                            onChange={(e) => setTestEmailRecipient(e.target.value)}
+                            placeholder="Digite seu e-mail para receber o teste (ex: seu@email.com)"
+                            className="w-full sm:flex-1 text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                          />
+                          <button
+                            type="button"
+                            disabled={testingSmtp || !smtpHost || !smtpUser || !smtpPass}
+                            onClick={async () => {
+                              setTestingSmtp(true);
+                              setSmtpTestResult(null);
+                              try {
+                                const res = await fetch('/api/email/test-connection', {
+                                  method: 'POST',
+                                  headers: { 'Content-Type': 'application/json' },
+                                  body: JSON.stringify({
+                                    customSmtp: {
+                                      host: smtpHost.trim(),
+                                      port: Number(smtpPort) || 587,
+                                      secure: smtpSecure,
+                                      user: smtpUser.trim(),
+                                      pass: smtpPass.trim(),
+                                      fromName: smtpFromName.trim(),
+                                      fromEmail: smtpFromEmail.trim()
+                                    },
+                                    testRecipient: testEmailRecipient.trim() || undefined
+                                  })
+                                });
+                                const result = await res.json();
+                                if (res.ok && result.success) {
+                                  setSmtpTestResult({ success: true, message: result.message || "Conexão SMTP validada com sucesso!" });
+                                } else {
+                                  setSmtpTestResult({ success: false, message: result.error || "Erro ao conectar com o servidor SMTP." });
+                                }
+                              } catch (err: any) {
+                                setSmtpTestResult({ success: false, message: err?.message || "Erro ao tentar testar o envio de e-mail." });
+                              } finally {
+                                setTestingSmtp(false);
+                              }
+                            }}
+                            className="w-full sm:w-auto px-4 py-2.5 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                          >
+                            {testingSmtp ? (
+                              <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                            ) : (
+                              <Send className="w-3.5 h-3.5" />
+                            )}
+                            {testingSmtp ? "Testando..." : "Testar Conexão"}
+                          </button>
+                        </div>
+
+                        {smtpTestResult && (
+                          <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
+                            smtpTestResult.success 
+                              ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20" 
+                              : "bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-300 border border-rose-200 dark:border-rose-500/20"
+                          }`}>
+                            {smtpTestResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />}
+                            <div className="flex-1 space-y-1">
+                              <p className="font-bold">{smtpTestResult.success ? "Conexão Estabelecida!" : "Falha na Autenticação SMTP"}</p>
+                              <p className="text-[11.5px] leading-relaxed">{smtpTestResult.message}</p>
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    </>
+                  )}
+
+                  {/* ABA 2: MODELOS DE E-MAIL (EDITOR & PREVIEW EM TEMPO REAL) */}
+                  {emailSubTab === 'templates' && (() => {
+                    const currentTpl = {
+                      subject: emailTemplates[selectedTemplateKey]?.subject ?? DEFAULT_EMAIL_TEMPLATES[selectedTemplateKey].subject,
+                      title: emailTemplates[selectedTemplateKey]?.title ?? DEFAULT_EMAIL_TEMPLATES[selectedTemplateKey].title,
+                      buttonText: emailTemplates[selectedTemplateKey]?.buttonText ?? DEFAULT_EMAIL_TEMPLATES[selectedTemplateKey].buttonText,
+                      body: emailTemplates[selectedTemplateKey]?.body ?? DEFAULT_EMAIL_TEMPLATES[selectedTemplateKey].body,
+                    };
+
+                    const updateField = (field: 'subject' | 'title' | 'buttonText' | 'body', val: string) => {
+                      setEmailTemplates(prev => ({
+                        ...prev,
+                        [selectedTemplateKey]: {
+                          ...(prev[selectedTemplateKey] || DEFAULT_EMAIL_TEMPLATES[selectedTemplateKey]),
+                          [field]: val
+                        }
+                      }));
+                    };
+
+                    const resetTemplate = () => {
+                      setEmailTemplates(prev => {
+                        const copy = { ...prev };
+                        delete copy[selectedTemplateKey];
+                        return copy;
+                      });
+                    };
+
+                    const demoVars = {
+                      name: "João da Silva",
+                      alphaCode: "ALPHA-7890",
+                      instName: instName || "FAJOPA e SPSCJ",
+                      appName: emailHeaderName || "DAVVERO System",
+                      headerName: emailHeaderName || "DAVVERO System",
+                      roles: "Seminarista / Teologia",
+                      course: "Bacharelado em Teologia",
+                      diocese: "Diocese de São Carlos",
+                      seminary: "Seminário Maior São Carlos Borromeu",
+                      email: "joao.silva@fajopa.edu.br",
+                      ra: "2024.1.0042",
+                      reason: "Documentação divergente ou foto com baixa nitidez.",
+                      eventTitle: "Simpósio de Filosofia e Teologia 2026",
+                      hours: "10 Horas Complementares",
+                      changedFields: 'E-mail ("joao.novo@fajopa.edu.br"), Nova Foto de Perfil, Curso (Filosofia)',
+                      date: new Date().toLocaleDateString('pt-BR'),
+                    };
+
+                    const compiledPreview = getCompiledEmail({
+                      templateKey: selectedTemplateKey,
+                      customTemplates: emailTemplates,
+                      vars: demoVars,
+                      settings: {
+                        ...cloudSettings,
+                        instName,
+                        instColor,
+                        emailHeaderName
+                      },
+                      buttonUrl: `${window.location.origin}/?id=ALPHA-7890`
+                    });
+
+                    const availableVariables = [
+                      { tag: '{{name}}', label: 'Nome do Aluno/Membro' },
+                      { tag: '{{alphaCode}}', label: 'Código AlphaCode' },
+                      { tag: '{{headerName}}', label: 'Nome do Aplicativo (Davvero)' },
+                      { tag: '{{instName}}', label: 'Nome da Instituição' },
+                      { tag: '{{roles}}', label: 'Vínculo / Cargo' },
+                      { tag: '{{course}}', label: 'Curso' },
+                      { tag: '{{diocese}}', label: 'Diocese' },
+                      { tag: '{{seminary}}', label: 'Seminário' },
+                      { tag: '{{email}}', label: 'E-mail do Aluno' },
+                      { tag: '{{ra}}', label: 'RA / Matrícula' },
+                      { tag: '{{reason}}', label: 'Motivo de Recusa/Desativação' },
+                      { tag: '{{eventTitle}}', label: 'Título do Evento' },
+                      { tag: '{{hours}}', label: 'Carga Horária' },
+                      { tag: '{{changedFields}}', label: 'Campos Alterados (Sugestão)' },
+                    ];
+
+                    return (
+                      <div className="space-y-4">
+                        {/* Seletor de Modelo */}
+                        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-2">
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTemplateKey('pendingStudent')}
+                            className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+                              selectedTemplateKey === 'pendingStudent'
+                                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-400 dark:border-amber-600 ring-2 ring-amber-400/20'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5 text-amber-500" />
+                              1. Aluno: Cadastro
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                              Disparado quando o aluno envia os dados (em análise).
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTemplateKey('approvedStudent')}
+                            className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+                              selectedTemplateKey === 'approvedStudent'
+                                ? 'bg-emerald-50 dark:bg-emerald-950/40 border-emerald-400 dark:border-emerald-600 ring-2 ring-emerald-400/20'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                              <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" />
+                              2. Aluno: Aprovada
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                              Disparado quando a secretaria homologa o pedido.
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTemplateKey('rejectedStudent')}
+                            className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+                              selectedTemplateKey === 'rejectedStudent'
+                                ? 'bg-rose-50 dark:bg-rose-950/40 border-rose-400 dark:border-rose-600 ring-2 ring-rose-400/20'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                              <AlertCircle className="w-3.5 h-3.5 text-rose-500" />
+                              3. Aluno: Recusada
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                              Disparado quando a carteirinha é reprovada pela equipe.
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTemplateKey('deactivatedStudent')}
+                            className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+                              selectedTemplateKey === 'deactivatedStudent'
+                                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-500 dark:border-amber-600 ring-2 ring-amber-500/20'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                              <ShieldAlert className="w-3.5 h-3.5 text-amber-600" />
+                              4. Aluno: Desativada
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                              Disparado quando a carteirinha é inativada/suspensa.
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTemplateKey('certificateAvailableAttendee')}
+                            className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+                              selectedTemplateKey === 'certificateAvailableAttendee'
+                                ? 'bg-teal-50 dark:bg-teal-950/40 border-teal-400 dark:border-teal-600 ring-2 ring-teal-400/20'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                              <GraduationCap className="w-3.5 h-3.5 text-teal-500" />
+                              5. Certificado: Aluno
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                              Disparado para participantes ao liberar certificado.
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTemplateKey('certificateAvailableOrganizer')}
+                            className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+                              selectedTemplateKey === 'certificateAvailableOrganizer'
+                                ? 'bg-amber-50 dark:bg-amber-950/40 border-amber-400 dark:border-amber-600 ring-2 ring-amber-400/20'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                              <Award className="w-3.5 h-3.5 text-amber-500" />
+                              6. Certificado: Organizador
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                              Disparado para comissão organizadora do evento.
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTemplateKey('newRequestSecretariat')}
+                            className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+                              selectedTemplateKey === 'newRequestSecretariat'
+                                ? 'bg-sky-50 dark:bg-sky-950/40 border-sky-400 dark:border-sky-600 ring-2 ring-sky-400/20'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                              <BellRing className="w-3.5 h-3.5 text-sky-500" />
+                              7. Secretaria: Novo Pedido
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                              Disparado para a equipe para avisar nova pendência.
+                            </span>
+                          </button>
+
+                          <button
+                            type="button"
+                            onClick={() => setSelectedTemplateKey('editSuggestionSecretariat')}
+                            className={`p-3 rounded-xl text-left border transition-all flex flex-col justify-between gap-1.5 ${
+                              selectedTemplateKey === 'editSuggestionSecretariat'
+                                ? 'bg-indigo-50 dark:bg-indigo-950/40 border-indigo-400 dark:border-indigo-600 ring-2 ring-indigo-400/20'
+                                : 'bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-slate-300'
+                            }`}
+                          >
+                            <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                              <Edit3 className="w-3.5 h-3.5 text-indigo-500" />
+                              8. Secretaria: Sugestão
+                            </span>
+                            <span className="text-[10px] text-slate-500 dark:text-slate-400">
+                              Disparado quando o usuário sugere edições no perfil.
+                            </span>
+                          </button>
+                        </div>
+
+                        {/* Variáveis Dinâmicas Rápidas (Tags) */}
+                        <div className="p-3 bg-slate-50 dark:bg-slate-900/50 rounded-xl border border-slate-200 dark:border-slate-700/60 space-y-2">
+                          <div className="flex items-center justify-between">
+                            <span className="text-[11px] font-bold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                              <Variable className="w-3.5 h-3.5 text-sky-500" />
+                              Tags Dinâmicas (Clique para copiar ou inserir no texto):
+                            </span>
+                            {copiedTag && (
+                              <span className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1 animate-pulse">
+                                <Check className="w-3 h-3" /> Tag {copiedTag} copiada!
+                              </span>
+                            )}
+                          </div>
+                          <div className="flex flex-wrap gap-1.5">
+                            {availableVariables.map((v) => (
+                              <button
+                                key={v.tag}
+                                type="button"
+                                onClick={() => {
+                                  navigator.clipboard.writeText(v.tag);
+                                  setCopiedTag(v.tag);
+                                  setTimeout(() => setCopiedTag(null), 2000);
+                                }}
+                                title={`Clique para copiar ${v.tag} (${v.label})`}
+                                className="px-2 py-1 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 hover:border-sky-400 dark:hover:border-sky-500 text-[10.5px] font-mono text-sky-700 dark:text-sky-300 transition-colors shadow-2xs flex items-center gap-1"
+                              >
+                                <span>{v.tag}</span>
+                                <span className="text-[9.5px] text-slate-400 font-sans">({v.label})</span>
+                              </button>
+                            ))}
+                          </div>
+                        </div>
+
+                        {/* Layout Split: Editor (Esquerda) vs Visualizador em Tempo Real (Direita) */}
+                        <div className="grid grid-cols-1 lg:grid-cols-12 gap-5 items-start">
+                          {/* Coluna Esquerda: Formulário de Edição */}
+                          <div className="lg:col-span-6 space-y-3.5 bg-white dark:bg-slate-800 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700">
+                            <div className="flex items-center justify-between pb-2 border-b border-slate-100 dark:border-slate-700/60">
+                              <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                <Edit3 className="w-4 h-4 text-sky-600" />
+                                Personalizar Textos do Modelo
+                              </span>
+                              <button
+                                type="button"
+                                onClick={resetTemplate}
+                                className="text-[11px] font-semibold text-rose-600 hover:text-rose-700 dark:text-rose-400 hover:underline flex items-center gap-1"
+                              >
+                                <RefreshCw className="w-3 h-3" />
+                                Restaurar Padrão
+                              </button>
+                            </div>
+
+                            {/* Nome do Aplicativo / Cabeçalho */}
+                            <div>
+                              <label className="text-[10.5px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                                Nome do Aplicativo / Marca no Cabeçalho
+                              </label>
+                              <input
+                                type="text"
+                                value={emailHeaderName}
+                                onChange={(e) => setEmailHeaderName(e.target.value)}
+                                placeholder="DAVVERO System"
+                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                              />
+                              <span className="text-[10px] text-slate-400 mt-1 block">
+                                Exibido no topo de todos os e-mails e notificações junto com a logo e ícone do Davvero System.
+                              </span>
+                            </div>
+
+                            {/* Assunto */}
+                            <div>
+                              <label className="text-[10.5px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                                Assunto do E-mail (Subject)
+                              </label>
+                              <input
+                                type="text"
+                                value={currentTpl.subject}
+                                onChange={(e) => updateField('subject', e.target.value)}
+                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                              />
+                            </div>
+
+                            {/* Título de Cabeçalho */}
+                            <div>
+                              <label className="text-[10.5px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                                Título Principal no E-mail
+                              </label>
+                              <input
+                                type="text"
+                                value={currentTpl.title}
+                                onChange={(e) => updateField('title', e.target.value)}
+                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                              />
+                            </div>
+
+                            {/* Botão de Ação */}
+                            <div>
+                              <label className="text-[10.5px] uppercase font-bold text-slate-500 dark:text-slate-400 block mb-1">
+                                Texto do Botão de Ação
+                              </label>
+                              <input
+                                type="text"
+                                value={currentTpl.buttonText}
+                                onChange={(e) => updateField('buttonText', e.target.value)}
+                                className="w-full text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                              />
+                            </div>
+
+                            {/* Corpo da Mensagem (HTML ou Texto) */}
+                            <div>
+                              <div className="flex items-center justify-between mb-1">
+                                <label className="text-[10.5px] uppercase font-bold text-slate-500 dark:text-slate-400">
+                                  Conteúdo da Mensagem (HTML & Texto)
+                                </label>
+                                <span className="text-[10px] text-slate-400">Suporta tags &lt;p&gt;, &lt;strong&gt;, etc.</span>
+                              </div>
+                              <textarea
+                                rows={8}
+                                value={currentTpl.body}
+                                onChange={(e) => updateField('body', e.target.value)}
+                                className="w-full text-xs p-3 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none font-mono leading-relaxed"
+                              />
+                            </div>
+                          </div>
+
+                          {/* Coluna Direita: Preview Visual em Tempo Real */}
+                          <div className="lg:col-span-6 space-y-3">
+                            {/* Barra Superior do Preview com Seletor de Dispositivo */}
+                            <div className="flex items-center justify-between bg-slate-800 text-white px-4 py-2.5 rounded-t-2xl">
+                              <div className="flex items-center gap-2">
+                                <Eye className="w-4 h-4 text-sky-400" />
+                                <span className="text-xs font-bold">Visualização em Tempo Real (Preview)</span>
+                              </div>
+                              <div className="flex items-center gap-1 bg-slate-900/80 p-1 rounded-lg">
+                                <button
+                                  type="button"
+                                  onClick={() => setEmailPreviewDevice('desktop')}
+                                  className={`p-1.5 rounded-md transition-colors ${
+                                    emailPreviewDevice === 'desktop' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'
+                                  }`}
+                                  title="Visualizar formato Desktop"
+                                >
+                                  <Monitor className="w-3.5 h-3.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setEmailPreviewDevice('mobile')}
+                                  className={`p-1.5 rounded-md transition-colors ${
+                                    emailPreviewDevice === 'mobile' ? 'bg-sky-600 text-white' : 'text-slate-400 hover:text-white'
+                                  }`}
+                                  title="Visualizar formato Mobile / Celular"
+                                >
+                                  <Smartphone className="w-3.5 h-3.5" />
+                                </button>
+                              </div>
+                            </div>
+
+                            {/* Janela Simuladora de Cliente de E-mail */}
+                            <div className={`mx-auto transition-all bg-slate-100 dark:bg-slate-950 p-3 sm:p-4 rounded-b-2xl border border-t-0 border-slate-200 dark:border-slate-800 shadow-md ${
+                              emailPreviewDevice === 'mobile' ? 'max-w-[360px]' : 'w-full'
+                            }`}>
+                              {/* Header do Cliente de E-mail (Gmail / Outlook style) */}
+                              <div className="bg-white dark:bg-slate-900 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 mb-3 space-y-1.5 text-xs shadow-2xs">
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-400 text-[10px] uppercase w-14">Assunto:</span>
+                                  <span className="font-bold text-slate-800 dark:text-white flex-1 truncate">
+                                    {compiledPreview.subject}
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-400 text-[10px] uppercase w-14">De:</span>
+                                  <span className="text-slate-600 dark:text-slate-300 truncate text-[11px]">
+                                    {smtpFromName || emailHeaderName || 'DAVVERO System'} &lt;{smtpFromEmail || smtpUser || 'comunicacao@fajopa.edu.br'}&gt;
+                                  </span>
+                                </div>
+                                <div className="flex items-center gap-2">
+                                  <span className="font-bold text-slate-400 text-[10px] uppercase w-14">Para:</span>
+                                  <span className="text-slate-600 dark:text-slate-300 text-[11px]">
+                                    {selectedTemplateKey === 'newRequestSecretariat' || selectedTemplateKey === 'editSuggestionSecretariat'
+                                      ? (secretariatNotificationEmail || 'secretaria@fajopa.edu.br') 
+                                      : 'joao.silva@fajopa.edu.br'}
+                                  </span>
+                                </div>
+                              </div>
+
+                              {/* E-mail Renderizado Visualmente */}
+                              <div className="bg-white rounded-xl shadow-sm border border-slate-200 overflow-hidden text-slate-800 text-xs">
+                                {/* Header do E-mail */}
+                                <div 
+                                  className="p-5 text-center text-white transition-colors"
+                                  style={{ background: `linear-gradient(145deg, ${instColor || '#0ea5e9'} 0%, #0369a1 100%)` }}
+                                >
+                                  {/* Logotipo Oficial do DAVVERO System com Ícone do Programa */}
+                                  <div className="inline-block bg-white px-3.5 py-1.5 rounded-xl shadow-md mb-2.5">
+                                    <div className="flex items-center gap-2">
+                                      <div 
+                                        className="w-6 h-6 rounded-lg text-white font-black text-xs flex items-center justify-center shadow-xs"
+                                        style={{ background: `linear-gradient(135deg, ${instColor || '#0ea5e9'} 0%, #0284c7 100%)` }}
+                                      >
+                                        D
+                                      </div>
+                                      <div className="text-left leading-tight">
+                                        <div className="text-[11px] font-black tracking-wider text-slate-900 uppercase">
+                                          DAVVERO <span style={{ color: instColor || '#0ea5e9' }}>SYSTEM</span>
+                                        </div>
+                                        <div className="text-[7.5px] font-bold text-slate-400 uppercase tracking-wider">
+                                          Identificação Digital
+                                        </div>
+                                      </div>
+                                    </div>
+                                  </div>
+
+                                  <h1 className="m-0 text-base font-extrabold tracking-tight text-white drop-shadow-xs">
+                                    {emailHeaderName || 'DAVVERO System'}
+                                  </h1>
+                                  <p className="m-0 text-[11px] opacity-90 mt-0.5 font-medium">Notificação Automática do Sistema</p>
+                                </div>
+
+                                {/* Conteúdo do E-mail */}
+                                <div className="p-5 space-y-3">
+                                  <h2 className="m-0 text-sm font-bold text-slate-900">
+                                    {compiledPreview.title}
+                                  </h2>
+
+                                  <div 
+                                    className="leading-relaxed text-slate-700 space-y-2 [&_.highlight-card]:bg-slate-50 [&_.highlight-card]:p-3 [&_.highlight-card]:rounded-lg [&_.highlight-card]:border-l-4 [&_.highlight-card]:my-3"
+                                    style={{ '--highlight-border': instColor || '#0ea5e9' } as any}
+                                    dangerouslySetInnerHTML={{ __html: compiledPreview.bodyHtml }}
+                                  />
+
+                                  {compiledPreview.buttonText && (
+                                    <div className="text-center pt-3 pb-1">
+                                      <span
+                                        className="inline-block px-5 py-2.5 rounded-full text-white font-bold text-xs shadow-md transition-transform"
+                                        style={{ backgroundColor: instColor || '#0ea5e9' }}
+                                      >
+                                        {compiledPreview.buttonText}
+                                      </span>
+                                    </div>
+                                  )}
+                                </div>
+
+                                {/* Footer do E-mail */}
+                                <div className="p-4 text-center text-[10px] text-slate-400 bg-slate-50 border-t border-slate-100">
+                                  <p className="m-0">Esta é uma mensagem automática enviada pelo <strong>{emailHeaderName || 'DAVVERO System'}</strong>.</p>
+                                  <p className="m-0 mt-0.5">Por favor, não responda diretamente a este e-mail.</p>
+                                </div>
+                              </div>
+                            </div>
+
+                            {/* Envio de Demonstração em Tempo Real deste Modelo */}
+                            <div className="p-4 rounded-2xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 space-y-2.5">
+                              <div className="flex items-center justify-between">
+                                <span className="text-xs font-bold text-slate-800 dark:text-white flex items-center gap-1.5">
+                                  <Send className="w-3.5 h-3.5 text-sky-500" />
+                                  Testar Envio Real deste Modelo
+                                </span>
+                                <span className="text-[10px] text-slate-400">
+                                  Dispara exatamente este modelo para sua caixa de entrada
+                                </span>
+                              </div>
+
+                              <div className="flex flex-col sm:flex-row gap-2 items-center">
+                                <input
+                                  type="email"
+                                  value={testEmailRecipient}
+                                  onChange={(e) => setTestEmailRecipient(e.target.value)}
+                                  placeholder="Digite seu e-mail para receber este teste (ex: seu@email.com)"
+                                  className="w-full sm:flex-1 text-xs p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 bg-slate-50 dark:bg-slate-900/50 text-slate-800 dark:text-slate-200 focus:border-sky-500 outline-none"
+                                />
+                                <button
+                                  type="button"
+                                  disabled={sendingDemoEmail || !smtpHost || !smtpUser || !smtpPass}
+                                  onClick={async () => {
+                                    setSendingDemoEmail(true);
+                                    setDemoEmailResult(null);
+                                    try {
+                                      const recipient = testEmailRecipient.trim() || smtpUser.trim();
+                                      const res = await fetch('/api/email/send', {
+                                        method: 'POST',
+                                        headers: { 'Content-Type': 'application/json' },
+                                        body: JSON.stringify({
+                                          to: recipient,
+                                          subject: `[TESTE DE MODELO] ${compiledPreview.subject}`,
+                                          html: compiledPreview.fullHtml,
+                                          customSmtp: {
+                                            host: smtpHost.trim(),
+                                            port: Number(smtpPort) || 587,
+                                            secure: smtpSecure,
+                                            user: smtpUser.trim(),
+                                            pass: smtpPass.trim(),
+                                            fromName: smtpFromName.trim(),
+                                            fromEmail: smtpFromEmail.trim()
+                                          }
+                                        })
+                                      });
+                                      const result = await res.json();
+                                      if (res.ok && result.success) {
+                                        setDemoEmailResult({ success: true, message: `E-mail de demonstração enviado com sucesso para ${recipient}!` });
+                                      } else {
+                                        setDemoEmailResult({ success: false, message: result.error || "Erro ao enviar e-mail de teste." });
+                                      }
+                                    } catch (err: any) {
+                                      setDemoEmailResult({ success: false, message: err?.message || "Erro de conexão ao enviar e-mail." });
+                                    } finally {
+                                      setSendingDemoEmail(false);
+                                    }
+                                  }}
+                                  className="w-full sm:w-auto px-4 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-1.5 transition-all disabled:opacity-50 disabled:cursor-not-allowed shadow-sm"
+                                >
+                                  {sendingDemoEmail ? (
+                                    <RotateCw className="w-3.5 h-3.5 animate-spin" />
+                                  ) : (
+                                    <Send className="w-3.5 h-3.5" />
+                                  )}
+                                  {sendingDemoEmail ? "Enviando..." : "Enviar Demonstração"}
+                                </button>
+                              </div>
+
+                              {demoEmailResult && (
+                                <div className={`p-3 rounded-xl text-xs flex items-center gap-2 ${
+                                  demoEmailResult.success
+                                    ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20"
+                                    : "bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-300 border border-rose-200 dark:border-rose-500/20"
+                                }`}>
+                                  {demoEmailResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600" /> : <AlertCircle className="w-4 h-4 shrink-0 text-rose-600" />}
+                                  <span className="text-[11px] font-medium">{demoEmailResult.message}</span>
+                                </div>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                  })()}
                 </div>
               )}
 

@@ -23,15 +23,17 @@ import {
   Palette,
   PenTool,
   Maximize2,
+  Mail,
 } from "lucide-react";
 import type { Event, CertificateTemplate } from "../types";
 import { updateEvent, db, appId } from "../lib/firebase";
-import { doc, getDoc, setDoc } from "firebase/firestore";
+import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ASSETS_DOC_PATH } from "../lib/constants";
 import { CertificateRenderer } from "./CertificateRenderer";
 import { resizeAndConvertToBase64 } from "../lib/imageUtils";
 import { useSettings } from "../context/SettingsContext";
 import { useDialog } from "../context/DialogContext";
+import { sendEmailNotification, getCompiledEmail } from "../lib/emailService";
 
 interface CertificateEditorProps {
   event: Event;
@@ -265,6 +267,107 @@ Instruções RIGOROSAS:
     }
   };
 
+  const [isNotifying, setIsNotifying] = useState(false);
+
+  const notifyCertificateRecipients = async (isOrganizerCert: boolean, isManualTrigger = false) => {
+    // Check if notification is enabled in settings
+    if (settings.emailNotificationsEnabled === false) return;
+    if (isOrganizerCert && settings.notifyOrganizerOnCertificate === false) return;
+    if (!isOrganizerCert && settings.notifyAttendeeOnCertificate === false) return;
+
+    try {
+      setIsNotifying(true);
+      // Fetch attendances for this event
+      const attendancesSnap = await getDocs(
+        query(
+          collection(db, `artifacts/${appId}/public/data/attendances`),
+          where("eventId", "==", event.id)
+        )
+      );
+
+      const targetAttendances = attendancesSnap.docs
+        .map(d => ({ id: d.id, ...d.data() } as any))
+        .filter(a => {
+          if (isOrganizerCert) {
+            return a.isOrganizer === true && a.status !== "cancelado";
+          } else {
+            return a.status === "presente";
+          }
+        });
+
+      if (targetAttendances.length === 0) {
+        if (isManualTrigger) {
+          showAlert(
+            isOrganizerCert 
+              ? "Nenhum organizador cadastrado neste evento para receber aviso." 
+              : "Nenhum participante com presença confirmada encontrado para receber aviso.",
+            { type: "info" }
+          );
+        }
+        return;
+      }
+
+      // Fetch students info
+      const studentsSnap = await getDocs(
+        query(collection(db, `artifacts/${appId}/public/data/students`))
+      );
+      const studentsDict: Record<string, any> = {};
+      studentsSnap.docs.forEach(d => {
+        if (!d.id.startsWith("_")) {
+          studentsDict[d.id] = d.data();
+        }
+      });
+
+      let sentCount = 0;
+      const originUrl = window.location.origin;
+
+      for (const att of targetAttendances) {
+        const student = studentsDict[att.studentId];
+        const studentEmail = student?.email;
+        if (!studentEmail) continue;
+
+        const certHours = isOrganizerCert && event.organizationHours 
+          ? String(event.organizationHours) 
+          : (event.hours ? String(event.hours) : "conforme programação");
+
+        const templateKey = isOrganizerCert ? 'certificateAvailableOrganizer' : 'certificateAvailableAttendee';
+        const compiled = getCompiledEmail({
+          templateKey,
+          customTemplates: settings.emailTemplates,
+          vars: {
+            name: student.name || 'Participante',
+            eventTitle: event.title || 'Evento Acadêmico',
+            eventDate: event.startDate ? new Date(event.startDate + "T12:00:00").toLocaleDateString("pt-BR") : 'Data do Evento',
+            hours: certHours,
+            email: studentEmail,
+            ra: student.ra || ''
+          },
+          settings,
+          buttonUrl: `${originUrl}/?view=events&eventId=${event.id}`
+        });
+
+        await sendEmailNotification({
+          to: studentEmail,
+          subject: compiled.subject,
+          html: compiled.fullHtml
+        }, settings.smtpConfig).catch(console.warn);
+
+        sentCount++;
+      }
+
+      if (isManualTrigger || sentCount > 0) {
+        showAlert(
+          `Notificações de certificado enviadas com sucesso por e-mail para ${sentCount} ${isOrganizerCert ? 'organizador(es)' : 'participante(s)'}!`,
+          { type: "success" }
+        );
+      }
+    } catch (err) {
+      console.error("Error sending certificate email notifications:", err);
+    } finally {
+      setIsNotifying(false);
+    }
+  };
+
   const handleSave = async (shouldApprove: boolean = false) => {
     if (
       shouldApprove &&
@@ -375,10 +478,17 @@ Instruções RIGOROSAS:
 
       showAlert(
         shouldApprove
-          ? "Certificado conferido e liberado com sucesso para os participantes!"
+          ? (type === "organizer"
+              ? "Certificado de organização conferido e liberado com sucesso!"
+              : "Certificado de participação conferido e liberado com sucesso!")
           : "Configurações do certificado salvas com sucesso!",
         { type: "success" }
       );
+
+      // Notificar organizadores ou participantes se liberado
+      if (shouldApprove) {
+        notifyCertificateRecipients(type === "organizer", false);
+      }
     } catch (e: any) {
       console.error("Error saving certificate:", e);
       showAlert("Erro ao salvar certificado: " + (e.message || "Tente novamente."), { type: "error" });
@@ -1541,6 +1651,19 @@ Instruções RIGOROSAS:
               Cancelar
             </button>
 
+            {template.isApproved && (
+              <button
+                type="button"
+                onClick={() => notifyCertificateRecipients(type === "organizer", true)}
+                disabled={isNotifying}
+                className="px-4 py-2.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-800 dark:text-amber-300 border border-amber-200 dark:border-amber-800/60 rounded-xl text-xs font-bold transition-all disabled:opacity-50 flex items-center gap-1.5"
+                title={type === "organizer" ? "Reenviar e-mail para todos os organizadores" : "Reenviar e-mail para participantes presentes"}
+              >
+                <Mail className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                {isNotifying ? "Enviando..." : (type === "organizer" ? "Avisar Organizadores (E-mail)" : "Avisar Participantes (E-mail)")}
+              </button>
+            )}
+
             <button
               onClick={() => handleSave(false)}
               disabled={isSaving}
@@ -1556,7 +1679,7 @@ Instruções RIGOROSAS:
               className="px-6 py-2.5 bg-slate-900 hover:bg-black dark:bg-sky-500 dark:hover:bg-sky-400 text-white font-bold rounded-xl text-xs transition-all shadow-md active:scale-95 disabled:opacity-50 flex items-center gap-2"
             >
               <CheckCircle className="w-4 h-4" />
-              {isSaving ? "Salvando..." : "Conferir e Liberar aos Alunos"}
+              {isSaving ? "Salvando..." : (type === "organizer" ? "Conferir e Liberar p/ Organizadores" : "Conferir e Liberar aos Alunos")}
             </button>
           </div>
         </div>

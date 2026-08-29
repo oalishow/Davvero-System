@@ -1,11 +1,13 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Search, CheckCircle, Trash2, Star, ScanLine } from "lucide-react";
+import { X, Search, CheckCircle, Trash2, Star, ScanLine, Mail } from "lucide-react";
 import type { Event, Attendance, Member } from "../types";
 import { db, appId, unsubscribeFromEvent, updateAttendanceDetails, updateAttendanceStatus, removeAttendancePresence } from "../lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import Modal from "./Modal";
 import { useDialog } from "../context/DialogContext";
+import { useSettings } from "../context/SettingsContext";
+import { sendEmailNotification, getCompiledEmail } from "../lib/emailService";
 
 interface EventAttendeesModalProps {
   event: Event;
@@ -17,11 +19,13 @@ export default function EventAttendeesModal({
   onClose,
 }: EventAttendeesModalProps) {
   const { showAlert } = useDialog();
+  const { settings } = useSettings();
   const [mounted, setMounted] = useState(false);
   const [attendees, setAttendees] = useState<
     (Attendance & { member?: Member })[]
   >([]);
   const [loading, setLoading] = useState(true);
+  const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [activeTab, setActiveTab] = useState<"all" | "alunos" | "visitantes" | "organizacao">("all");
   const [allMembers, setAllMembers] = useState<Member[]>([]);
@@ -131,6 +135,54 @@ export default function EventAttendeesModal({
       loadData();
     } catch (err) {
       showAlert("Erro ao atualizar status de organização.", { type: 'error' });
+    }
+  };
+
+  const handleNotifyOrganizersEmail = async () => {
+    const organizers = attendees.filter(a => a.isOrganizer === true && a.member?.email);
+    if (organizers.length === 0) {
+      showAlert("Nenhum organizador com e-mail cadastrado foi localizado neste evento.", { type: "warning" });
+      return;
+    }
+
+    try {
+      setIsSendingEmails(true);
+      let count = 0;
+      const certHours = event.organizationHours ? String(event.organizationHours) : (event.hours ? String(event.hours) : "conforme regulamento");
+
+      for (const org of organizers) {
+        if (!org.member?.email) continue;
+
+        const compiled = getCompiledEmail({
+          templateKey: 'certificateAvailableOrganizer',
+          customTemplates: settings.emailTemplates,
+          vars: {
+            name: org.member.name || 'Organizador(a)',
+            eventTitle: event.title || 'Evento Acadêmico',
+            eventDate: event.startDate ? new Date(event.startDate + "T12:00:00").toLocaleDateString("pt-BR") : 'Data do Evento',
+            hours: certHours,
+            email: org.member.email,
+            ra: org.member.ra || ''
+          },
+          settings,
+          buttonUrl: `${window.location.origin}/?view=events&eventId=${event.id}`
+        });
+
+        await sendEmailNotification({
+          to: org.member.email,
+          subject: compiled.subject,
+          html: compiled.fullHtml
+        }, settings.smtpConfig).catch(console.warn);
+
+        count++;
+      }
+
+      showAlert(`Aviso de certificado disponível enviado com sucesso para ${count} organizador(es)!`, { type: "success" });
+    } catch (err) {
+      console.error(err);
+      showAlert("Falha ao disparar e-mails para os organizadores.", { type: "error" });
+    } finally {
+      setIsSendingEmails(false);
     }
   };
 
@@ -571,7 +623,7 @@ export default function EventAttendeesModal({
                 Visitantes
               </button>
             </div>
-            {activeTab !== "organizacao" && (
+            {activeTab !== "organizacao" ? (
               <div className="flex items-center gap-2 pl-0 sm:pl-3 sm:border-l border-slate-200 dark:border-slate-700">
                 <div className="text-[10px] font-bold text-slate-400 uppercase mr-1 whitespace-nowrap">Relatórios:</div>
                 <button
@@ -587,6 +639,18 @@ export default function EventAttendeesModal({
                   title="Imprimir Relatório de Presenças"
                 >
                   Imprimir
+                </button>
+              </div>
+            ) : (
+              <div className="flex items-center gap-2 pl-0 sm:pl-3 sm:border-l border-slate-200 dark:border-slate-700">
+                <button
+                  onClick={handleNotifyOrganizersEmail}
+                  disabled={isSendingEmails}
+                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition-colors shrink-0 disabled:opacity-50 shadow-xs"
+                  title="Enviar e-mail para todos os membros da organização informando que o certificado está disponível"
+                >
+                  <Mail className="w-3.5 h-3.5" />
+                  {isSendingEmails ? "Enviando..." : "Avisar Certificado (E-mail)"}
                 </button>
               </div>
             )}

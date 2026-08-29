@@ -6,6 +6,7 @@ import { db, appId, createNotification } from '../lib/firebase';
 import { useSettings } from '../context/SettingsContext';
 import { AVAILABLE_SEMINARIES, type Member } from '../types';
 import ImageCropperModal from './ImageCropperModal';
+import { sendEmailNotification, getCompiledEmail, parseEmailList } from '../lib/emailService';
 
 interface SuggestEditModalProps {
   member: Member;
@@ -118,7 +119,7 @@ export default function SuggestEditModal({ member, onClose, onSubmitSuccess }: S
         hasPendingAction: true
       });
 
-      // Notification for admin
+      // Notification for admin in-app
       await createNotification({
         recipientId: "admin",
         title: "Sugerida Nova Edição",
@@ -126,7 +127,54 @@ export default function SuggestEditModal({ member, onClose, onSubmitSuccess }: S
         type: "edicao"
       });
 
-      // Local onde entra notificação EmailJS extendida
+      // Email Notification para a equipe da Secretaria / Destinatários Configurados
+      if (settings.emailNotificationsEnabled !== false && settings.notifySecretariatOnEditSuggestion !== false) {
+        const rawRecipients = settings.editSuggestionNotificationEmail || settings.secretariatNotificationEmail || "secretaria@fajopa.edu.br";
+        const recipientsList = parseEmailList(rawRecipients);
+
+        if (recipientsList.length > 0) {
+          const changedLabels: string[] = [];
+          if (!nameMatch) changedLabels.push(`Nome ("${name.trim()}")`);
+          if (!cpfMatch) changedLabels.push("CPF");
+          if (!birthdateMatch) changedLabels.push("Data de Nascimento");
+          if (!raMatch) changedLabels.push(`RA (${ra.trim()})`);
+          if (!emailMatch) changedLabels.push(`E-mail ("${email.trim()}")`);
+          if (rolesChanged) changedLabels.push(`Vínculos (${roles.join(', ')})`);
+          if (!courseMatch) changedLabels.push(`Curso (${course})`);
+          if (!dioceseMatch) changedLabels.push(`Diocese (${diocese})`);
+          if (!seminaryMatch) changedLabels.push(`Seminário (${seminary})`);
+          if (photoBase64) changedLabels.push("Nova Foto de Perfil");
+
+          const changedFieldsText = changedLabels.join(", ") || "Dados cadastrais atualizados";
+
+          const compiled = getCompiledEmail({
+            templateKey: 'editSuggestionSecretariat',
+            customTemplates: settings.emailTemplates,
+            vars: {
+              name: member.name || name.trim(),
+              roles: roles.join(', ') || member.roles?.join(', ') || 'Não especificado',
+              course: course || member.course || 'Não especificado',
+              diocese: diocese || member.diocese || '',
+              seminary: seminary || member.seminary || '',
+              email: email.trim() || member.email || '',
+              ra: ra.trim() || member.ra || '',
+              alphaCode: member.alphaCode || '',
+              changedFields: changedFieldsText
+            },
+            settings,
+            buttonUrl: `${window.location.origin}/?admin=true`
+          });
+
+          sendEmailNotification({
+            to: recipientsList,
+            subject: compiled.subject,
+            html: compiled.fullHtml
+          }, settings.smtpConfig).catch(mailErr => {
+            console.warn("Erro ao disparar e-mail de sugestão de edição:", mailErr);
+          });
+        }
+      }
+
       onSubmitSuccess();
     } catch (e) {
       console.error(e);

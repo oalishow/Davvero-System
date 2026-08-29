@@ -8,6 +8,39 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v7.7b',
+      title: 'Branding Davvero System & Notificações de Certificados e Carteirinhas',
+      changes: [
+        'Identidade visual dos e-mails atualizada: exibição da marca e logotipo oficial do Davvero System nos cabeçalhos em vez de FAJOPA / Provincial.',
+        'Notificação automática por e-mail para membros da equipe de organização quando o certificado do evento estiver disponível/liberado.',
+        'Aviso por e-mail para participantes e alunos quando o certificado oficial for homologado.',
+        'Disparo de e-mails detalhados ao estudante quando uma solicitação de carteirinha for recusada (com seleção de motivos e orientações).',
+        'Notificação por e-mail quando uma carteirinha for suspensa/desativada com justificativa acadêmica ou documental.',
+        'Novo painel de pré-visualização e edição dos 8 modelos de e-mail do sistema com suporte a variáveis dinâmicas.'
+      ],
+      current: true,
+    },
+    {
+      version: 'v7.6b',
+      title: 'Multi-E-mails de Notificações & Sugestões de Edição',
+      changes: [
+        'Suporte completo a múltiplos e-mails de destino para receber alertas da secretaria com gerenciador visual de tags/chips.',
+        'Novo canal de notificações automáticas para sugestões de edição de perfil enviadas por alunos e membros cadastrados.',
+        'Novo modelo de e-mail 100% personalizável no painel com pré-visualização em tempo real (Desktop e Celular) para sugestões de edição.',
+        'Guia e suporte aprimorado para servidores SMTP do Google Workspace (FAJOPA - comunicacao@fajopa.edu.br) e senhas de app.'
+      ],
+      current: false,
+    },
+    {
+      version: 'v7.5b',
+      title: 'Otimização e Limpeza do Sistema',
+      changes: [
+        'Limpeza no código fonte, otimizando a velocidade de carregamento e tamanho da aplicação.',
+        'Integração aprimorada do modal de confirmação de inscrição para eventos do Google Forms.'
+      ],
+      current: false,
+    },
+    {
       version: 'v7.4b',
       title: 'Estabilidade no Controle da Doblô e Otimizações',
       changes: [
@@ -16,7 +49,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Tratamento automático para quilometragem com vírgula ou ponto decimal, evitando falhas de gravação.',
         'Persistência otimizada e sincronização em tempo real de logs de uso do veículo.'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v7.3b',
