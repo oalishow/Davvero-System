@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { collection, query, getDocs, where } from "firebase/firestore";
+import { collection, query, getDocs } from "firebase/firestore";
 import { db, appId } from "../lib/firebase";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,

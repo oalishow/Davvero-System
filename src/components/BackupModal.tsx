@@ -3,14 +3,11 @@ import { createPortal } from "react-dom";
 import { X, Database, Download, Lock, HardDrive, Clock } from "lucide-react";
 import {
   collection,
-  query,
-  getDocs,
   setDoc,
   doc,
   addDoc,
 } from "firebase/firestore";
 import { db, appId, createNotification } from "../lib/firebase";
-import type { Member } from "../types";
 import { PASSWORD_STORAGE_KEY, DEFAULT_ADMIN_PASSWORD } from "../lib/constants";
 import { fetchFullBackup, getAutoBackupsList, downloadAutoBackup } from "../lib/autoBackup";
 

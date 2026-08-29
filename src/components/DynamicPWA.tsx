@@ -33,7 +33,7 @@ export default function DynamicPWA() {
     themeColorMeta.setAttribute('content', settings.instColor || "#0ea5e9");
 
     // 4. Atualizar Favicon
-    let favicon = document.querySelector('link[rel="icon"]') as HTMLLinkElement;
+    const favicon = document.querySelector('link[rel="icon"]') as HTMLLinkElement;
     if (favicon) {
       favicon.href = settings.instLogo || "/icon.svg";
     }

@@ -56,7 +56,7 @@ export default function EditAppointmentModal({ avail, appt, professionals, allSt
         }
       } else {
         // Status OCUPADO
-        let matchedMemberId = memberId || "unmatched";
+        const matchedMemberId = memberId || "unmatched";
         let resolvedStudentName = studentName || "Desconhecido";
         
         if (matchedMemberId !== "unmatched") {

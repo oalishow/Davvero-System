@@ -65,7 +65,7 @@ export default function WelcomeModal({ isOpen, onClose }: WelcomeModalProps) {
                   Porém, ao ouvirmos os alunos, professores e a comunidade ao longo do tempo, decidimos inovar. O sistema foi integralmente construído por meio de "Vibe Coding" e da IA Gemini, transformando intuição e linguagem natural em linhas de código.
                 </p>
                 <p>
-                  Hoje, o programa busca integrar ao ecossistema da FAJOPA e dos Seminários com funcionalidades que visam auxiliar a todos.
+                  Hoje, o programa busca integrar ao ecossistema da FAJOPA, dos Seminários e, expandindo agora, também às Dioceses, que em breve trarão grandes novidades. Inspirado nos valores do documento <em>Magnifica Humanitas</em>, nossa missão é aliar inovação tecnológica com a valorização do ser humano e a comunhão institucional, construindo pontes para o futuro.
                 </p>
                 
                 <div className="bg-sky-50 dark:bg-sky-900/20 p-4 rounded-xl flex items-start gap-3 mt-4 border border-sky-100 dark:border-sky-800/30">

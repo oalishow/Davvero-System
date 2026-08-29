@@ -58,7 +58,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
       : `Certificamos que [NOME DO ALUNO], participou com êxito e assiduidade do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado entre ${new Date(event.startDate).toLocaleDateString('pt-BR')} e ${new Date(event.endDate || event.startDate).toLocaleDateString('pt-BR')}${hoursText}.`;
 
     // Clean body text (strip any literal "null horas" or "undefined horas" from user edits)
-    let bodyText = (template.bodyText || defaultBodyText)
+    const bodyText = (template.bodyText || defaultBodyText)
       .replace(/\[NOME DO ALUNO\]/g, member.name || 'NOME DO PARTICIPANTE')
       .replace(/\[RA DO ALUNO\]/g, member.ra || 'RA DO ALUNO')
       .replace(/null horas/gi, '')

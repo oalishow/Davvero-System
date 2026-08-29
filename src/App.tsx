@@ -1,14 +1,10 @@
 import { useState, useEffect, lazy, Suspense } from "react";
-import { Wrench } from "lucide-react";
 import { useDialog } from "./context/DialogContext";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
 import {
-  Moon,
-  Sun,
   Shield,
   User,
-  Lock,
   Loader2,
   Sparkles,
   RefreshCw,

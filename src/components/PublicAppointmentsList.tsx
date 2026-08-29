@@ -1,8 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { collection, query, getDocs } from "firebase/firestore";
-import { db, appId } from "../lib/firebase";
 import { Member } from "../types";
-import { User, HeartHandshake, ShieldCheck, Instagram, Facebook, Users, Car, ExternalLink, Calendar as CalendarIcon, MessageCircle } from "lucide-react";
+import { HeartHandshake, ShieldCheck, Instagram, Facebook, Users, Car, ExternalLink, Calendar as CalendarIcon, MessageCircle } from "lucide-react";
 import MuralPage from "./MuralPage";
 import DobloControl from "./DobloControl";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";

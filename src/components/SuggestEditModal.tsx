@@ -1,9 +1,8 @@
 import { useState, useEffect, ChangeEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { X, CheckCircle, Search, Image as ImageIcon } from 'lucide-react';
+import { X, Image as ImageIcon } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, appId, createNotification } from '../lib/firebase';
-import { resizeAndConvertToBase64 } from '../lib/imageUtils';
 import { useSettings } from '../context/SettingsContext';
 import { AVAILABLE_SEMINARIES, type Member } from '../types';
 import ImageCropperModal from './ImageCropperModal';
@@ -24,7 +23,7 @@ export default function SuggestEditModal({ member, onClose, onSubmitSuccess }: S
   const [seminary, setSeminary] = useState(member.seminary || '');
   const [cpf, setCpf] = useState(member.cpf || '');
   const [birthdate, setBirthdate] = useState(() => {
-    let bd = member.birthdate || '';
+    const bd = member.birthdate || '';
     if (bd.includes('/')) {
       const parts = bd.split('/');
       if (parts.length === 3) {

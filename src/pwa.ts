@@ -4,7 +4,7 @@ export const setupPWA = () => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
         // Remover apenas service workers verdadeiramente obsoletos
         navigator.serviceWorker.getRegistrations().then(function(registrations) {
-            for (let registration of registrations) {
+            for (const registration of registrations) {
                 if (registration.active && registration.active.scriptURL.includes('old-sw')) {
                     registration.unregister();
                     console.log("Service worker antigo desregistrado.");

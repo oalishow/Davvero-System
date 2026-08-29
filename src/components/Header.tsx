@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { ShieldCheck, Download, Sun, Moon, Bell, Trash2, Lock, Share2, Copy, Volume2, VolumeX, Volume1, RefreshCw, Vibrate, VibrateOff } from 'lucide-react';
+import { Download, Sun, Moon, Bell, Trash2, Lock, Share2, Volume2, VolumeX, Volume1, RefreshCw, Vibrate, VibrateOff } from 'lucide-react';
 import { APP_VERSION, APP_BUILD } from '../lib/constants';
 import { useSettings } from '../context/SettingsContext';
 import { useDialog } from '../context/DialogContext';
@@ -229,7 +229,7 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
           onClick={async () => {
              if ('serviceWorker' in navigator) {
                const regs = await navigator.serviceWorker.getRegistrations();
-               for (let reg of regs) { await reg.unregister(); }
+               for (const reg of regs) { await reg.unregister(); }
              }
              window.location.href = window.location.href.split('?')[0] + '?t=' + new Date().getTime();
           }}
@@ -489,7 +489,13 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
         </span>
       </h1>
       <p className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs tracking-[0.2em] animated-fade-in uppercase">
-        {instDescription}
+        {instDescription &&
+        !instDescription.toUpperCase().includes('VERIFICAÇÃO') &&
+        !instDescription.toUpperCase().includes('VERIFICACAO') &&
+        !instDescription.toUpperCase().includes('IDENTIFICAÇÃO') &&
+        !instDescription.toUpperCase().includes('IDENTIFICACAO')
+          ? instDescription
+          : 'SEU SISTEMA DE GESTÃO PARA FACULDADES, SEMINÁRIOS E DIOCESES'}
       </p>
 
       <div className="flex flex-col items-center mt-4 gap-1.5 uppercase font-black tracking-widest text-[8px] sm:text-[9px] animated-fade-in">

@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState } from "react";
 import { createPortal } from "react-dom";
 import { motion } from "motion/react";
 import { X, MessageSquare, Check, AlertCircle, ChevronRight } from "lucide-react";
@@ -119,7 +119,7 @@ export default function ImportWhatsappModal({ onClose, onImport, professionals, 
                   score = 100;
                } else if (nameParts.length > 0 && sParts.length > 0) {
                   let partsMatched = 0;
-                  let isFirstMatch = sParts[0] === nameParts[0];
+                  const isFirstMatch = sParts[0] === nameParts[0];
                   let hasMismatchedParts = false;
                   
                   for (const p of nameParts) {

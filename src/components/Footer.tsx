@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { Mail, FileText, ExternalLink } from 'lucide-react';
+import { Mail, FileText } from 'lucide-react';
 import { APP_VERSION, APP_BUILD } from '../lib/constants';
 import ChangelogModal from './ChangelogModal';
 import AboutModal from './AboutModal';

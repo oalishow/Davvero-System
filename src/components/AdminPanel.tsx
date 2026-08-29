@@ -14,7 +14,6 @@ import {
   UserX,
   Clock,
   Image as ImageIcon,
-  Mail,
   LogOut,
   Share2,
   Check,
@@ -31,7 +30,6 @@ import {
   onSnapshot,
   where,
   limit,
-  Timestamp,
 } from "firebase/firestore";
 import { db, appId, auth, registerVisitor, createNotification } from "../lib/firebase";
 import { logAdminAction } from "../lib/audit";
@@ -46,7 +44,7 @@ import RecycleBinModal from "./RecycleBinModal";
 import BackupModal from "./BackupModal";
 import AdminRequestsModal from "./AdminRequestsModal";
 import FajopaIDCard from "./FajopaIDCard";
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import { X } from "lucide-react";
 import ImageCropperModal from "./ImageCropperModal";
 import PrintReportModal from "./PrintReportModal";
@@ -57,7 +55,7 @@ import NotificationsManager from "./NotificationsManager";
 import AdminAppointments from "./AdminAppointments";
 import DashboardPanel from "./DashboardPanel";
 import { performAutoBackupIfDue } from "../lib/autoBackup";
-import { Calendar, BriefcaseMedical, LayoutDashboard, CalendarDays, ShieldPlus } from "lucide-react";
+import { Calendar, BriefcaseMedical, LayoutDashboard } from "lucide-react";
 
 export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const { settings, updateSettings } = useSettings();
@@ -113,7 +111,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
   useEffect(() => {
     const fetchAdminRoleAndMember = async () => {
-      let currentRole: "ADMIN" | "GERENTE" | "LEITOR" = "ADMIN";
+      const currentRole: "ADMIN" | "GERENTE" | "LEITOR" = "ADMIN";
       
       setAdminAccessLevel(currentRole);
       

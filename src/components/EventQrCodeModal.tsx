@@ -13,10 +13,8 @@ import {
   Share2,
   QrCode,
   User,
-  GraduationCap,
   Sparkles,
   MessageCircle,
-  Image as ImageIcon,
 } from "lucide-react";
 import { QRCodeCanvas } from "qrcode.react";
 import { useSettings } from "../context/SettingsContext";

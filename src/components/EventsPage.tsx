@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { motion, AnimatePresence } from "motion/react";
+import { AnimatePresence } from "motion/react";
 import {
   Calendar,
   CalendarPlus,
@@ -18,19 +18,15 @@ import {
   Settings,
   Pin,
   QrCode,
-  Printer,
-  Sparkles,
   MessageCircle,
   Church,
   Plus,
   Globe,
   Award,
   Crown,
-  ShieldCheck,
   Trash2,
   PauseCircle,
   PlayCircle,
-  CheckCircle2,
 } from "lucide-react";
 import {
   collection,
@@ -64,7 +60,6 @@ import CertificateEditor from "./CertificateEditor";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import { DEFAULT_PUBLIC_URL } from "../lib/constants";
-import PublicAppointmentsList from "./PublicAppointmentsList";
 import EventManagement from "./EventManagement";
 
 export default function EventsPage({ onNavigateToStudent, renderSeminary = false }: { onNavigateToStudent?: () => void, renderSeminary?: boolean }) {
@@ -228,7 +223,7 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     if (e.status === "cancelado") return "past";
     const now = new Date();
     const start = new Date(e.startDate);
-    let end = e.endDate ? new Date(e.endDate) : new Date(e.startDate);
+    const end = e.endDate ? new Date(e.endDate) : new Date(e.startDate);
     
     const hasStarted = now >= start;
     const hasFinished = now > end;
@@ -296,6 +291,12 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
         timestamp: new Date().toISOString(),
       });
       showAlert("Inscrição realizada com sucesso!", { type: 'success' });
+      
+      const target = events.find((e) => e.id === eventId);
+      if (target?.googleFormsLink) {
+        const link = target.googleFormsLink.startsWith("http") ? target.googleFormsLink : `https://${target.googleFormsLink}`;
+        setTimeout(() => window.open(link, "_blank"), 1500);
+      }
     } catch (err: any) {
       console.error(err);
       if (err.message === "LIMITE_EXCEDIDO") {
@@ -472,7 +473,7 @@ END:VCALENDAR`;
             {renderSeminary ? "Eventos do Seminário" : "Painel de Eventos"}
           </h2>
           <p className={`${renderSeminary ? 'text-amber-100' : 'text-sky-100'} font-medium text-sm sm:text-base max-w-md mx-auto`}>
-            {renderSeminary ? "Explore e inscreva-se nos retiros, formações exclusivas e demais eventos." : "Explore e inscreva-se nos próximos eventos acadêmicos e do seminário."}
+            {renderSeminary ? "Explore e inscreva-se nos retiros, formações exclusivas e demais eventos." : "Explore e inscreva-se nos próximos eventos acadêmicos, dos seminários e das dioceses."}
           </p>
           {isAdmin && (
             <button
@@ -1213,33 +1214,21 @@ END:VCALENDAR`;
                             Inscrição - R$ {(event.price || 0).toFixed(2).replace('.', ',')}
                           </button>
                         ) : (
-                          <>
-                            {event.googleFormsLink && (
-                              <a
-                                href={event.googleFormsLink.startsWith("http") ? event.googleFormsLink : `https://${event.googleFormsLink}`}
-                                target="_blank"
-                                rel="noopener noreferrer"
-                                className="w-full min-h-[44px] bg-blue-600 hover:bg-blue-500 text-white rounded-xl text-[11px] font-bold transition-all flex items-center justify-center text-center px-2 py-2 shadow-sm"
-                              >
-                                Inscrição Gratuita (Forms)
-                              </a>
-                            )}
-                            {!event.googleFormsLink && (
-                              <button
-                                onClick={() => handleEnroll(event.id)}
-                                disabled={isEnrollingInProgress === event.id}
-                                className={`w-full min-h-[36px] text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center cursor-pointer ${
-                                  isEnrollingInProgress === event.id
-                                    ? "bg-slate-400 opacity-70 cursor-not-allowed scale-100"
-                                    : "bg-sky-600 hover:bg-sky-500 hover:scale-105 active:scale-95 hover:shadow-md"
-                                }`}
-                              >
-                                {isEnrollingInProgress === event.id
-                                  ? "Aguarde..."
+                            <button
+                              onClick={() => handleEnroll(event.id)}
+                              disabled={isEnrollingInProgress === event.id}
+                              className={`w-full min-h-[36px] text-white rounded-xl text-xs font-bold transition-all shadow-sm flex items-center justify-center cursor-pointer ${
+                                isEnrollingInProgress === event.id
+                                  ? "bg-slate-400 opacity-70 cursor-not-allowed scale-100"
+                                  : event.googleFormsLink ? "bg-blue-600 hover:bg-blue-500 hover:scale-105 active:scale-95 hover:shadow-md min-h-[44px] text-[11px]" : "bg-sky-600 hover:bg-sky-500 hover:scale-105 active:scale-95 hover:shadow-md"
+                              }`}
+                            >
+                              {isEnrollingInProgress === event.id
+                                ? "Aguarde..."
+                                : event.googleFormsLink 
+                                  ? "Inscrição Gratuita (Forms)" 
                                   : "Inscrever-me"}
-                              </button>
-                            )}
-                          </>
+                            </button>
                         )}
                       </div>
                     ) : (

@@ -18,7 +18,6 @@ import {
   AlertTriangle,
   Info,
   Terminal,
-  ExternalLink,
   ShieldCheck,
   Smartphone
 } from "lucide-react";

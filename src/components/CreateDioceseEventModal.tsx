@@ -6,9 +6,7 @@ import {
   MapPin,
   Video,
   User,
-  Image as ImageIcon,
   Church,
-  DollarSign,
   Award,
   Upload,
   Sparkles,
@@ -16,8 +14,7 @@ import {
   AlertCircle,
   Globe,
   ShieldCheck,
-  FileText,
-  Loader2
+  FileText
 } from "lucide-react";
 import Modal from "./Modal";
 import ImageCropperModal from "./ImageCropperModal";

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Camera, XCircle, Search, ScanLine, CheckCircle, ArrowLeft, Loader2, ExternalLink, ShieldCheck, Award, GraduationCap, QrCode, Sparkles, ChevronRight, UserCheck, Check, Copy, BookOpen } from "lucide-react";
+import { Camera, XCircle, Search, ScanLine, ArrowLeft, Loader2, ExternalLink, ShieldCheck, Award, GraduationCap, QrCode, ChevronRight, BookOpen } from "lucide-react";
 import { collection, query, getDocs } from "firebase/firestore";
 import {
   db,
@@ -20,7 +20,7 @@ import RegistrationSuccessModal from "./RegistrationSuccessModal";
 import { useDialog } from "../context/DialogContext";
 import { playSound } from '../lib/sounds';
 
-import { motion, AnimatePresence } from "motion/react";
+import { motion } from "motion/react";
 import confetti from "canvas-confetti";
 import { useSettings } from "../context/SettingsContext";
 

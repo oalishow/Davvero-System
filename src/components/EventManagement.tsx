@@ -17,21 +17,14 @@ import {
   MapPin,
   Pin,
   QrCode,
-  Printer,
-  Church,
   Globe,
-  ShieldCheck,
 } from "lucide-react";
 import ImageCropperModal from "./ImageCropperModal";
 import EventQrCodeModal from "./EventQrCodeModal";
 import {
   collection,
-  addDoc,
   query,
-  getDocs,
   onSnapshot,
-  orderBy,
-  doc,
 } from "firebase/firestore";
 import {
   db,

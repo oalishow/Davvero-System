@@ -1,7 +1,7 @@
 import { useState, useCallback, useEffect } from 'react';
 import { createPortal } from 'react-dom';
 import Cropper from 'react-easy-crop';
-import { Check, X, Image as ImageIcon, Maximize2, Loader2 } from 'lucide-react';
+import { Check, X, Maximize2, Loader2 } from 'lucide-react';
 import { getCroppedImg, compressOriginalImage } from '../lib/cropUtils';
 
 interface ImageCropperModalProps {

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check, ExternalLink, Calendar, Clock, BookOpen, UserCheck } from "lucide-react";
+import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check } from "lucide-react";
 import type { Member } from "../types";
 import { QRCodeSVG } from "qrcode.react";
 import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL } from "../lib/constants";

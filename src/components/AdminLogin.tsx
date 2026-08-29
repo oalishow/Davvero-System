@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Mail, KeyRound, UserPlus, LogIn, ChevronRight, Lock } from "lucide-react";
+import { KeyRound, UserPlus, LogIn, ChevronRight, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { PASSWORD_STORAGE_KEY, DEFAULT_ADMIN_PASSWORD } from "../lib/constants";
 import { auth } from "../lib/firebase";
@@ -117,7 +117,7 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
 
   const handleGoogleAuth = async () => {
     const isRegister = activeTab === "register";
-    let inviteDocRef: any = null;
+    const inviteDocRef: any = null;
 
     if (isRegister) {
       if (!masterConfirm) {

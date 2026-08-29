@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Trash2, ShieldAlert } from 'lucide-react';
+import { X, Trash2 } from 'lucide-react';
 import { collection, query, doc, updateDoc, deleteDoc, onSnapshot } from 'firebase/firestore';
 import { db, appId } from '../lib/firebase';
 import type { Member } from '../types';

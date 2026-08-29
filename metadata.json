@@ -1,6 +1,6 @@
 {
   "name": "DAVVERO System",
-  "description": "Sistema avançado de verificação de identidades para FAJOPA e SPSCJ com relatórios de impressão e gestão de membros.",
+  "description": "Seu sistema de gestão para faculdades, seminários e dioceses com eventos acadêmicos, presença e certificados digitais.",
   "requestFramePermissions": [
     "camera",
     "publickey-credentials-create",

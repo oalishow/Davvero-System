@@ -98,7 +98,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   signatureScale: 100,
   rectorSignatureScale: 100,
   secondaryBackLogoScale: 100,
-  instDescription: 'SISTEMA DE VERIFICAÇÃO DE IDENTIDADE',
+  instDescription: 'SEU SISTEMA DE GESTÃO PARA FACULDADES, SEMINÁRIOS E DIOCESES',
   cardDescription: 'Documento de identificação estudantil é padronizado e apresenta os dados requeridos pela Lei 12.933/2013 para comprovação de matrícula, sendo sua aceitação sujeita aos critérios dos organizadores de eventos.',
   visibleFields: {
     name: true,
@@ -203,9 +203,22 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
+        // Migrate old default subtitle if present
+        let currentInstDescription = data.instDescription;
+        if (
+          !currentInstDescription ||
+          currentInstDescription.toUpperCase().includes('VERIFICAÇÃO') ||
+          currentInstDescription.toUpperCase().includes('VERIFICACAO') ||
+          currentInstDescription.toUpperCase().includes('IDENTIFICAÇÃO') ||
+          currentInstDescription.toUpperCase().includes('IDENTIFICACAO')
+        ) {
+          currentInstDescription = DEFAULT_SETTINGS.instDescription;
+        }
+
         setSettings(prev => ({ 
           ...prev, 
           ...data,
+          instDescription: currentInstDescription,
           visibleFields: mergedVisibleFields
         }));
       } else {

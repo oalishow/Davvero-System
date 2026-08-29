@@ -1,6 +1,6 @@
 import React, { createContext, useContext, useState, ReactNode, useCallback } from 'react';
 import { createPortal } from 'react-dom';
-import { X, AlertCircle, CheckCircle2, Info, Loader2, AlertTriangle } from 'lucide-react';
+import { AlertCircle, CheckCircle2, Info, AlertTriangle } from 'lucide-react';
 import { motion, AnimatePresence } from 'motion/react';
 import { playSound } from '../lib/sounds';
 

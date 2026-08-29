@@ -1,14 +1,13 @@
 import { useState, useRef, useEffect, ChangeEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Trash2, ShieldAlert, Download, QrCode, Image as ImageIcon, Printer } from 'lucide-react';
+import { X, Save, Trash2, ShieldAlert, Download, Image as ImageIcon, Printer } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, appId, createNotification } from '../lib/firebase';
 import { logAdminAction } from '../lib/audit';
-import FajopaIDCard from './FajopaIDCard';
 import { useSettings } from '../context/SettingsContext';
 import { type Member, AVAILABLE_SEMINARIES } from '../types';
 import { QRCodeCanvas } from 'qrcode.react';
-import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL, CUSTOM_ROLES_KEY, CUSTOM_COURSES_KEY } from '../lib/constants';
+import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL } from '../lib/constants';
 import ImageCropperModal from './ImageCropperModal';
 import Modal from './Modal';
 
@@ -24,7 +23,7 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
   const [ra, setRa] = useState(member.ra || '');
   const [cpf, setCpf] = useState(member.cpf || '');
   const [birthdate, setBirthdate] = useState(() => {
-    let bd = member.birthdate || '';
+    const bd = member.birthdate || '';
     if (bd.includes('/')) {
       const parts = bd.split('/');
       if (parts.length === 3) {
@@ -111,7 +110,7 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
     setLoading(true);
     setError('');
     
-    let photoUrl = photoBase64 || member.photoUrl;
+    const photoUrl = photoBase64 || member.photoUrl;
 
     try {
       const docRef = doc(db, `artifacts/${appId}/public/data/students`, member.id);

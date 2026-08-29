@@ -1,6 +1,6 @@
 import { useState, useEffect } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Check } from 'lucide-react';
+import { X } from 'lucide-react';
 import { collection, query, getDocs, doc, updateDoc, deleteDoc, addDoc } from 'firebase/firestore';
 import { db, appId, createNotification } from '../lib/firebase';
 import { logAdminAction } from '../lib/audit';

@@ -175,13 +175,16 @@ export default function AboutModal({ onClose }: AboutModalProps) {
                 vem do italiano e significa <em>"Verdadeiro"</em>, ou expressa
                 uma surpresa como: <em>"Sério?"</em>. Foi exatamente assim que
                 me senti quando pude perceber que a ferramenta podia ir muito
-                além do que eu imaginava. Por isso, essa homenagem. O sistema
+                além do que eu imaginava. Por isso, essa homenagem. Inspirado
+                nos princípios do documento <em>Magnifica Humanitas</em>, o sistema
                 hoje tem como objetivo auxiliar no processo de identificação e
-                na organização de eventos da FAJOPA. Foram diversos passos para
-                chegar a este resultado, que não foi fácil e exigiu muito tempo,
-                mas deixo aqui como um presente meu para a faculdade, para o
-                seminário e para as futuras gerações: de que nada é impossível
-                quando se faz com amor e quando construímos juntos, em união.
+                na organização de eventos da FAJOPA, além de expandir seu suporte
+                também às dioceses, que em breve trarão grandes novidades. Foram 
+                diversos passos para chegar a este resultado, que não foi fácil e 
+                exigiu muito tempo, mas deixo aqui como um presente meu para a 
+                faculdade, para os seminários, para as dioceses e para as futuras 
+                gerações: de que nada é impossível quando se faz com amor e quando 
+                construímos juntos, em união.
               </p>
             </div>
           </div>

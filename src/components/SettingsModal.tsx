@@ -1,6 +1,6 @@
 import React, { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
-import { motion, AnimatePresence } from "framer-motion";
+import { motion, AnimatePresence } from "motion/react";
 import { db, appId } from "../lib/firebase";
 import { logAdminAction } from "../lib/audit";
 import {
@@ -9,9 +9,7 @@ import {
   Save,
   ShieldAlert,
   ShieldCheck,
-  Mail,
   Link,
-  UserCircle,
   Palette,
   Upload,
   Trash2,
@@ -19,7 +17,6 @@ import {
   FileText,
   ImageIcon,
   RotateCw,
-  Move,
   BellRing,
   Sun,
   Moon,
@@ -42,8 +39,6 @@ import {
   URL_STORAGE_KEY,
   DIRECTOR_NAME_KEY,
   DEFAULT_ADMIN_PASSWORD,
-  DEFAULT_PUBLIC_URL,
-  DEFAULT_DIRECTOR_NAME,
   INSTITUTION_LOGO_KEY,
   INSTITUTION_NAME_KEY,
   INSTITUTION_COLOR_KEY,
@@ -884,7 +879,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                 setInstDescription(e.target.value.toUpperCase())
                               }
                               className="input-modern w-full rounded-xl py-2 pl-9 pr-3 text-[10px] font-medium"
-                              placeholder="Ex: SISTEMA DE VERIFICAÇÃO"
+                              placeholder="Ex: SEU SISTEMA DE GESTÃO PARA FACULDADES, SEMINÁRIOS E DIOCESES"
                             />
                           </div>
                         </div>

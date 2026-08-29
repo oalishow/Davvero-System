@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
-import { collection, query, where, getDocs, addDoc, updateDoc, doc, orderBy, deleteDoc } from "firebase/firestore";
+import { collection, query, where, getDocs, addDoc, updateDoc, doc, deleteDoc } from "firebase/firestore";
 import { db, appId } from "../lib/firebase";
 import { useDialog } from "../context/DialogContext";
 import { Member, Appointment, Availability, AVAILABLE_SEMINARIES } from "../types";
-import { Clock, Calendar as CalendarIcon, User, Plus, CheckCircle, Trash2, HeartHandshake, ShieldCheck, CalendarPlus, Edit2, MessageCircle } from "lucide-react";
+import { Clock, Calendar as CalendarIcon, User, Plus, Trash2, HeartHandshake, ShieldCheck, CalendarPlus, Edit2, MessageCircle } from "lucide-react";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
 import { useSettings } from "../context/SettingsContext";
 import EditAppointmentModal from "./EditAppointmentModal";
@@ -274,8 +274,8 @@ export default function AppointmentsPanel({ member }: AppointmentsPanelProps) {
     if (appt.endTime) {
       endTime = appt.endTime.replace(':', '') + '00';
     } else {
-      let h = parseInt(appt.startTime.split(':')[0]) + 1;
-      let m = appt.startTime.split(':')[1];
+      const h = parseInt(appt.startTime.split(':')[0]) + 1;
+      const m = appt.startTime.split(':')[1];
       endTime = h.toString().padStart(2, '0') + m + '00';
     }
 

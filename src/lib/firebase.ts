@@ -7,14 +7,11 @@ import {
   getFirestore,
   setLogLevel,
   doc,
-  getDoc,
   getDocFromServer,
   persistentLocalCache,
   persistentMultipleTabManager,
   collection,
-  addDoc,
   updateDoc,
-  setDoc,
   runTransaction,
 } from "firebase/firestore";
 import {

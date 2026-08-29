@@ -1,5 +1,5 @@
 import React, { useState, useEffect } from "react";
-import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, deleteDoc, doc } from "firebase/firestore";
+import { collection, query, orderBy, onSnapshot, addDoc, serverTimestamp, updateDoc, doc } from "firebase/firestore";
 import { db, appId, handleFirestoreError, OperationType, auth } from "../lib/firebase";
 import { useDialog } from "../context/DialogContext";
 import { Member, AVAILABLE_SEMINARIES } from "../types";

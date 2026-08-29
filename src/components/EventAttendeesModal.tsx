@@ -1,9 +1,9 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Search, CheckCircle, Clock, Trash2, Shield, ShieldAlert, Star, ScanLine } from "lucide-react";
+import { X, Search, CheckCircle, Trash2, Star, ScanLine } from "lucide-react";
 import type { Event, Attendance, Member } from "../types";
 import { db, appId, unsubscribeFromEvent, updateAttendanceDetails, updateAttendanceStatus, removeAttendancePresence } from "../lib/firebase";
-import { doc, getDoc, collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where } from "firebase/firestore";
 import Modal from "./Modal";
 import { useDialog } from "../context/DialogContext";
 

@@ -16,8 +16,6 @@ import {
   Video,
   GraduationCap,
   CalendarHeart,
-  BookHeart,
-  HeartHandshake,
   Trash2,
   Fingerprint,
   Library,
@@ -778,7 +776,7 @@ export default function StudentPortal({
       const isCPF = /^\d{11}$/.test(onlyNumbers);
 
       let foundMember = null;
-      let usedField = "";
+      const usedField = "";
 
       const formattedCPF = onlyNumbers.length === 11 
         ? onlyNumbers.replace(/(\d{3})(\d{3})(\d{3})(\d{2})/, "$1.$2.$3-$4")

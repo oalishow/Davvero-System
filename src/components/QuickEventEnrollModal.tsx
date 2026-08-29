@@ -3,7 +3,6 @@ import { createPortal } from "react-dom";
 import {
   X,
   UserCheck,
-  Calendar,
   CheckCircle2,
   Loader2,
   Sparkles,
@@ -128,6 +127,12 @@ export default function QuickEventEnrollModal({
       });
 
       setSuccess(true);
+      
+      if (event.googleFormsLink) {
+        const link = event.googleFormsLink.startsWith("http") ? event.googleFormsLink : `https://${event.googleFormsLink}`;
+        setTimeout(() => window.open(link, "_blank"), 1500);
+      }
+      
       setTimeout(() => {
         onSuccess(resolvedMember!);
         onClose();

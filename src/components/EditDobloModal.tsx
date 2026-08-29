@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Save, AlertCircle } from "lucide-react";
+import { X, Save } from "lucide-react";
 import { doc, updateDoc } from "firebase/firestore";
 import { db, appId, handleFirestoreError, OperationType } from "../lib/firebase";
 import { useDialog } from "../context/DialogContext";

@@ -1,7 +1,6 @@
 import React, { useState, useEffect, useMemo, useRef } from "react";
 import { Plus, Trash2, Edit2, ExternalLink, Users, Save, X, MessageCircle, Camera, Loader2 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { CUSTOM_ROLES_KEY } from "../lib/constants";
 
 interface WhatsappGroup {
   id: string;

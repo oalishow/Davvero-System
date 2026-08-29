@@ -58,7 +58,7 @@ export function useNotifications(recipientId: string | null) {
       } catch (e) {}
 
       // Combinar estado de leitura local e filtragem de removidas
-      let processed = rawNotifs
+      const processed = rawNotifs
         .filter(n => !localCleared.includes(n.id))
         .map(n => {
           if (n.recipientId === "todos" && localReads.includes(n.id)) {

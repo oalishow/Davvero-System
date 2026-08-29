@@ -1,7 +1,7 @@
 import { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
 import { X, Printer, Loader2 } from "lucide-react";
-import { collection, query, getDocs, orderBy } from "firebase/firestore";
+import { collection, query, getDocs } from "firebase/firestore";
 import { db, appId } from "../lib/firebase";
 import { Availability, Appointment } from "../types";
 import { APP_VERSION } from "../lib/constants";
@@ -21,7 +21,7 @@ export default function PrintAppointmentsModal({ onClose }: PrintAppointmentsMod
       try {
         const qAvails = query(collection(db, `artifacts/${appId}/public/data/availabilities`));
         const snapAvails = await getDocs(qAvails);
-        let avails = snapAvails.docs.map(doc => ({ id: doc.id, ...doc.data() } as Availability));
+        const avails = snapAvails.docs.map(doc => ({ id: doc.id, ...doc.data() } as Availability));
         
         avails.sort((a, b) => {
           if (a.date !== b.date) return b.date.localeCompare(a.date);
