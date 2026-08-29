@@ -1,5 +1,7 @@
 import { registerSW } from 'virtual:pwa-register';
 
+let lastSwRefreshAttempt = 0;
+
 export const setupPWA = () => {
     if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
         // Remover apenas service workers verdadeiramente obsoletos
@@ -7,7 +9,7 @@ export const setupPWA = () => {
             for (const registration of registrations) {
                 if (registration.active && registration.active.scriptURL.includes('old-sw')) {
                     registration.unregister();
-                    console.log("Service worker antigo desregistrado.");
+                    console.log("[PWA] Service worker legado desregistrado.");
                 }
             }
         });
@@ -15,33 +17,28 @@ export const setupPWA = () => {
         const updateSW = registerSW({
             immediate: true,
             onNeedRefresh() {
-                console.log("Novo conteúdo detectado no Service Worker. Forçando atualização...");
-                updateSW(true);
+                const now = Date.now();
+                // Anti-loop safeguard: não forçar refresh contínuo do SW com menos de 30 segundos
+                if (now - lastSwRefreshAttempt > 30000) {
+                    lastSwRefreshAttempt = now;
+                    console.log("[PWA] Novo conteúdo detectado no Service Worker. Atualizando com segurança...");
+                    updateSW(true);
+                }
             },
             onOfflineReady() {
-                console.log("Aplicativo pronto para funcionamento offline.");
+                console.log("[PWA] Aplicativo pronto para funcionamento offline.");
             },
             onRegistered(r) {
                 if (r) {
                     setInterval(() => {
-                        r.update().catch(err => console.warn("Erro na verificação periódica do SW:", err));
-                    }, 2 * 60 * 1000);
+                        r.update().catch(err => console.warn("[PWA] Verificação periódica do SW:", err));
+                    }, 5 * 60 * 1000);
                 }
             }
         });
 
         navigator.serviceWorker.ready.then((registration) => {
-            registration.update().catch(err => console.warn("Erro ao buscar atualizações no carregamento:", err));
-
-            window.addEventListener('focus', () => {
-                registration.update().catch(err => console.warn("Erro ao buscar atualizações ao focar a tela:", err));
-            });
-
-            document.addEventListener('visibilitychange', () => {
-                if (document.visibilityState === 'visible') {
-                    registration.update().catch(err => console.warn("Erro ao buscar atualizações ao retomar visibilidade:", err));
-                }
-            });
+            registration.update().catch(err => console.warn("[PWA] Verificação inicial:", err));
         });
     }
 };

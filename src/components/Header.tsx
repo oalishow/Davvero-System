@@ -1,6 +1,7 @@
 import { motion, AnimatePresence } from 'motion/react';
 import { Download, Sun, Moon, Bell, Trash2, Lock, Share2, Volume2, VolumeX, Volume1, RefreshCw, Vibrate, VibrateOff } from 'lucide-react';
 import { APP_VERSION, APP_BUILD } from '../lib/constants';
+import { safeReloadApp } from '../lib/versionManager';
 import { useSettings } from '../context/SettingsContext';
 import { useDialog } from '../context/DialogContext';
 import { useState, useEffect, useRef } from 'react';
@@ -227,11 +228,7 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
       <div className="absolute top-0 right-0 flex items-center gap-2 z-50 no-print print:hidden">
         <button 
           onClick={async () => {
-             if ('serviceWorker' in navigator) {
-               const regs = await navigator.serviceWorker.getRegistrations();
-               for (const reg of regs) { await reg.unregister(); }
-             }
-             window.location.href = window.location.href.split('?')[0] + '?t=' + new Date().getTime();
+             await safeReloadApp();
           }}
           className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors no-print hover:scale-110 active:scale-95"
           title="Forçar Atualização"

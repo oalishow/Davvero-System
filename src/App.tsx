@@ -26,9 +26,11 @@ import { motion, AnimatePresence } from "motion/react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DynamicPWA from "./components/DynamicPWA";
 import NotificationObserver from "./components/NotificationObserver";
+import VersionUpdateGate from "./components/VersionUpdateGate";
 import { useSettings } from "./context/SettingsContext";
 import { APP_VERSION, CHANGELOG } from "./lib/constants";
 import { playSound } from "./lib/sounds";
+import { checkServerVersionWithAntiLoop, safeReloadApp, clearAppCaches } from "./lib/versionManager";
 
 const Verifier = lazy(() => import("./components/Verifier"));
 const Admin = lazy(() => import("./components/Admin"));
@@ -82,6 +84,7 @@ export default function App() {
   const [isUpdating, setIsUpdating] = useState(false);
   const [updateProgress, setUpdateProgress] = useState(0);
   const [targetVersionText, setTargetVersionText] = useState("");
+  const [isLoopBlocked, setIsLoopBlocked] = useState(false);
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
@@ -95,6 +98,16 @@ export default function App() {
   }, []);
 
   useEffect(() => {
+    // 1. Limpeza de query params acumulados (?v= ou ?t=) para manter a URL limpa e evitar loops
+    if (typeof window !== "undefined" && (window.location.search.includes("v=") || window.location.search.includes("t="))) {
+      try {
+        const url = new URL(window.location.href);
+        url.searchParams.delete("v");
+        url.searchParams.delete("t");
+        window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ""));
+      } catch {}
+    }
+
     const lastSeenVersion = localStorage.getItem("last_seen_app_version");
     
     // Mostra o modal de novidades se o app já estava instalado e agora é uma versão mais nova
@@ -106,47 +119,39 @@ export default function App() {
 
     localStorage.setItem("app_version", APP_VERSION);
 
-    // Verificação contínua de versão com o servidor
-    const checkServerVersion = () => {
-      fetch(`/api/version?t=${Date.now()}`, { cache: 'no-store' })
-        .then(res => res.json())
-        .then(async (data) => {
-          if (data.version && data.version !== APP_VERSION) {
-            console.log(`Versão obsoleta (Local: ${APP_VERSION}, Server: ${data.version}). Forçando atualização.`);
-            setIsUpdating(true);
-            setTargetVersionText(data.version);
+    // Verificação robusta de versão com proteção contra looping
+    const performSafeVersionCheck = async (force = false) => {
+      const res = await checkServerVersionWithAntiLoop(force);
+      if (res.isObsolete) {
+        setTargetVersionText(res.serverVersion);
+        if (res.isLoopBlocked) {
+          // Bloqueio de loop acionado: impede auto-reloads infinitos e apresenta tela de atualização segura
+          setIsLoopBlocked(true);
+          setIsUpdating(false);
+        } else {
+          // Atualização automática limpa de 1 ciclo
+          setIsLoopBlocked(false);
+          setIsUpdating(true);
+          setUpdateProgress(25);
 
-            try {
-              if ('serviceWorker' in navigator) {
-                const regs = await navigator.serviceWorker.getRegistrations();
-                for (const reg of regs) {
-                  await reg.unregister();
-                }
-              }
-              if ('caches' in window) {
-                const keys = await caches.keys();
-                for (const key of keys) {
-                  await caches.delete(key);
-                }
-              }
-            } catch (e) {
-              console.error('Falha ao limpar caches locais', e);
-            }
+          await clearAppCaches();
+          setUpdateProgress(75);
 
+          setTimeout(async () => {
             setUpdateProgress(100);
-            setTimeout(() => {
-              window.location.href = window.location.origin + window.location.pathname + '?v=' + Date.now();
-            }, 400);
-          }
-        })
-        .catch(() => console.log("Verificação de versão online em segundo plano"));
+            await safeReloadApp(res.serverVersion);
+          }, 600);
+        }
+      } else {
+        setIsLoopBlocked(false);
+      }
     };
 
-    checkServerVersion();
+    performSafeVersionCheck(false);
 
     const onVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
-        checkServerVersion();
+        performSafeVersionCheck(false);
       }
     };
 
@@ -173,16 +178,9 @@ export default function App() {
     setUpdateStatus("success");
     localStorage.setItem("last_seen_app_version", APP_VERSION);
 
-    // Um pouco mais de tempo para lerem a mensagem de sucesso (2.5s)
-    setTimeout(() => {
-      // Remover paramátros de URL que causam resets indesejados
-      if (window.location.search.includes("v=")) {
-        window.location.href =
-          window.location.origin + window.location.pathname;
-      } else {
-        window.location.reload();
-      }
-    }, 2500);
+    setTimeout(async () => {
+      await safeReloadApp();
+    }, 1500);
   };
 
   const handleCloseUpdate = () => {
@@ -274,39 +272,12 @@ export default function App() {
   return (
     <ErrorBoundary>
     <div className="min-h-screen relative flex flex-col items-center p-0 sm:p-4 print:block print:p-0">
-      <AnimatePresence>
-        {isUpdating && (
-          <motion.div 
-            key="updating"
-            initial={{ opacity: 0 }}
-            animate={{ opacity: 1 }}
-            exit={{ opacity: 0 }}
-            className="fixed inset-0 z-[200] bg-white dark:bg-slate-900 flex flex-col items-center justify-center gap-6 p-6"
-          >
-            <Loader2 className="w-12 h-12 text-sky-500 animate-spin" />
-            <div className="text-center max-w-sm w-full space-y-4">
-              <div>
-                <h2 className="text-xl font-bold text-slate-800 dark:text-white">Atualizando Sistema</h2>
-                <p className="text-sm text-slate-500 dark:text-slate-400 mt-1">
-                  Baixando nova versão ({targetVersionText})...
-                </p>
-              </div>
-              
-              <div className="w-full bg-slate-100 dark:bg-slate-800 rounded-full h-3 overflow-hidden shadow-inner">
-                <motion.div 
-                  className="bg-sky-500 h-full rounded-full"
-                  initial={{ width: 0 }}
-                  animate={{ width: `${updateProgress}%` }}
-                  transition={{ ease: "linear" }}
-                />
-              </div>
-              <p className="text-xs font-mono text-slate-400">
-                {updateProgress}% concluído
-              </p>
-            </div>
-          </motion.div>
-        )}
-      </AnimatePresence>
+      <VersionUpdateGate
+        isUpdating={isUpdating}
+        updateProgress={updateProgress}
+        targetVersion={targetVersionText}
+        isLoopBlocked={isLoopBlocked}
+      />
       <DynamicPWA />
       <NotificationObserver />
       <div className="my-auto w-full max-w-3xl glass-panel rounded-none sm:rounded-3xl p-3 sm:p-5 md:p-10 animated-fade-in relative overflow-hidden print:max-w-none print:p-0 print:shadow-none print:bg-white print:dark:bg-white min-h-[100dvh] sm:min-h-0 print:min-h-0 print:border-none print:block">
