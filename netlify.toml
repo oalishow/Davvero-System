@@ -1,6 +1,0 @@
-[[edge_functions]]
-  path = "/*"
-  function = "og-meta"
-
-[build]
-  publish = "dist"

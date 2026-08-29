@@ -201,6 +201,10 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     }))
   );
   const [useWhatsappMural, setUseWhatsappMural] = useState(cloudSettings.useWhatsappMural ?? true);
+  const [autoApproveEnabled, setAutoApproveEnabled] = useState(cloudSettings.autoApproveEnabled ?? false);
+  const [autoApproveWhitelistText, setAutoApproveWhitelistText] = useState(
+    cloudSettings.autoApproveWhitelistText || (cloudSettings.autoApproveWhitelist ? cloudSettings.autoApproveWhitelist.join("\n") : "")
+  );
 
   const [activeTab, setActiveTab] = useState<"visual" | "content" | "database" | "system" | "mural" | "appointments">(
     "visual",
@@ -313,6 +317,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         appointmentsEnabled,
         appointmentsExternalLink,
         professionals,
+        autoApproveEnabled,
+        autoApproveWhitelist: autoApproveWhitelistText
+          .split(/[\n,;]+/)
+          .map(s => s.trim())
+          .filter(Boolean),
+        autoApproveWhitelistText,
       });
 
       // Legacy fallback
@@ -2588,6 +2598,76 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                           />
                           Exibir "Eventos" no App
                         </label>
+                      </div>
+                    </div>
+                  </div>
+
+                  {/* Aprovação e Moderação de Cadastros */}
+                  <div className="bg-emerald-50/50 dark:bg-emerald-950/20 p-5 rounded-2xl border border-emerald-200 dark:border-emerald-500/20">
+                    <h3 className="text-sm font-bold flex items-center gap-2 mb-2 text-emerald-800 dark:text-emerald-300 uppercase tracking-widest text-[10px]">
+                      <ShieldCheck className="w-4 h-4 text-emerald-600" /> Aprovação & Homologação de Cadastros
+                    </h3>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 mb-5">
+                      Configure como novos cadastros de alunos, participantes e seminaristas são aprovados e ativados no sistema.
+                    </p>
+
+                    <div className="space-y-5">
+                      {/* Global Auto Approve Switch */}
+                      <div className="bg-white dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-start justify-between gap-4">
+                        <div>
+                          <label className="flex items-center gap-2 text-xs font-bold text-slate-800 dark:text-slate-100 cursor-pointer">
+                            <input
+                              type="checkbox"
+                              checked={autoApproveEnabled}
+                              onChange={(e) => setAutoApproveEnabled(e.target.checked)}
+                              className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500 w-4 h-4"
+                            />
+                            Aprovação Automática Geral (Todos os Novos Cadastros)
+                          </label>
+                          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1 pl-6">
+                            {autoApproveEnabled ? (
+                              <span className="text-emerald-600 dark:text-emerald-400 font-semibold">
+                                ✓ Ativo: Qualquer pessoa que se cadastrar será aprovada e ativada imediatamente com status VÁLIDO.
+                              </span>
+                            ) : (
+                              <span>
+                                Desativado: Novos cadastros ficarão como <strong>Pendente</strong> para moderação e validação manual da secretaria.
+                              </span>
+                            )}
+                          </p>
+                        </div>
+                        <span className={`px-2.5 py-1 rounded-full text-[9px] font-black uppercase shrink-0 border ${
+                          autoApproveEnabled
+                            ? "bg-emerald-100 text-emerald-700 border-emerald-300 dark:bg-emerald-500/20 dark:text-emerald-300"
+                            : "bg-slate-100 text-slate-600 border-slate-200 dark:bg-slate-700 dark:text-slate-300"
+                        }`}>
+                          {autoApproveEnabled ? "Auto-Aprovação Ativa" : "Moderação Manual"}
+                        </span>
+                      </div>
+
+                      {/* Whitelist / Pre-approved List */}
+                      <div className="bg-white dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-3">
+                        <div className="flex items-center justify-between">
+                          <label className="block text-xs font-bold text-slate-800 dark:text-slate-100">
+                            Lista de Pré-Aprovados (Whitelist Automática)
+                          </label>
+                          <span className="text-[10px] font-bold text-slate-500 bg-slate-100 dark:bg-slate-700 px-2 py-0.5 rounded-md">
+                            {autoApproveWhitelistText.split(/[\n,;]+/).map(s => s.trim()).filter(Boolean).length} cadastrado(s)
+                          </span>
+                        </div>
+                        <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
+                          Caso o nome, CPF, RA ou E-mail da pessoa esteja nesta lista, ela será <strong>aprovada automaticamente</strong> no momento do cadastro, mesmo com a aprovação geral desligada.
+                        </p>
+                        <textarea
+                          value={autoApproveWhitelistText}
+                          onChange={(e) => setAutoApproveWhitelistText(e.target.value)}
+                          rows={5}
+                          className="input-modern w-full rounded-xl p-3 text-xs font-mono resize-y"
+                          placeholder={"Insira 1 por linha:\nJoão da Silva\n123.456.789-00\n2026.0015\naluno@fajopa.edu.br"}
+                        />
+                        <p className="text-[10px] text-slate-400 italic">
+                          Dica: Digite nomes completos, números de CPF (com ou sem pontuação), RAs ou e-mails, um por linha ou separados por vírgula.
+                        </p>
                       </div>
                     </div>
                   </div>

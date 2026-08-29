@@ -988,7 +988,16 @@ END:VCALENDAR`;
                         </span>
                       )}
                     </div>
-                    <h3 className="text-lg font-black text-slate-800 dark:text-slate-100 mb-2">
+                    <h3 
+                      onClick={() => {
+                        if (!enrolled && canEnroll) {
+                          setQuickEnrollEvent(event);
+                        }
+                      }}
+                      className={`text-lg font-black text-slate-800 dark:text-slate-100 mb-2 ${
+                        !enrolled && canEnroll ? "cursor-pointer hover:text-sky-600 dark:hover:text-sky-400 transition-colors" : ""
+                      }`}
+                    >
                       {event.title}
                     </h3>
                     <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 line-clamp-3 whitespace-pre-wrap">

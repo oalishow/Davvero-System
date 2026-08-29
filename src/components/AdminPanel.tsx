@@ -257,7 +257,13 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
     for (const m of members) {
       if (!m.alphaCode) {
-        if (m.isApproved === false || m.pendingChanges || m.hasPendingAction)
+        if (
+          m.isApproved === false ||
+          m.status === "PENDING" ||
+          Boolean(m.pendingChanges) ||
+          m.hasPendingAction ||
+          m.deletionRequested === true
+        )
           pending++;
         continue;
       }
@@ -279,8 +285,10 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
         trash++;
       } else if (
         m.isApproved === false ||
-        m.pendingChanges ||
-        m.hasPendingAction
+        m.status === "PENDING" ||
+        Boolean(m.pendingChanges) ||
+        m.hasPendingAction ||
+        m.deletionRequested === true
       ) {
         pending++;
       } else if (m.isActive === false) {

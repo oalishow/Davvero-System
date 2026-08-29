@@ -4,7 +4,7 @@ import path from "path";
 import webpush from "web-push";
 import dotenv from "dotenv";
 import admin from "firebase-admin";
-import { APP_VERSION } from "./src/lib/constants";
+import { APP_VERSION } from "./src/lib/constants.ts";
 
 dotenv.config();
 

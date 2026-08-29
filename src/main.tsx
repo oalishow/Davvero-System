@@ -6,11 +6,21 @@ import { DialogProvider } from './context/DialogContext';
 import './index.css';
 import { setupPWA } from './pwa';
 
-// Suppress benign Vite WebSocket connection errors in AI Studio preview
+// Suppress benign Vite WebSocket and network errors in preview/offline
 window.addEventListener('unhandledrejection', (event) => {
-  if (event.reason && event.reason.message && event.reason.message.includes('WebSocket closed without opened')) {
-    event.preventDefault();
-  }
+  try {
+    const reasonStr = event.reason
+      ? (typeof event.reason === 'string' ? event.reason : event.reason?.message || '')
+      : '';
+    if (
+      reasonStr.includes('WebSocket') ||
+      reasonStr.includes('vite') ||
+      reasonStr.includes('Failed to fetch') ||
+      reasonStr.includes('NetworkError')
+    ) {
+      event.preventDefault();
+    }
+  } catch (e) {}
 });
 
 setupPWA();

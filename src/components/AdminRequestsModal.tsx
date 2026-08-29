@@ -26,7 +26,15 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
       const members = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Member);
       
       // Filtrar Não-Aprovados E também aqueles que têm Sugestões de Correção Pendentes ou Pedidos de Exclusão.
-      const pendingReqs = members.filter(m => !m.deletedAt && (m.isApproved === false || m.pendingChanges || m.deletionRequested === true));
+      const pendingReqs = members.filter(
+        (m) =>
+          !m.deletedAt &&
+          (m.isApproved !== true ||
+            m.status === "PENDING" ||
+            m.hasPendingAction === true ||
+            Boolean(m.pendingChanges) ||
+            m.deletionRequested === true)
+      );
       setRequests(pendingReqs);
     } catch (e) {
       console.error(e);
@@ -74,6 +82,7 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
       await updateDoc(doc(db, `artifacts/${appId}/public/data/students`, member.id), {
         isApproved: true,
         isActive: true,
+        status: "VALID",
         alphaCode,
         hasPendingAction: false,
         validityDate: new Date(new Date().setFullYear(new Date().getFullYear() + 1)).toISOString().split('T')[0] // Vence em 1 ano por segurança
@@ -221,8 +230,9 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
             <p className="text-slate-500 italic text-center p-4 text-sm">Nenhuma solicitação pendente no momento.</p>
           ) : (
             requests.map(req => {
-              const isNew = req.isApproved === false;
               const isDeletion = req.deletionRequested === true;
+              const isEdit = Boolean(req.pendingChanges);
+              const isNew = !isDeletion && !isEdit;
               const avatarSrc = req.photoUrl || 'data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 24 24" fill="%2364748b"><path d="M12 12a5 5 0 100-10 5 5 0 000 10zm0 2c-3.33 0-10 1.67-10 5v2h20v-2c0-3.33-6.67-5-10-5z"/></svg>';
               
               if (isDeletion) {
@@ -270,35 +280,8 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
                       </div>
                   </div>
                 );
-              } else if (isNew) {
-                return (
-                  <div key={req.id} className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-sky-200 dark:border-sky-500/30">
-                    <div className="flex items-center gap-2 mb-2">
-                        <span className="bg-sky-500 text-white text-[9px] uppercase font-bold px-2 py-0.5 rounded">Novo Registo</span>
-                        <span className="text-xs text-slate-500 dark:text-slate-400">{req.createdAt ? new Date(req.createdAt).toLocaleDateString() : ''}</span>
-                    </div>
-                    <div className="flex items-center gap-3">
-                        <img src={avatarSrc} className="w-12 h-12 rounded-full border border-slate-300 dark:border-slate-600 object-cover bg-white dark:bg-slate-800" />
-                        <div>
-                            <p className="font-bold text-sm text-slate-800 dark:text-slate-200">{req.name} {req.ra && <span className="text-xs font-normal text-slate-500 border border-slate-300 px-1 rounded ml-1">RA: {req.ra}</span>}</p>
-                            <p className="text-xs text-slate-500 dark:text-slate-400">{req.roles?.join(', ')} • {req.course || 'S/ Curso'} • {req.diocese || 'S/ Diocese'}{req.seminary ? ` • ${req.seminary}` : ''}</p>
-                            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
-                              {req.cpf && <p className="text-[10px] text-slate-500 font-medium">CPF: {req.cpf}</p>}
-                              {req.birthdate && <p className="text-[10px] text-slate-500 font-medium">Nasc: {req.birthdate}</p>}
-                              {req.diocese && <p className="text-[10px] text-amber-600 font-bold">Diocese: {req.diocese}</p>}
-                              {req.seminary && <p className="text-[10px] text-amber-600 font-bold">Seminário: {req.seminary}</p>}
-                            </div>
-                            {req.email && <p className="text-[10px] text-sky-600 dark:text-sky-400 mt-1">{req.email}</p>}
-                        </div>
-                    </div>
-                    <div className="flex gap-2 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
-                        <button onClick={() => handleApproveNew(req)} className="flex-1 py-2 bg-emerald-100 text-emerald-700 hover:bg-emerald-500 hover:text-white rounded-lg text-xs font-semibold border border-emerald-300 transition-colors">Aprovar Identidade</button>
-                        <button onClick={() => handleReject(req.id, false)} className="flex-1 py-2 bg-rose-100 text-rose-700 hover:bg-rose-500 hover:text-white rounded-lg text-xs font-semibold border border-rose-300 transition-colors">Recusar</button>
-                    </div>
-                  </div>
-                );
-              } else {
-                const pc = req.pendingChanges;
+              } else if (isEdit) {
+                const pc = req.pendingChanges!;
                 return (
                   <div key={req.id} className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-amber-200 dark:border-amber-500/30">
                       <div className="flex items-center gap-2 mb-2">
@@ -321,6 +304,41 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
                           <button onClick={() => handleApproveEdit(req)} className="flex-1 py-1.5 bg-emerald-100 text-emerald-700 hover:bg-emerald-500 hover:text-white rounded-lg text-xs font-semibold border border-emerald-300 transition-colors">Aceitar Alterações</button>
                           <button onClick={() => handleReject(req.id, true)} className="flex-1 py-1.5 bg-rose-100 text-rose-700 hover:bg-rose-500 hover:text-white rounded-lg text-xs font-semibold border border-rose-300 transition-colors">Ignorar</button>
                       </div>
+                  </div>
+                );
+              } else {
+                const isQuick = !req.photoUrl || !req.course || !req.diocese;
+                return (
+                  <div key={req.id} className="bg-slate-50 dark:bg-slate-900/50 p-4 rounded-xl border border-sky-200 dark:border-sky-500/30">
+                    <div className="flex items-center gap-2 mb-2">
+                        <span className={`text-white text-[9px] uppercase font-bold px-2 py-0.5 rounded ${isQuick ? "bg-amber-500" : "bg-sky-500"}`}>
+                          {isQuick ? "Cadastro Rápido (Evento)" : "Novo Registo"}
+                        </span>
+                        <span className="text-xs text-slate-500 dark:text-slate-400">{req.createdAt ? new Date(req.createdAt).toLocaleDateString() : ''}</span>
+                    </div>
+                    <div className="flex items-center gap-3">
+                        <img src={avatarSrc} className="w-12 h-12 rounded-full border border-slate-300 dark:border-slate-600 object-cover bg-white dark:bg-slate-800" />
+                        <div>
+                            <p className="font-bold text-sm text-slate-800 dark:text-slate-200">{req.name} {req.ra && <span className="text-xs font-normal text-slate-500 border border-slate-300 px-1 rounded ml-1">RA: {req.ra}</span>}</p>
+                            <p className="text-xs text-slate-500 dark:text-slate-400">{req.roles?.join(', ')} • {req.course || 'S/ Curso'} • {req.diocese || 'S/ Diocese'}{req.seminary ? ` • ${req.seminary}` : ''}</p>
+                            <div className="flex flex-wrap gap-x-3 gap-y-1 mt-1">
+                              {req.cpf && <p className="text-[10px] text-slate-500 font-medium">CPF: {req.cpf}</p>}
+                              {req.birthdate && <p className="text-[10px] text-slate-500 font-medium">Nasc: {req.birthdate}</p>}
+                              {req.diocese && <p className="text-[10px] text-amber-600 font-bold">Diocese: {req.diocese}</p>}
+                              {req.seminary && <p className="text-[10px] text-amber-600 font-bold">Seminário: {req.seminary}</p>}
+                            </div>
+                            {req.email && <p className="text-[10px] text-sky-600 dark:text-sky-400 mt-1">{req.email}</p>}
+                            {isQuick && (
+                              <p className="text-[10px] text-amber-600 dark:text-amber-400 mt-1 font-semibold">
+                                ⚠️ Registrado via evento. Carteirinha aguarda cadastro completo de dados/foto.
+                              </p>
+                            )}
+                        </div>
+                    </div>
+                    <div className="flex gap-2 mt-3 pt-3 border-t border-slate-200 dark:border-slate-700">
+                        <button onClick={() => handleApproveNew(req)} className="flex-1 py-2 bg-emerald-100 text-emerald-700 hover:bg-emerald-500 hover:text-white rounded-lg text-xs font-semibold border border-emerald-300 transition-colors">Aprovar Identidade</button>
+                        <button onClick={() => handleReject(req.id, false)} className="flex-1 py-2 bg-rose-100 text-rose-700 hover:bg-rose-500 hover:text-white rounded-lg text-xs font-semibold border border-rose-300 transition-colors">Recusar</button>
+                    </div>
                   </div>
                 );
               }

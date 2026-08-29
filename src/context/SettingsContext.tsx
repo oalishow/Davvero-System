@@ -76,6 +76,9 @@ interface AppSettings {
   appointmentsEnabled?: boolean;
   appointmentsExternalLink?: string;
   professionals?: { id: string, name: string, role: string, photoUrl: string | null, appointmentLink?: string, appointmentType?: "whatsapp" | "google_calendar" | "other", whatsappNumber?: string }[];
+  autoApproveEnabled?: boolean;
+  autoApproveWhitelist?: string[];
+  autoApproveWhitelistText?: string;
 }
 
 const DEFAULT_SETTINGS: AppSettings = {
@@ -165,6 +168,9 @@ const DEFAULT_SETTINGS: AppSettings = {
     { id: "prof_braz", name: "Padre Bráz", role: "DIRETOR ESPIRITUAL", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "" },
     { id: "prof_alessandra", name: "Dra. Alessandra", role: "PSICÓLOGA", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "" }
   ],
+  autoApproveEnabled: false,
+  autoApproveWhitelist: [],
+  autoApproveWhitelistText: '',
 };
 
 interface SettingsContextType {
@@ -176,7 +182,25 @@ interface SettingsContextType {
 const SettingsContext = createContext<SettingsContextType | undefined>(undefined);
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
-  const [settings, setSettings] = useState<AppSettings>(DEFAULT_SETTINGS);
+  const [settings, setSettings] = useState<AppSettings>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem('fajopa_settings');
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          return {
+            ...DEFAULT_SETTINGS,
+            ...parsed,
+            visibleFields: {
+              ...DEFAULT_SETTINGS.visibleFields,
+              ...(parsed.visibleFields || {})
+            }
+          };
+        }
+      } catch (e) {}
+    }
+    return DEFAULT_SETTINGS;
+  });
   const [loading, setLoading] = useState(true);
 
   useEffect(() => {
@@ -203,30 +227,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
-        // Migrate old default subtitle if present
-        let currentInstDescription = data.instDescription;
-        if (
-          !currentInstDescription ||
-          currentInstDescription.toUpperCase().includes('VERIFICAÇÃO') ||
-          currentInstDescription.toUpperCase().includes('VERIFICACAO') ||
-          currentInstDescription.toUpperCase().includes('IDENTIFICAÇÃO') ||
-          currentInstDescription.toUpperCase().includes('IDENTIFICACAO')
-        ) {
-          currentInstDescription = DEFAULT_SETTINGS.instDescription;
-        }
-
         setSettings(prev => ({ 
           ...prev, 
           ...data,
-          instDescription: currentInstDescription,
           visibleFields: mergedVisibleFields
         }));
       } else {
-        setSettings(DEFAULT_SETTINGS);
+        setSettings(prev => ({ ...DEFAULT_SETTINGS, ...prev }));
       }
       setLoading(false);
     }, (err) => {
-      console.error("Erro ao carregar configurações:", err);
+      console.warn("Aviso ao carregar configurações remotas:", err?.message || err);
       setLoading(false);
     });
     unsubscribes.push(unsubMain);
@@ -241,6 +252,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           // Aceita o data mesmo se for null, para refletir deletes no realtime
           setSettings(prev => ({ ...prev, [field]: data || null }));
         }
+      }, (err) => {
+        console.warn(`Aviso ao carregar asset ${field}:`, err?.message || err);
       });
       unsubscribes.push(unsubAsset);
     });

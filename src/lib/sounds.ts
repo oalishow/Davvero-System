@@ -29,7 +29,7 @@ export const playSound = (type: 'click' | 'success' | 'error' | 'notification' |
   }
 
   try {
-    const AudioContextClass = window.AudioContext || (window as any).webkitAudioContext;
+    const AudioContextClass = typeof window !== 'undefined' ? (window.AudioContext || (window as any).webkitAudioContext) : null;
     if (!AudioContextClass) return;
     
     if (!sharedAudioContext) {
@@ -37,8 +37,10 @@ export const playSound = (type: 'click' | 'success' | 'error' | 'notification' |
     }
     
     const ctx = sharedAudioContext;
-    if (ctx.state === 'suspended') {
-      ctx.resume();
+    if (ctx && ctx.state === 'suspended') {
+      try {
+        ctx.resume().catch(() => {});
+      } catch (e) {}
     }
 
     const osc = ctx.createOscillator();

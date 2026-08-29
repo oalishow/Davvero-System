@@ -2,7 +2,8 @@ import { useState, useEffect, ChangeEvent } from 'react';
 import { createPortal } from 'react-dom';
 import { X, Save, ShieldCheck, Image as ImageIcon } from 'lucide-react';
 import { collection, addDoc, query, where, getDocs } from 'firebase/firestore';
-import { db, appId } from '../lib/firebase';
+import { db, appId, enrollStudent, createNotification } from '../lib/firebase';
+import { checkAutoApproval } from '../lib/approval';
 import { useSettings } from '../context/SettingsContext';
 import type { Member } from '../types';
 import ImageCropperModal from './ImageCropperModal';
@@ -11,10 +12,11 @@ import TermsOfUseModal from './TermsOfUseModal';
 
 interface PublicRequestModalProps {
   onClose: () => void;
-  onSubmitSuccess: () => void;
+  onSubmitSuccess: (createdMember?: Member) => void;
+  eventId?: string;
 }
 
-export default function PublicRequestModal({ onClose, onSubmitSuccess }: PublicRequestModalProps) {
+export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId }: PublicRequestModalProps) {
   const { settings, updateSettings } = useSettings();
   const [name, setName] = useState('');
   const [ra, setRa] = useState('');
@@ -74,6 +76,14 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess }: PublicR
     e.target.value = '';
   };
 
+  const formatCpfInput = (val: string) => {
+    const digits = val.replace(/\D/g, '').slice(0, 11);
+    if (digits.length <= 3) return digits;
+    if (digits.length <= 6) return `${digits.slice(0, 3)}.${digits.slice(3)}`;
+    if (digits.length <= 9) return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6)}`;
+    return `${digits.slice(0, 3)}.${digits.slice(3, 6)}.${digits.slice(6, 9)}-${digits.slice(9)}`;
+  };
+
   const handleSubmit = async () => {
     if (!name || !email || !birthdate || !diocese || !seminary || roles.length === 0) {
       setError('Nome, E-mail, Data de Nascimento, Diocese, Seminário e ao menos um Vínculo são obrigatórios.');
@@ -92,38 +102,82 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess }: PublicR
       const formattedRa = ra.trim();
       const membersRef = collection(db, `artifacts/${appId}/public/data/students`);
 
-      const qRa = query(membersRef, where('ra', '==', formattedRa));
-      const raSnapshot = await getDocs(qRa);
-      // Fazer check para não permitir se já existir (mesmo inativo ou na lixeira) para evitar conflitos de RA
-      const existingActive = raSnapshot.docs.find(doc => !doc.data().deletedAt);
-      
-      if (existingActive) {
-        setError(`Este RA (${formattedRa}) já está cadastrado no sistema.`);
-        setLoading(false);
-        return;
+      if (formattedRa) {
+        const qRa = query(membersRef, where('ra', '==', formattedRa));
+        const raSnapshot = await getDocs(qRa);
+        const existingActive = raSnapshot.docs.find(doc => !doc.data().deletedAt);
+        if (existingActive) {
+          setError(`Este RA (${formattedRa}) já está cadastrado no sistema.`);
+          setLoading(false);
+          return;
+        }
       }
 
       const alphaCode = Array(6).fill(0).map(() => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]).join('');
 
+      const cleanCpf = cpf.trim().replace(/\D/g, "");
+
+      const isAutoApproved = checkAutoApproval(
+        {
+          name: name.trim(),
+          cpf: cleanCpf,
+          ra: formattedRa,
+          email: email.trim().toLowerCase(),
+          alphaCode,
+        },
+        settings
+      );
+
       const payload: Partial<Member> = {
         name: name.trim(),
         ra: formattedRa,
-        email: email.trim(),
-        cpf: cpf.trim().replace(/\D/g, ""), // Keep it numeric
+        email: email.trim().toLowerCase(),
+        cpf: cleanCpf,
         birthdate,
         roles,
         course,
         diocese,
         seminary,
         photoUrl: photoBase64,
-        isApproved: false, // Pedido pendente  
-        hasPendingAction: true,
+        isApproved: isAutoApproved,
+        isActive: isAutoApproved,
+        status: isAutoApproved ? "VALID" : "PENDING",
+        hasPendingAction: !isAutoApproved,
         alphaCode,
         acceptedTermsVersion: settings.termsVersion || 1,
         createdAt: new Date().toISOString()
       };
 
-      await addDoc(collection(db, `artifacts/${appId}/public/data/students`), payload);
+      const docRef = await addDoc(collection(db, `artifacts/${appId}/public/data/students`), payload);
+      const createdMember = { ...payload, id: docRef.id } as Member;
+
+      // Notify Admins about new registration if not auto-approved
+      if (!isAutoApproved) {
+        try {
+          await createNotification({
+            recipientId: "admin",
+            title: "Novo Cadastro Pendente",
+            message: `Nova solicitação de carteirinha de ${name.trim()} (${roles.join(", ") || "Aluno"}) aguardando aprovação.`,
+            type: "carteirinha",
+          });
+        } catch (notifErr) {
+          console.warn("Notification trigger failed:", notifErr);
+        }
+      }
+
+      // If tied to an event enrollment, enroll student right away
+      if (eventId) {
+        try {
+          await enrollStudent({
+            eventId,
+            studentId: docRef.id,
+            status: "inscrito",
+            timestamp: new Date().toISOString(),
+          });
+        } catch (enrollErr) {
+          console.error("Error enrolling into event from full registration:", enrollErr);
+        }
+      }
 
       if (email.trim()) {
         try {
@@ -131,7 +185,7 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess }: PublicR
             to: email.trim(),
             message: {
               subject: "Recebemos sua Solicitação de Cadastro",
-              html: `<h3>Olá, ${name.trim()}!</h3><p>Sua solicitação de Identidade Estudantil foi recebida em nosso sistema e está em análise.</p><p>Você pode acompanhar o status da sua solicitação através do portal "Acompanhar Pedido" na tela inicial usando seu RA ou CPF.</p>`
+              html: `<h3>Olá, ${name.trim()}!</h3><p>Sua solicitação de Identidade Estudantil foi recebida em nosso sistema e está em análise pela secretaria.</p><p>Código de Acompanhamento: <b>${alphaCode}</b></p><p>Você pode acompanhar o status da sua solicitação através do portal "Acompanhar Pedido" na tela inicial usando seu RA ou CPF.</p>`
             }
           });
         } catch(mailErr) {
@@ -139,10 +193,11 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess }: PublicR
         }
       }
 
-      onSubmitSuccess();
+      onSubmitSuccess(createdMember);
     } catch (e) {
       console.error(e);
       setError('Falha de comunicação. A sua solicitação não foi processada.');
+    } finally {
       setLoading(false);
     }
   };

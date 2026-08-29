@@ -489,11 +489,7 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
         </span>
       </h1>
       <p className="text-slate-500 dark:text-slate-400 font-bold text-[10px] sm:text-xs tracking-[0.2em] animated-fade-in uppercase">
-        {instDescription &&
-        !instDescription.toUpperCase().includes('VERIFICAÇÃO') &&
-        !instDescription.toUpperCase().includes('VERIFICACAO') &&
-        !instDescription.toUpperCase().includes('IDENTIFICAÇÃO') &&
-        !instDescription.toUpperCase().includes('IDENTIFICACAO')
+        {instDescription && instDescription !== 'SISTEMA DE VERIFICAÇÃO DE IDENTIDADE'
           ? instDescription
           : 'SEU SISTEMA DE GESTÃO PARA FACULDADES, SEMINÁRIOS E DIOCESES'}
       </p>

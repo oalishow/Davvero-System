@@ -282,11 +282,11 @@ export default function StudentPortal({
   } | null>(null);
 
   const portalContainerRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
 
   const scrollToCard = () => {
-    setTimeout(() => {
-      portalContainerRef.current?.scrollIntoView({ behavior: 'smooth', block: 'start' });
-    }, 100);
+    // Keep header, Davvero icon, and top settings fully in view and accessible
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Fallback PIN state
@@ -1464,7 +1464,7 @@ export default function StudentPortal({
           })}
         </div>
 
-        <div ref={portalContainerRef} className="w-full flex flex-col items-center animate-fade-in mt-10 max-w-sm sm:max-w-[600px] mx-auto scroll-mt-[350px] sm:scroll-mt-32">
+        <div ref={portalContainerRef} className="w-full flex flex-col items-center animate-fade-in mt-6 max-w-sm sm:max-w-[600px] mx-auto">
           {isSupported && !subscription && !isOverrideMode && (
              <div className="w-full mb-6 no-print">
                 <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
@@ -1648,6 +1648,8 @@ export default function StudentPortal({
           <div className="w-full mt-2">
             {activeTab === "id" && (
               <motion.div
+                ref={cardRef}
+                id="student-carteirinha-container"
                 initial={{ opacity: 0, y: 10 }}
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-6"

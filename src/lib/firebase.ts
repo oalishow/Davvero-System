@@ -41,15 +41,16 @@ try {
   dbInstance = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
     localCache:
-      typeof window !== "undefined"
+      typeof window !== "undefined" && typeof indexedDB !== "undefined"
         ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
         : undefined,
   });
 } catch (e: any) {
-  if (e.message && e.message.includes('has already been called')) {
+  try {
     dbInstance = getFirestore(app);
-  } else {
-    throw e;
+  } catch (fallbackErr) {
+    console.warn("Fallback to basic getFirestore:", fallbackErr);
+    dbInstance = getFirestore(app);
   }
 }
 export const db = dbInstance;

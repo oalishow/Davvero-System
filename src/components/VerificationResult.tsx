@@ -7,6 +7,7 @@ import FajopaIDCard from "./FajopaIDCard";
 import Modal from "./Modal";
 import { motion } from "motion/react";
 import { useDialog } from "../context/DialogContext";
+import CardRequirementsAnimation from "./CardRequirementsAnimation";
 
 interface VerificationResultProps {
   member: Member | null;
@@ -456,6 +457,10 @@ export default function VerificationResult({
             <p className="text-xl font-black text-slate-700 dark:text-slate-300 tracking-[0.2em]">{member?.alphaCode}</p>
           </div>
         </div>
+      ) : status === "PENDING" ? (
+        <div className="w-full max-w-md mb-4 animate-in fade-in zoom-in-95 duration-300">
+          <CardRequirementsAnimation member={member} />
+        </div>
       ) : isMyID && status === "VALID" && member ? (
         <div
           id="validation-card-capture"
@@ -482,10 +487,10 @@ export default function VerificationResult({
       ) : (
         <div
           id={!isMyID ? "validation-card-capture" : undefined}
-          className={`result-card w-full max-w-sm ${status === "VALID" || status === "JUST_CHECKED_IN" || status === "PENDING" ? "animate-success-pop" : "animate-error-wobble"} bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-2 p-3 sm:p-8 rounded-2xl sm:rounded-[2rem] text-center relative overflow-hidden shadow-xl print:shadow-none print:bg-white print:text-black print:border-slate-300 ${
+          className={`result-card w-full max-w-sm ${status === "VALID" || status === "JUST_CHECKED_IN" ? "animate-success-pop" : "animate-error-wobble"} bg-white/95 dark:bg-slate-900/95 backdrop-blur-xl border-2 p-3 sm:p-8 rounded-2xl sm:rounded-[2rem] text-center relative overflow-hidden shadow-xl print:shadow-none print:bg-white print:text-black print:border-slate-300 ${
             status === "VALID" || status === "JUST_CHECKED_IN"
               ? "border-emerald-100 dark:border-emerald-500/50 shadow-emerald-500/10"
-              : status === "INACTIVE" || status === "ALREADY_PRESENT" || status === "PENDING"
+              : status === "INACTIVE" || status === "ALREADY_PRESENT"
                 ? "border-amber-100 dark:border-amber-500/50 shadow-amber-500/10"
                 : "border-rose-100 dark:border-rose-500/50 shadow-rose-500/10"
           }`}
@@ -500,7 +505,7 @@ export default function VerificationResult({
           </div>
 
           <h2
-            className={`text-base sm:text-xl font-black mb-0.5 sm:mb-1 uppercase tracking-widest flex items-center justify-center gap-1.5 ${status === "VALID" || status === "JUST_CHECKED_IN" ? "text-emerald-600 dark:text-emerald-400" : status === "INACTIVE" || status === "ALREADY_PRESENT" || status === "PENDING" ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"}`}
+            className={`text-base sm:text-xl font-black mb-0.5 sm:mb-1 uppercase tracking-widest flex items-center justify-center gap-1.5 ${status === "VALID" || status === "JUST_CHECKED_IN" ? "text-emerald-600 dark:text-emerald-400" : status === "INACTIVE" || status === "ALREADY_PRESENT" ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"}`}
           >
             {(status === "VALID" || status === "JUST_CHECKED_IN") && (
               <motion.div
@@ -514,7 +519,7 @@ export default function VerificationResult({
             {titleText}
           </h2>
           <p
-            className={`text-[10px] sm:text-xs font-semibold uppercase tracking-widest mb-3 sm:mb-5 ${status === "VALID" || status === "JUST_CHECKED_IN" ? "text-emerald-500" : status === "INACTIVE" || status === "ALREADY_PRESENT" || status === "PENDING" ? "text-amber-500" : "text-rose-500"}`}
+            className={`text-[10px] sm:text-xs font-semibold uppercase tracking-widest mb-3 sm:mb-5 ${status === "VALID" || status === "JUST_CHECKED_IN" ? "text-emerald-500" : status === "INACTIVE" || status === "ALREADY_PRESENT" ? "text-amber-500" : "text-rose-500"}`}
           >
             {subtitleText}
           </p>
@@ -590,14 +595,14 @@ export default function VerificationResult({
                   Status
                 </p>
                 <p
-                  className={`text-[10px] sm:text-xs font-bold flex items-center gap-1 ${status === "VALID" || status === "JUST_CHECKED_IN" ? "text-emerald-600 dark:text-emerald-400" : status === "INACTIVE" || status === "ALREADY_PRESENT" || status === "PENDING" ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"}`}
+                  className={`text-[10px] sm:text-xs font-bold flex items-center gap-1 ${status === "VALID" || status === "JUST_CHECKED_IN" ? "text-emerald-600 dark:text-emerald-400" : status === "INACTIVE" || status === "ALREADY_PRESENT" ? "text-amber-600 dark:text-amber-400" : "text-rose-600 dark:text-rose-400"}`}
                 >
                   <span
                     className={`w-1.5 h-1.5 rounded-full ${dotColor}`}
                   ></span>{" "}
                   {badgeText}
                 </p>
-                {status !== "NOT_FOUND" && status !== "PENDING" && (
+                {status !== "NOT_FOUND" && (
                   <p className="text-[9px] text-slate-500 mt-0.5">
                     {status === "EXPIRED" ? "Venceu a:" : "Vence a:"}{" "}
                     <span className="text-slate-700 dark:text-slate-300 font-medium">
@@ -665,7 +670,7 @@ export default function VerificationResult({
             </span>
           </div>
 
-          {(status === "VALID" || status === "JUST_CHECKED_IN" || status === "PENDING") && member?.alphaCode && (
+          {(status === "VALID" || status === "JUST_CHECKED_IN") && member?.alphaCode && (
             <div
               className={`mt-3 flex flex-col items-center gap-1 bg-white p-2 rounded-xl w-fit mx-auto border-2 border-slate-200 shadow-sm cursor-pointer hover:scale-105 transition-transform active:scale-95`}
               onClick={() => setShowLargeQR(true)}

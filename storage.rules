@@ -2,27 +2,15 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Safety net
-    match /{allPaths=**} {
-      allow read, write: if false;
+    // Pasta do mural (para imagens e anexos)
+    match /mural/{imageId=**} {
+      allow read: if true; 
+      allow write: if true; 
     }
-
-    // Mural uploads folder
-    match /artifacts/{appId}/mural_uploads/{fileName} {
-      // Anyone can view the mural attachments
-      allow read: if true;
-      
-      // Signed in users or anonymous users can upload files
-      allow create: if request.resource.size < 10 * 1024 * 1024 // 10MB limit
-                    && (
-                      request.resource.contentType.matches('image/.*') || 
-                      request.resource.contentType == 'application/pdf' ||
-                      request.resource.contentType == 'application/msword' ||
-                      request.resource.contentType == 'application/vnd.openxmlformats-officedocument.wordprocessingml.document'
-                    );
-      
-      // Only admins or owners can delete
-      allow delete: if request.auth != null;
+    
+    // Regra padrão de redundância
+    match /{allPaths=**} {
+      allow read, write: if true;
     }
   }
 }
