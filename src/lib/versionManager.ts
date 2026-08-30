@@ -58,14 +58,16 @@ export async function clearAppCaches(): Promise<void> {
  */
 export async function safeReloadApp(targetVersion?: string): Promise<void> {
   await clearAppCaches();
-  if (targetVersion) {
-    localStorage.setItem("app_version", targetVersion);
-    localStorage.setItem("last_seen_app_version", targetVersion);
-  }
+  const finalVersion = targetVersion || APP_VERSION;
+  try {
+    localStorage.setItem("app_version", finalVersion);
+    localStorage.setItem("last_seen_app_version", finalVersion);
+  } catch {}
   
-  // Clean URL to prevent accumulating query params like ?v=...
-  const cleanUrl = window.location.origin + window.location.pathname;
-  window.location.href = cleanUrl;
+  // Use timestamp query param to force browser HTTP disk cache bypass
+  const baseCleanUrl = window.location.origin + window.location.pathname;
+  const reloadUrl = `${baseCleanUrl}?_upd=${Date.now()}`;
+  window.location.href = reloadUrl;
 }
 
 /**

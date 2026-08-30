@@ -252,6 +252,9 @@ export default function StudentPortal({
     const handleOpenStudentTab = (e: any) => {
       if (e.detail?.tab) {
         setActiveTab(e.detail.tab);
+        if (e.detail.tab === "id") {
+          scrollToCard();
+        }
       }
     };
     window.addEventListener("openStudentTab", handleOpenStudentTab);
@@ -285,8 +288,30 @@ export default function StudentPortal({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const scrollToCard = () => {
-    // Keep header, Davvero icon, and top settings fully in view and accessible
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    // Dynamic adaptive scroll considering device screen size, viewport height and header elements
+    setTimeout(() => {
+      const el = cardRef.current || document.getElementById('student-carteirinha-container');
+      if (el) {
+        const rect = el.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const screenWidth = window.innerWidth;
+
+        // Mobile devices need safe offset for top fixed banners / navigation
+        let topOffset = 20;
+        if (screenWidth < 640) {
+          topOffset = 50; // Extra room for mobile header
+        } else if (screenWidth < 768) {
+          topOffset = 35;
+        } else {
+          topOffset = 20;
+        }
+
+        const targetY = Math.max(0, rect.top + scrollTop - topOffset);
+        window.scrollTo({ top: targetY, behavior: 'smooth' });
+      } else {
+        window.scrollTo({ top: 0, behavior: 'smooth' });
+      }
+    }, 100);
   };
 
   // Fallback PIN state
@@ -1553,7 +1578,7 @@ export default function StudentPortal({
               onClick={() => {
                 playSound('click');
                 setActiveTab("id");
-                if (window.innerWidth < 768) scrollToCard();
+                scrollToCard();
               }}
               className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
                 activeTab === "id"

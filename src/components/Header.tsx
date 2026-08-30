@@ -227,11 +227,15 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
       </div>
       <div className="absolute top-0 right-0 flex items-center gap-2 z-50 no-print print:hidden">
         <button 
-          onClick={async () => {
-             await safeReloadApp();
+          onClick={() => {
+             if ((window as any).triggerCheckUpdates) {
+               (window as any).triggerCheckUpdates();
+             } else {
+               safeReloadApp();
+             }
           }}
           className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors no-print hover:scale-110 active:scale-95"
-          title="Forçar Atualização"
+          title="Buscar Atualizações do Sistema"
         >
           <RefreshCw className="w-4 h-4" />
         </button>

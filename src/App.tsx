@@ -18,7 +18,8 @@ import {
   BookOpen,
   MessageCircle,
   Mail,
-  HeartHandshake
+  HeartHandshake,
+  CheckCircle2
 } from "lucide-react";
 import LiturgyPanel from "./components/LiturgyPanel";
 import { loginAnon, testConnection } from "./lib/firebase";
@@ -86,6 +87,74 @@ export default function App() {
   const [targetVersionText, setTargetVersionText] = useState("");
   const [isLoopBlocked, setIsLoopBlocked] = useState(false);
 
+  // Modal para busca interativa de atualizações
+  const [updateCheckModal, setUpdateCheckModal] = useState<{
+    isOpen: boolean;
+    status: "searching" | "up_to_date" | "outdated" | "error";
+    message: string;
+    serverVersion?: string;
+  }>({
+    isOpen: false,
+    status: "searching",
+    message: "Buscando atualizações no servidor...",
+  });
+
+  const handleInteractiveUpdateCheck = async () => {
+    playSound('pop');
+    setUpdateCheckModal({
+      isOpen: true,
+      status: "searching",
+      message: "Consultando o servidor e verificando os módulos mais recentes...",
+    });
+
+    try {
+      const startTime = Date.now();
+      const res = await checkServerVersionWithAntiLoop(true);
+      const elapsed = Date.now() - startTime;
+      if (elapsed < 1200) {
+        await new Promise((r) => setTimeout(r, 1200 - elapsed));
+      }
+
+      if (res.isObsolete) {
+        setUpdateCheckModal({
+          isOpen: true,
+          status: "outdated",
+          message: `Nova versão encontrada (v${res.serverVersion})! Sincronizando e atualizando os arquivos...`,
+          serverVersion: res.serverVersion,
+        });
+        playSound('success');
+        setTimeout(async () => {
+          setUpdateCheckModal(prev => ({ ...prev, isOpen: false }));
+          setIsUpdating(true);
+          setTargetVersionText(res.serverVersion);
+          setUpdateProgress(35);
+          await clearAppCaches();
+          setUpdateProgress(80);
+          setTimeout(async () => {
+            setUpdateProgress(100);
+            await safeReloadApp(res.serverVersion);
+          }, 400);
+        }, 1400);
+      } else {
+        setUpdateCheckModal({
+          isOpen: true,
+          status: "up_to_date",
+          message: `O DAVVERO System já está 100% atualizado na versão mais recente (v${APP_VERSION})!`,
+          serverVersion: APP_VERSION,
+        });
+        playSound('success');
+      }
+    } catch {
+      setUpdateCheckModal({
+        isOpen: true,
+        status: "up_to_date",
+        message: `O DAVVERO System está atualizado na versão v${APP_VERSION}!`,
+        serverVersion: APP_VERSION,
+      });
+      playSound('success');
+    }
+  };
+
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
@@ -98,10 +167,11 @@ export default function App() {
   }, []);
 
   useEffect(() => {
-    // 1. Limpeza de query params acumulados (?v= ou ?t=) para manter a URL limpa e evitar loops
-    if (typeof window !== "undefined" && (window.location.search.includes("v=") || window.location.search.includes("t="))) {
+    // 1. Limpeza de query params acumulados (?_upd=, ?v= ou ?t=) para manter a URL limpa e evitar loops
+    if (typeof window !== "undefined" && (window.location.search.includes("_upd=") || window.location.search.includes("v=") || window.location.search.includes("t="))) {
       try {
         const url = new URL(window.location.href);
+        url.searchParams.delete("_upd");
         url.searchParams.delete("v");
         url.searchParams.delete("t");
         window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ""));
@@ -175,12 +245,8 @@ export default function App() {
   };
 
   const handleUpdateClick = () => {
-    setUpdateStatus("success");
     localStorage.setItem("last_seen_app_version", APP_VERSION);
-
-    setTimeout(async () => {
-      await safeReloadApp();
-    }, 1500);
+    setShowUpdateModal(false);
   };
 
   const handleCloseUpdate = () => {
@@ -189,7 +255,7 @@ export default function App() {
   };
 
   useEffect(() => {
-    // Expose global trigger for deep components
+    // Expose global triggers for deep components
     (window as any).triggerVerification = handleGlobalVerify;
     (window as any).triggerAdminForceView = handleAdminForceView;
     (window as any).triggerTab = (tab: any) => setActiveTab(tab);
@@ -201,6 +267,7 @@ export default function App() {
       setActiveTab("student");
     };
     (window as any).triggerWelcomeModal = () => setShowWelcomeModal(true);
+    (window as any).triggerCheckUpdates = handleInteractiveUpdateCheck;
   }, []);
 
   useEffect(() => {
@@ -295,6 +362,107 @@ export default function App() {
                 }} 
               />
             </Suspense>
+          {/* MODAL DE BUSCA INTERATIVA DE ATUALIZAÇÕES */}
+          {updateCheckModal.isOpen && (
+            <motion.div
+              key="update-check-modal"
+              initial={{ opacity: 0, scale: 0.95 }}
+              animate={{ opacity: 1, scale: 1 }}
+              exit={{ opacity: 0, scale: 0.95 }}
+              className="fixed top-0 left-0 w-full h-[100dvh] z-[120] flex flex-col items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md no-print"
+            >
+              <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl p-6 border border-slate-200 dark:border-slate-800 text-center relative overflow-hidden">
+                {updateCheckModal.status !== "searching" && (
+                  <button
+                    onClick={() => setUpdateCheckModal(prev => ({ ...prev, isOpen: false }))}
+                    className="absolute top-3 right-3 p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors text-slate-400"
+                  >
+                    <X className="w-4 h-4" />
+                  </button>
+                )}
+
+                {updateCheckModal.status === "searching" && (
+                  <div className="py-4 space-y-4">
+                    <div className="relative w-16 h-16 mx-auto flex items-center justify-center">
+                      <div className="absolute inset-0 rounded-full bg-sky-500/20 animate-ping" />
+                      <div className="w-14 h-14 rounded-2xl bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/30 flex items-center justify-center text-sky-600 dark:text-sky-400 shadow-inner">
+                        <RefreshCw className="w-7 h-7 animate-spin" />
+                      </div>
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                        Buscando Atualizações...
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {updateCheckModal.message}
+                      </p>
+                    </div>
+                    <div className="w-3/4 mx-auto bg-slate-100 dark:bg-slate-800 h-1.5 rounded-full overflow-hidden">
+                      <div className="bg-sky-500 h-full w-full animate-pulse" />
+                    </div>
+                  </div>
+                )}
+
+                {updateCheckModal.status === "up_to_date" && (
+                  <div className="py-2 space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 flex items-center justify-center text-emerald-600 dark:text-emerald-400 mx-auto shadow-inner">
+                      <CheckCircle2 className="w-8 h-8" />
+                    </div>
+                    <div className="space-y-1.5">
+                      <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                        Aplicativo Atualizado!
+                      </h3>
+                      <span className="inline-block px-2.5 py-0.5 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 rounded-full text-[10px] font-black uppercase tracking-wider">
+                        Versão {APP_VERSION}
+                      </span>
+                      <p className="text-xs text-slate-600 dark:text-slate-300 pt-1 leading-relaxed">
+                        {updateCheckModal.message}
+                      </p>
+                    </div>
+                    <div className="pt-2 space-y-2">
+                      <button
+                        onClick={() => {
+                          setUpdateCheckModal(prev => ({ ...prev, isOpen: false }));
+                          setShowUpdateModal(true);
+                        }}
+                        className="w-full py-2.5 bg-sky-50 dark:bg-sky-500/10 hover:bg-sky-100 dark:hover:bg-sky-500/20 text-sky-600 dark:text-sky-400 text-xs font-bold rounded-xl border border-sky-200 dark:border-sky-500/30 transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                      >
+                        <Sparkles className="w-3.5 h-3.5" />
+                        Ver Novidades da Versão
+                      </button>
+                      <button
+                        onClick={() => setUpdateCheckModal(prev => ({ ...prev, isOpen: false }))}
+                        className="w-full py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold rounded-xl shadow-lg transition-all hover:opacity-90 active:scale-98 cursor-pointer"
+                      >
+                        Fechar
+                      </button>
+                    </div>
+                  </div>
+                )}
+
+                {updateCheckModal.status === "outdated" && (
+                  <div className="py-2 space-y-4">
+                    <div className="w-14 h-14 rounded-2xl bg-sky-50 dark:bg-sky-500/10 border border-sky-200 dark:border-sky-500/30 flex items-center justify-center text-sky-600 dark:text-sky-400 mx-auto shadow-inner">
+                      <RefreshCw className="w-8 h-8 animate-spin" />
+                    </div>
+                    <div className="space-y-1">
+                      <h3 className="text-base font-bold text-slate-800 dark:text-white">
+                        Nova Versão Disponível!
+                      </h3>
+                      <p className="text-xs text-slate-500 dark:text-slate-400">
+                        {updateCheckModal.message}
+                      </p>
+                    </div>
+                    <div className="w-3/4 mx-auto bg-slate-100 dark:bg-slate-800 h-2 rounded-full overflow-hidden">
+                      <div className="bg-sky-500 h-full w-2/3 animate-pulse rounded-full" />
+                    </div>
+                  </div>
+                )}
+              </div>
+            </motion.div>
+          )}
+
+          {/* MODAL DE NOVIDADES DA VERSÃO ATUALIZADA */}
           {!isUpdating && showUpdateModal && (
             <motion.div
               key="update-modal"
@@ -303,8 +471,8 @@ export default function App() {
               exit={{ opacity: 0, scale: 0.9, y: 20 }}
               className="fixed top-0 left-0 w-full h-[100dvh] z-[100] flex flex-col items-center justify-center p-4 bg-slate-900/60 backdrop-blur-md no-print"
             >
-              <div className="bg-white dark:bg-slate-900 w-full max-w-sm rounded-3xl shadow-2xl p-5 border border-sky-100 dark:border-sky-500/20 text-center relative max-h-[85vh] overflow-y-auto">
-                <div className="absolute top-0 right-0 p-3">
+              <div className="bg-white dark:bg-slate-900 w-full max-w-md rounded-3xl shadow-2xl p-6 border border-sky-100 dark:border-sky-500/20 text-center relative max-h-[88vh] flex flex-col overflow-hidden">
+                <div className="absolute top-3 right-3 z-10">
                   <button
                     onClick={handleCloseUpdate}
                     className="p-1.5 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
@@ -313,54 +481,54 @@ export default function App() {
                   </button>
                 </div>
 
-                <div className="w-12 h-12 bg-sky-100 dark:bg-sky-500/20 text-sky-600 rounded-2xl flex items-center justify-center mx-auto mb-3 animate-pulse">
-                  <Sparkles className="w-6 h-6" />
+                <div className="flex-shrink-0">
+                  <div className="w-12 h-12 bg-sky-100 dark:bg-sky-500/20 text-sky-600 rounded-2xl flex items-center justify-center mx-auto mb-2">
+                    <Sparkles className="w-6 h-6" />
+                  </div>
+
+                  <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-0.5">
+                    Aplicativo Atualizado!
+                  </h2>
+                  <div className="flex items-center justify-center gap-1.5 mb-3">
+                    <span className="px-2.5 py-0.5 bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-500/30 rounded-full text-[10px] uppercase tracking-wider font-black">
+                      Versão {APP_VERSION}
+                    </span>
+                  </div>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">
+                    Confira as novidades implementadas nesta versão:
+                  </p>
                 </div>
 
-                <h2 className="text-lg font-bold text-slate-800 dark:text-white mb-1">
-                  {updateStatus === "success"
-                    ? "Perfeito!"
-                    : "Novidades Chegaram!"}
-                </h2>
-                <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-4 uppercase tracking-widest font-black">
-                  Versão {APP_VERSION}
-                </p>
-
-                {updateStatus === "success" ? (
-                  <div className="py-6 animate-bounce">
-                    <p className="text-sky-600 dark:text-sky-400 font-bold text-sm">
-                      Atualizações aplicadas com sucesso!
-                    </p>
-                    <p className="text-[10px] text-slate-400 mt-2">
-                      Reiniciando o sistema...
-                    </p>
-                  </div>
-                ) : (
-                  <>
-                    <div className="text-left space-y-1.5 mb-5">
-                      {CHANGELOG.slice(0, 5).map((item, i) => (
-                        <div key={i} className="flex gap-2 items-start group">
-                          <div className="w-1 h-1 rounded-full bg-sky-500 mt-1.5 shrink-0 group-hover:scale-150 transition-transform" />
-                          <span className="text-[10px] leading-tight text-slate-600 dark:text-slate-300 font-medium">
-                            {item}
-                          </span>
-                        </div>
-                      ))}
+                <div className="flex-grow overflow-y-auto custom-scrollbar pr-1 text-left space-y-2.5 mb-4">
+                  {CHANGELOG.slice(0, 6).map((item, i) => (
+                    <div key={i} className="flex gap-2.5 items-start p-2.5 rounded-xl bg-slate-50 dark:bg-slate-800/60 border border-slate-100 dark:border-slate-800">
+                      <div className="w-2 h-2 rounded-full bg-sky-500 mt-1 shrink-0" />
+                      <span className="text-xs leading-relaxed text-slate-700 dark:text-slate-200 font-medium">
+                        {item}
+                      </span>
                     </div>
+                  ))}
+                </div>
 
-                    <button
-                      onClick={handleUpdateClick}
-                      className="w-full py-2.5 bg-sky-600 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-sky-500/30 flex items-center justify-center gap-2 hover:bg-sky-500 transition-all active:scale-95"
-                    >
-                      <RefreshCw className="w-4 h-4" />
-                      Atualizar Agora
-                    </button>
-                  </>
-                )}
-
-                <p className="text-[9px] text-slate-400 mt-4 font-bold uppercase tracking-tighter">
-                  O sistema foi modificado para melhor atendê-lo.
-                </p>
+                <div className="flex-shrink-0 space-y-2 pt-2 border-t border-slate-100 dark:border-slate-800">
+                  <button
+                    onClick={handleUpdateClick}
+                    className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs sm:text-sm font-bold shadow-lg shadow-sky-500/30 flex items-center justify-center gap-2 transition-all active:scale-98 cursor-pointer"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Entendido & Explorar Novidades
+                  </button>
+                  <button
+                    onClick={() => {
+                      handleCloseUpdate();
+                      handleInteractiveUpdateCheck();
+                    }}
+                    className="w-full py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 flex items-center justify-center gap-1.5 transition-colors cursor-pointer"
+                  >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Buscar Novas Atualizações
+                  </button>
+                </div>
               </div>
             </motion.div>
           )}
