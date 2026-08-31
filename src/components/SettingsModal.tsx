@@ -44,10 +44,12 @@ import {
   Variable,
   GraduationCap,
   Award,
+  Landmark,
 } from "lucide-react";
 import FajopaIDCard from "./FajopaIDCard";
 import BackupModal from "./BackupModal";
 import WhatsappMuralView from "./WhatsappMuralView";
+import DioceseManager from "./DioceseManager";
 import { useSettings } from "../context/SettingsContext";
 import { DEFAULT_EMAIL_TEMPLATES, getCompiledEmail, EmailTemplatesSettings, EmailTemplateKey, parseEmailList } from "../lib/emailService";
 import { AVAILABLE_SEMINARIES } from "../types";
@@ -251,7 +253,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"visual" | "content" | "database" | "system" | "mural" | "appointments" | "email">(
+  const [activeTab, setActiveTab] = useState<"visual" | "content" | "database" | "system" | "mural" | "appointments" | "email" | "diocese">(
     "visual",
   );
 
@@ -843,6 +845,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 { id: "email", label: "E-mails", icon: Mail },
                 { id: "mural", label: "Mural", icon: MessageCircle },
                 { id: "appointments", label: "Seminário", icon: HeartHandshake },
+                { id: "diocese", label: "Minha Diocese", icon: Landmark },
               ].map((tab) => (
                 <button
                   key={tab.id}
@@ -3971,6 +3974,12 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       </div>
                     );
                   })()}
+                </div>
+              )}
+
+              {activeTab === "diocese" && (
+                <div className="space-y-6 animate-in fade-in transition-all duration-300">
+                  <DioceseManager />
                 </div>
               )}
 

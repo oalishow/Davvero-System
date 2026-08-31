@@ -1,27 +1,126 @@
 rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
-    
-    // Fallback permissivo conforme solicitado
-    match /{document=**} {
-      allow read, write: if true;
-    }
-    
-    // Permite envio de emails pela extensão Trigger Email
-    match /mail/{document=**} {
-      allow create: if true; 
-      allow read, update, delete: if true;
+
+    // Helper functions
+    function isSignedIn() {
+      return request.auth != null;
     }
 
+    function isValidId(id) {
+      return id is string && id.size() > 0 && id.size() <= 128;
+    }
+
+    function isAdmin() {
+      return isSignedIn() && (
+        request.auth.token.email == 'admblackjamf@gmail.com' ||
+        (request.auth.token.email != null && request.auth.token.email.matches('.*@(fajopa\\.edu\\.br|gmail\\.com)'))
+      );
+    }
+
+    // Connection test document
     match /artifacts/{appId} {
-      allow read, write: if true;
+      allow read: if isSignedIn() || true;
+      allow write: if isSignedIn();
     }
 
+    // Trigger Email extension collection
+    match /mail/{document=**} {
+      allow create: if isSignedIn();
+      allow read, update, delete: if isAdmin();
+    }
+
+    // DAVVERO public data collection
     match /artifacts/{appId}/public/data {
-      match /{document=**} {
-         allow read: if true;
-         allow write: if true;
+
+      // Students & Members
+      match /students/{studentId} {
+        allow read: if isSignedIn();
+        allow create: if isSignedIn();
+        allow update: if isSignedIn();
+        allow delete: if isSignedIn();
       }
+
+      // Events
+      match /events/{eventId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
+      }
+
+      // Attendances
+      match /attendances/{attendanceId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
+      }
+
+      // Appointments
+      match /appointments/{appointmentId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
+      }
+
+      // Availabilities
+      match /availabilities/{availabilityId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
+      }
+
+      // Notifications
+      match /notifications/{notificationId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
+      }
+
+      // Doblo logs
+      match /doblo_logs/{logId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
+      }
+
+      // Community Board (Mural)
+      match /mural_posts/{postId} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
+
+        match /comments/{commentId} {
+          allow read: if isSignedIn();
+          allow write: if isSignedIn();
+        }
+      }
+
+      // Admin invites
+      match /admin_invites/{email} {
+        allow read: if isSignedIn();
+        allow write: if isSignedIn();
+      }
+
+      // Telemetry & Realtime Online Presence
+      match /online_presence/{sessionId} {
+        allow read, write: if isSignedIn();
+      }
+
+      match /telemetry_stats/{docId} {
+        allow read, write: if isSignedIn();
+      }
+
+      match /telemetry_daily/{dateKey} {
+        allow read, write: if isSignedIn();
+      }
+
+      match /telemetry_scans/{scanId} {
+        allow read, write: if isSignedIn();
+      }
+
+      // Catch-all inside app data namespace
+      match /{document=**} {
+        allow read, write: if isSignedIn();
+      }
+    }
+
+    // Default deny for everything else
+    match /{document=**} {
+      allow read, write: if false;
     }
   }
 }
+

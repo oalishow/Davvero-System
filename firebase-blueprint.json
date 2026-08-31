@@ -6,14 +6,16 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "name": { "type": "string", "maxLength": 100 },
+        "name": { "type": "string", "maxLength": 150 },
         "email": { "type": "string", "format": "email" },
-        "phone": { "type": "string", "maxLength": 20 },
+        "phone": { "type": "string", "maxLength": 30 },
         "alphaCode": { "type": "string", "maxLength": 20 },
+        "cpf": { "type": "string", "maxLength": 20 },
         "roles": { "type": "array", "items": { "type": "string" } },
-        "authId": { "type": "string", "maxLength": 128 },
-        "createdAt": { "type": "number" },
-        "updatedAt": { "type": "number" }
+        "status": { "type": "string" },
+        "photoUrl": { "type": "string", "maxLength": 2048 },
+        "createdAt": { "type": "string" },
+        "updatedAt": { "type": "string" }
       }
     },
     "Event": {
@@ -22,39 +24,154 @@
       "type": "object",
       "properties": {
         "id": { "type": "string" },
-        "title": { "type": "string", "maxLength": 200 },
-        "description": { "type": "string", "maxLength": 2000 },
-        "date": { "type": "string", "format": "date-time" },
+        "title": { "type": "string", "maxLength": 250 },
+        "description": { "type": "string", "maxLength": 5000 },
+        "date": { "type": "string" },
         "location": { "type": "string", "maxLength": 500 },
+        "status": { "type": "string" },
         "createdBy": { "type": "string", "maxLength": 128 },
-        "createdAt": { "type": "number" }
+        "createdAt": { "type": "string" }
       }
     },
     "Attendance": {
       "title": "Attendance Record",
-      "description": "A record of attendance for an event",
+      "description": "A record of attendance or event enrollment",
       "type": "object",
       "properties": {
+        "id": { "type": "string" },
         "eventId": { "type": "string", "maxLength": 128 },
         "studentId": { "type": "string", "maxLength": 128 },
-        "status": { "type": "string", "enum": ["present", "absent", "excused"] },
-        "markedBy": { "type": "string", "maxLength": 128 },
-        "createdAt": { "type": "number" }
+        "status": { "type": "string", "enum": ["inscrito", "presente", "apto_para_certificado", "cancelado"] },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "Appointment": {
+      "title": "Appointment",
+      "description": "An appointment booking record",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "availabilityId": { "type": "string", "maxLength": 128 },
+        "memberId": { "type": "string", "maxLength": 128 },
+        "professionalId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "status": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "Availability": {
+      "title": "Availability",
+      "description": "A professional availability time slot",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "professionalId": { "type": "string", "maxLength": 128 },
+        "date": { "type": "string" },
+        "startTime": { "type": "string" },
+        "status": { "type": "string", "enum": ["LIVRE", "OCUPADO", "CANCELADO"] }
+      }
+    },
+    "Notification": {
+      "title": "Notification",
+      "description": "System notification for users or admins",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "recipientId": { "type": "string", "maxLength": 128 },
+        "title": { "type": "string", "maxLength": 200 },
+        "message": { "type": "string", "maxLength": 1000 },
+        "read": { "type": "boolean" },
+        "type": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "DobloLog": {
+      "title": "Doblo Vehicle Log",
+      "description": "Log entry for vehicle usage",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "driverName": { "type": "string", "maxLength": 150 },
+        "destination": { "type": "string", "maxLength": 300 },
+        "departureTime": { "type": "string" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "MuralPost": {
+      "title": "Mural Post",
+      "description": "Community wall post",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "authorName": { "type": "string", "maxLength": 150 },
+        "content": { "type": "string", "maxLength": 2500 },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "OnlinePresence": {
+      "title": "Online Presence",
+      "description": "Ephemeral online user presence tracking",
+      "type": "object",
+      "properties": {
+        "sessionId": { "type": "string" },
+        "lastActive": { "type": "string" },
+        "userAgent": { "type": "string" }
+      }
+    },
+    "TelemetryScan": {
+      "title": "Telemetry QR Scan",
+      "description": "Log of QR code scan events",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "type": { "type": "string", "enum": ["badge", "event", "certificate", "visitor"] },
+        "codeSummary": { "type": "string" },
+        "status": { "type": "string" },
+        "timestamp": { "type": "string" }
       }
     }
   },
   "firestore": {
     "/artifacts/{appId}/public/data/students": {
       "schema": { "$ref": "#/entities/Student" },
-      "description": "Stores students/members information"
+      "description": "Stores students and members directory records"
     },
     "/artifacts/{appId}/public/data/events": {
       "schema": { "$ref": "#/entities/Event" },
-      "description": "Stores events for tracking"
+      "description": "Stores academic and diocesan events"
     },
     "/artifacts/{appId}/public/data/attendances": {
       "schema": { "$ref": "#/entities/Attendance" },
-      "description": "Stores attendance records for events"
+      "description": "Stores event attendance and enrollment records"
+    },
+    "/artifacts/{appId}/public/data/appointments": {
+      "schema": { "$ref": "#/entities/Appointment" },
+      "description": "Stores appointments"
+    },
+    "/artifacts/{appId}/public/data/availabilities": {
+      "schema": { "$ref": "#/entities/Availability" },
+      "description": "Stores appointment availability slots"
+    },
+    "/artifacts/{appId}/public/data/notifications": {
+      "schema": { "$ref": "#/entities/Notification" },
+      "description": "Stores user and admin alerts"
+    },
+    "/artifacts/{appId}/public/data/doblo_logs": {
+      "schema": { "$ref": "#/entities/DobloLog" },
+      "description": "Stores vehicle logs"
+    },
+    "/artifacts/{appId}/public/data/mural_posts": {
+      "schema": { "$ref": "#/entities/MuralPost" },
+      "description": "Stores community board announcements and posts"
+    },
+    "/artifacts/{appId}/public/data/online_presence": {
+      "schema": { "$ref": "#/entities/OnlinePresence" },
+      "description": "Realtime online active sessions"
+    },
+    "/artifacts/{appId}/public/data/telemetry_scans": {
+      "schema": { "$ref": "#/entities/TelemetryScan" },
+      "description": "Recent QR code scan telemetry logs"
     }
   }
 }

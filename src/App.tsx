@@ -19,10 +19,11 @@ import {
   MessageCircle,
   Mail,
   HeartHandshake,
-  CheckCircle2
+  CheckCircle2,
+  Landmark
 } from "lucide-react";
-import LiturgyPanel from "./components/LiturgyPanel";
 import { loginAnon, testConnection } from "./lib/firebase";
+import { recordAppAccess, startPresenceHeartbeat } from "./lib/telemetry";
 import { motion, AnimatePresence } from "motion/react";
 import ErrorBoundary from "./components/ErrorBoundary";
 import DynamicPWA from "./components/DynamicPWA";
@@ -39,6 +40,7 @@ const StudentPortal = lazy(() => import("./components/StudentPortal"));
 const EventsPage = lazy(() => import("./components/EventsPage"));
 const MuralPage = lazy(() => import("./components/MuralPage"));
 const PublicAppointmentsList = lazy(() => import("./components/PublicAppointmentsList"));
+const DioceseHub = lazy(() => import("./components/DioceseHub"));
 const WelcomeModal = lazy(() => import("./components/WelcomeModal"));
 
 export default function App() {
@@ -47,14 +49,14 @@ export default function App() {
   const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.has("event") || params.has("cert") || params.has("verify")) {
+      if (params.has("event") || params.has("cert") || params.has("verify") || params.has("diocese") || params.get("tab") === "diocese") {
         return false;
       }
     }
     return localStorage.getItem("has_seen_welcome") !== "true";
   });
   const [activeTab, setActiveTab] = useState<
-    "verifier" | "admin" | "student" | "events" | "liturgy" | "mural" | "appointments"
+    "verifier" | "admin" | "student" | "events" | "diocese" | "mural" | "appointments"
   >(() => {
     // Only access window parameters on component mount
     if (typeof window !== "undefined") {
@@ -64,6 +66,9 @@ export default function App() {
       }
       if (params.has("cert")) {
         return "verifier"; // We will set targetVerifyCode in an effect
+      }
+      if (params.has("diocese") || params.get("tab") === "diocese") {
+        return "diocese";
       }
     }
     return "verifier";
@@ -219,6 +224,10 @@ export default function App() {
 
     performSafeVersionCheck(false);
 
+    // Telemetry and Realtime Presence
+    recordAppAccess();
+    const stopPresence = startPresenceHeartbeat();
+
     const onVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
         performSafeVersionCheck(false);
@@ -229,6 +238,7 @@ export default function App() {
     document.addEventListener('visibilitychange', onVisibilityOrFocus);
 
     return () => {
+      stopPresence();
       window.removeEventListener('focus', onVisibilityOrFocus);
       document.removeEventListener('visibilitychange', onVisibilityOrFocus);
     };
@@ -704,11 +714,11 @@ export default function App() {
                 </button>
               )}
               <button
-                onClick={() => setActiveTab("liturgy")}
-                className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "liturgy" ? "bg-white dark:bg-rose-600 text-rose-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                onClick={() => setActiveTab("diocese")}
+                className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "diocese" ? "bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
               >
-                <BookHeart className="w-4 h-4 mb-0.5" />
-                Portal Católico
+                <Landmark className="w-4 h-4 mb-0.5" />
+                Minha Diocese
               </button>
               {settings.muralEnabled !== false && (
                 <button
@@ -761,7 +771,12 @@ export default function App() {
                   {activeTab === "admin" && <Admin />}
                   {activeTab === "events" && <EventsPage onNavigateToStudent={() => setActiveTab("student")} />}
                   {activeTab === "appointments" && <PublicAppointmentsList member={null} onNavigateToStudent={() => setActiveTab("student")} />}
-                  {activeTab === "liturgy" && <LiturgyPanel />}
+                  {activeTab === "diocese" && (
+                    <DioceseHub
+                      member={null}
+                      onNavigateToEvents={() => setActiveTab("events")}
+                    />
+                  )}
                   {activeTab === "mural" && <MuralPage />}
                   {activeTab === "student" && (
                     <StudentPortal

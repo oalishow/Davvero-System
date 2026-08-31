@@ -2,15 +2,17 @@ rules_version = '2';
 service firebase.storage {
   match /b/{bucket}/o {
     
-    // Pasta do mural (para imagens e anexos)
+    // Community mural attachments (images)
     match /mural/{imageId=**} {
-      allow read: if true; 
-      allow write: if true; 
+      allow read: if true;
+      allow write: if request.auth != null && request.resource.size < 15 * 1024 * 1024;
     }
-    
-    // Regra padrão de redundância
+
+    // Profile photos & general uploads
     match /{allPaths=**} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if request.auth != null && request.resource.size < 20 * 1024 * 1024;
     }
   }
 }
+

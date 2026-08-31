@@ -165,13 +165,18 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
             {/* Shield Outline */}
             <path d="M50,5 L90,20 C90,60 75,85 50,95 C25,85 10,60 10,20 L50,5 Z" fill="none" stroke="currentColor" strokeWidth="5.5" strokeLinejoin="round" />
             
-            {/* Mortarboard / Academic Cap */}
-            <path d="M50,32 L82,46 L50,60 L18,46 Z" fill="currentColor" />
-            <path d="M30,52 L30,65 C40,75 60,75 70,65 L70,52 L50,60 Z" fill="currentColor" opacity="0.85" />
+            {/* Hollow Cross */}
+            <path d="M42,15 L58,15 L58,28 L71,28 L71,44 L58,44 L58,65 L42,65 L42,44 L29,44 L29,28 L42,28 Z" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
             
-            {/* Tassel */}
-            <path d="M50,45 L78,55 L78,70" stroke="currentColor" strokeWidth="2.5" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-            <circle cx="78" cy="72" r="2.5" fill="currentColor"/>
+            {/* Mortarboard / Academic Cap */}
+            <g transform="translate(20, 38) scale(0.6)">
+              <path d="M50,32 L82,46 L50,60 L18,46 Z" fill="currentColor" />
+              <path d="M30,52 L30,65 C40,75 60,75 70,65 L70,52 L50,60 Z" fill="currentColor" opacity="0.85" />
+              
+              {/* Tassel */}
+              <path d="M50,45 L78,55 L78,70" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+              <circle cx="78" cy="72" r="4" fill="currentColor"/>
+            </g>
          </svg>
        )}
        

@@ -19,6 +19,7 @@ import Modal from "./Modal";
 import RegistrationSuccessModal from "./RegistrationSuccessModal";
 import { useDialog } from "../context/DialogContext";
 import { playSound } from '../lib/sounds';
+import { recordQRScan } from "../lib/telemetry";
 
 import { motion } from "motion/react";
 import confetti from "canvas-confetti";
@@ -320,6 +321,8 @@ export default function Verifier({
 
         const certDisplayCode = `${foundEvent.id.slice(0, 8).toUpperCase()}-${(resolvedMember.id || resolvedMember.ra || "DOC").slice(0, 8).toUpperCase()}`;
 
+        recordQRScan("certificate", certDisplayCode, "Válido");
+
         setValidationResult({
           member: resolvedMember,
           status: "VALID_CERTIFICATE",
@@ -329,6 +332,7 @@ export default function Verifier({
         });
         playSound("success");
       } else {
+        recordQRScan("certificate", rawCode, "Não Encontrado");
         showAlert(
           `Certificado não encontrado na base de dados com o código "${rawCode}". Verifique se o código foi digitado corretamente ou se o certificado foi emitido pela plataforma anterior FAJOPA Plus.`,
           { type: "error" }
@@ -904,6 +908,7 @@ export default function Verifier({
           JSON.stringify(updatedAttendances),
         );
 
+        recordQRScan("event", `${finalMember.name || targetId}`, "Check-in Sucesso");
         setValidationResult({ member: finalMember, status: "JUST_CHECKED_IN" });
         setIsProcessing(false);
         return;
@@ -911,6 +916,7 @@ export default function Verifier({
 
       // @ts-ignore - finalMember could be undefined via ts logic, but we checked it above
       if (finalMember.isActive === false) {
+        recordQRScan("badge", targetId, "Inativo");
         setValidationResult({ member: finalMember, status: "INACTIVE" });
         setIsProcessing(false);
         return;
@@ -918,6 +924,7 @@ export default function Verifier({
 
       // @ts-ignore
       if (!finalMember.validityDate) {
+        recordQRScan("badge", targetId, "Expirado");
         setValidationResult({ member: finalMember, status: "EXPIRED" });
         setIsProcessing(false);
         return;
@@ -926,6 +933,7 @@ export default function Verifier({
       const isValid =
         // @ts-ignore
         new Date(finalMember.validityDate + "T23:59:59") >= new Date();
+      recordQRScan("badge", `${finalMember.name || targetId}`, isValid ? "Válido" : "Expirado");
       setValidationResult({
         member: finalMember,
         status: isValid ? "VALID" : "EXPIRED",

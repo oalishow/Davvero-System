@@ -2,6 +2,7 @@ import React, { createContext, useContext, useState, useEffect } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db, appId } from '../lib/firebase';
 import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH } from '../lib/constants';
+import type { DioceseInfo } from '../data/diocesesData';
 
 export interface AppSettings {
   url: string;
@@ -30,6 +31,7 @@ export interface AppSettings {
   customRoles: string[];
   customCourses: string[];
   customDioceses: string[];
+  diocesesConfig?: Record<string, Partial<DioceseInfo>>;
   databaseName: string;
   cardZoom?: number;
   termsVersion?: number;
@@ -155,6 +157,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   customRoles: [],
   customCourses: [],
   customDioceses: [],
+  diocesesConfig: {},
   databaseName: 'FAJOPA e SPSCJ',
   cardZoom: 1,
   termsVersion: 1,

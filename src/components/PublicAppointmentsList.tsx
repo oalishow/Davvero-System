@@ -1,15 +1,16 @@
 import React, { useState, useEffect } from "react";
 import { Member } from "../types";
-import { HeartHandshake, ShieldCheck, Instagram, Facebook, Users, Car, ExternalLink, Calendar as CalendarIcon, MessageCircle } from "lucide-react";
+import { HeartHandshake, ShieldCheck, Instagram, Facebook, Users, Car, ExternalLink, Calendar as CalendarIcon, MessageCircle, BookHeart } from "lucide-react";
 import MuralPage from "./MuralPage";
 import DobloControl from "./DobloControl";
+import LiturgyPanel from "./LiturgyPanel";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
 import { useSettings } from "../context/SettingsContext";
 
 export default function PublicAppointmentsList({ member, onNavigateToStudent }: { member: Member | null; onNavigateToStudent?: () => void }) {
   const { settings: cloudSettings } = useSettings();
   const [loading, setLoading] = useState(true);
-  const [activeSubTab, setActiveSubTab] = useState<"agendamentos" | "grupos" | "doblo">("agendamentos");
+  const [activeSubTab, setActiveSubTab] = useState<"agendamentos" | "liturgia" | "doblo" | "grupos">("agendamentos");
   
   // We'll store professionals with their appointmentLinks
   const [professionalsList, setProfessionalsList] = useState<{ id: string, name: string, role: string, photoUrl?: string, appointmentLink?: string, appointmentType?: string, whatsappNumber?: string }[]>([]);
@@ -66,39 +67,50 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
 
   return (
     <div className="space-y-6">
-      <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1.5 rounded-2xl mb-6 shadow-inner no-print border border-slate-200/50 dark:border-slate-700/50">
+      <div className="flex flex-wrap sm:flex-nowrap bg-slate-100 dark:bg-slate-800/50 p-1.5 rounded-2xl mb-6 shadow-inner no-print border border-slate-200/50 dark:border-slate-700/50 gap-1">
         <button
           onClick={() => setActiveSubTab("agendamentos")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${
+          className={`flex-1 min-w-[120px] flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${
             activeSubTab === "agendamentos"
               ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm"
               : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
           <HeartHandshake className="w-4 h-4" />
-          Agendamentos
+          <span>Agendamentos</span>
         </button>
         <button
-          onClick={() => setActiveSubTab("grupos")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${
-            activeSubTab === "grupos"
-              ? "bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-sm"
+          onClick={() => setActiveSubTab("liturgia")}
+          className={`flex-1 min-w-[120px] flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${
+            activeSubTab === "liturgia"
+              ? "bg-white dark:bg-slate-700 text-rose-600 dark:text-rose-400 shadow-sm"
               : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
-          <Users className="w-4 h-4" />
-          Grupos Oficiais
+          <BookHeart className="w-4 h-4" />
+          <span>Portal Católico</span>
         </button>
         <button
           onClick={() => setActiveSubTab("doblo")}
-          className={`flex-1 flex items-center justify-center gap-2 py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all ${
+          className={`flex-1 min-w-[120px] flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${
             activeSubTab === "doblo"
               ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
               : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
           }`}
         >
           <Car className="w-4 h-4" />
-          Controle da Doblô
+          <span>Controle da Doblô</span>
+        </button>
+        <button
+          onClick={() => setActiveSubTab("grupos")}
+          className={`flex-1 min-w-[120px] flex items-center justify-center gap-1.5 sm:gap-2 py-2.5 sm:py-3 rounded-xl text-[10px] sm:text-xs font-black uppercase tracking-widest transition-all cursor-pointer ${
+            activeSubTab === "grupos"
+              ? "bg-white dark:bg-slate-700 text-purple-600 dark:text-purple-400 shadow-sm"
+              : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+          }`}
+        >
+          <Users className="w-4 h-4" />
+          <span>Grupos Oficiais</span>
         </button>
       </div>
 
@@ -187,6 +199,12 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
             </div>
           )}
         </>
+      )}
+
+      {activeSubTab === "liturgia" && (
+        <div className="pt-2">
+          <LiturgyPanel />
+        </div>
       )}
 
       {activeSubTab === "grupos" && (

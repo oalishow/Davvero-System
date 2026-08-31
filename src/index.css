@@ -221,6 +221,64 @@ body {
     background: white !important;
   }
 
+  /* Impressão de Cartaz & QR Code do Evento (Otimizado A4 Retrato) */
+  #event-qr-modal-overlay {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    min-height: 0 !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    overflow: visible !important;
+    z-index: auto !important;
+  }
+
+  #event-qr-modal-container {
+    position: static !important;
+    display: block !important;
+    width: 100% !important;
+    max-width: none !important;
+    margin: 0 !important;
+    padding: 0 !important;
+    background: white !important;
+    border: none !important;
+    box-shadow: none !important;
+    border-radius: 0 !important;
+    max-height: none !important;
+    overflow: visible !important;
+  }
+
+  #printable-event-poster {
+    display: flex !important;
+    flex-direction: column !important;
+    align-items: center !important;
+    justify-content: space-between !important;
+    text-align: center !important;
+    width: 100% !important;
+    max-width: 190mm !important;
+    min-height: 270mm !important;
+    max-height: 280mm !important;
+    margin: 0 auto !important;
+    padding: 8mm 12mm !important;
+    background: white !important;
+    border: 2px solid #0284c7 !important;
+    border-radius: 12mm !important;
+    box-sizing: border-box !important;
+    box-shadow: none !important;
+    break-inside: avoid !important;
+    page-break-inside: avoid !important;
+    page-break-after: avoid !important;
+    page-break-before: avoid !important;
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
+  #printable-event-poster * {
+    -webkit-print-color-adjust: exact !important;
+    print-color-adjust: exact !important;
+  }
+
   /* Handle App.tsx main wrapper */
   .min-h-screen {
     min-height: auto !important;
