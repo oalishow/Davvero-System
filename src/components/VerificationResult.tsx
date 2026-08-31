@@ -7,6 +7,8 @@ import FajopaIDCard from "./FajopaIDCard";
 import Modal from "./Modal";
 import { motion } from "motion/react";
 import { useDialog } from "../context/DialogContext";
+import { useSettings } from "../context/SettingsContext";
+import DavveroLogo from "./DavveroLogo";
 import CardRequirementsAnimation from "./CardRequirementsAnimation";
 
 interface VerificationResultProps {
@@ -44,6 +46,7 @@ export default function VerificationResult({
   onEnrollAndCheckIn,
 }: VerificationResultProps) {
   const { showAlert } = useDialog();
+  const { settings } = useSettings();
   const [exporting, setExporting] = useState(false);
   const [modalResetOpen, setModalResetOpen] = useState(false);
   const [showExportSuccess, setShowExportSuccess] = useState(false);
@@ -828,48 +831,15 @@ export default function VerificationResult({
           style={{ pageBreakInside: "avoid", breakInside: "avoid" }}
         >
           <div
-            className="inline-flex flex-col items-center justify-center w-16 h-16 bg-white border-2 border-slate-800 rounded-xl mb-3 relative overflow-hidden align-middle"
+            className="inline-flex flex-col items-center justify-center w-16 h-16 bg-white border-2 border-slate-800 rounded-xl mb-3 relative overflow-hidden align-middle p-1.5"
             style={{ borderColor: "#000" }}
           >
-            <svg viewBox="0 0 100 100" className="w-[62%] h-[62%] text-black">
-              {/* Shield Outline */}
-              <path
-                d="M50,5 L90,20 C90,60 75,85 50,95 C25,85 10,60 10,20 L50,5 Z"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="5.5"
-                strokeLinejoin="round"
-              />
-              {/* Hollow Cross */}
-              <path
-                d="M42,15 L58,15 L58,28 L71,28 L71,44 L58,44 L58,65 L42,65 L42,44 L29,44 L29,28 L42,28 Z"
-                fill="none"
-                stroke="currentColor"
-                strokeWidth="3"
-                strokeLinejoin="round"
-              />
-              {/* Mortarboard / Academic Cap */}
-              <g transform="translate(20, 38) scale(0.6)">
-                <path d="M50,32 L82,46 L50,60 L18,46 Z" fill="currentColor" />
-                <path
-                  d="M30,52 L30,65 C40,75 60,75 70,65 L70,52 L50,60 Z"
-                  fill="currentColor"
-                  opacity="0.85"
-                />
-                <path
-                  d="M50,45 L78,55 L78,70"
-                  stroke="currentColor"
-                  strokeWidth="4"
-                  fill="none"
-                  strokeLinecap="round"
-                  strokeLinejoin="round"
-                />
-                <circle cx="78" cy="72" r="4" fill="currentColor" />
-              </g>
-            </svg>
-            <div className="absolute bottom-0.5 font-black text-[6px] tracking-widest text-black w-full text-center">
-              DAVVERO
-            </div>
+            <DavveroLogo
+              src={settings.instLogo}
+              color="#0f172a"
+              className="w-full h-full object-contain"
+              iconClassName="w-full h-full text-slate-900"
+            />
           </div>
           <p
             className="text-[10px] font-medium text-slate-800 font-mono text-center mx-auto max-w-[300px]"

@@ -5,6 +5,18 @@ export interface DiocesePix {
   bankName?: string;
   city?: string;
   description?: string;
+  qrCodeImageUrl?: string | null;
+}
+
+export interface DioceseVisibility {
+  hideBishop?: boolean; // Ocultar Bispo / Perfil Episcopal
+  hideCuria?: boolean; // Ocultar Dados da Cúria / Endereço e Horário
+  hideContacts?: boolean; // Ocultar Barra Rápida de Contatos (WhatsApp, Telefone, Email, Maps)
+  hidePix?: boolean; // Ocultar Chave PIX & Dízimo Diocesano
+  hideSocial?: boolean; // Ocultar Redes Sociais & Portal Oficial
+  hideLinks?: boolean; // Ocultar Links Linktree
+  hidePatron?: boolean; // Ocultar Padroeiro(a)
+  hideFoundationYear?: boolean; // Ocultar Ano de Fundação
 }
 
 export interface DioceseLink {
@@ -24,12 +36,18 @@ export interface DioceseInfo {
   shortName: string;
   type: "Diocese" | "Arquidiocese";
   logoUrl?: string | null;
+  logoSize?: number; // Tamanho em pixels (ex: 70 a 180, padrão ~100-112)
+  logoBg?: "white" | "transparent" | "glass"; // Fundo do emblema/logo oficial
   bishop: {
     name: string;
     title: string;
     motto?: string;
     photoUrl?: string | null;
+    photoSize?: number; // Tamanho em pixels (ex: 80 a 180, padrão ~112)
+    photoZoom?: number; // Zoom da foto (100 a 180, padrão 100)
     emblemUrl?: string | null;
+    emblemSize?: number; // Tamanho em pixels do brasão episcopal (ex: 60 a 180, padrão ~96)
+    emblemBg?: "white" | "transparent" | "dark"; // Fundo do brasão episcopal
   };
   patron: string;
   foundationYear?: string;
@@ -57,6 +75,28 @@ export interface DioceseInfo {
   links: DioceseLink[];
   coverGradient: string;
   themeColor: string;
+  visibility?: DioceseVisibility;
+}
+
+export function buildMapsUrl(
+  address?: string,
+  neighborhood?: string,
+  city?: string,
+  state?: string,
+  cep?: string,
+  fallbackName?: string
+): string {
+  const parts = [address, neighborhood, city, state, cep]
+    .map(p => p?.trim())
+    .filter(Boolean);
+
+  if (parts.length > 0) {
+    return `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(parts.join(", "))}`;
+  }
+  if (fallbackName) {
+    return `https://www.google.com/maps/search/?api=1&query=Curia+Diocesana+${encodeURIComponent(fallbackName)}`;
+  }
+  return "";
 }
 
 export const DIOCESES_DATA: Record<string, DioceseInfo> = {
@@ -905,6 +945,8 @@ export function getDioceseInfo(
         shortName: custom.shortName || baseInfo.shortName,
         type: custom.type || baseInfo.type,
         logoUrl: custom.logoUrl !== undefined ? custom.logoUrl : baseInfo.logoUrl,
+        logoSize: custom.logoSize !== undefined ? custom.logoSize : baseInfo.logoSize,
+        logoBg: custom.logoBg !== undefined ? custom.logoBg : baseInfo.logoBg,
         patron: custom.patron || baseInfo.patron,
         foundationYear: custom.foundationYear !== undefined ? custom.foundationYear : baseInfo.foundationYear,
         coverGradient: custom.coverGradient || baseInfo.coverGradient,
@@ -913,6 +955,10 @@ export function getDioceseInfo(
         bishop: {
           ...baseInfo.bishop,
           ...(custom.bishop || {}),
+          photoSize: custom.bishop?.photoSize !== undefined ? custom.bishop.photoSize : baseInfo.bishop.photoSize,
+          photoZoom: custom.bishop?.photoZoom !== undefined ? custom.bishop.photoZoom : baseInfo.bishop.photoZoom,
+          emblemSize: custom.bishop?.emblemSize !== undefined ? custom.bishop.emblemSize : baseInfo.bishop.emblemSize,
+          emblemBg: custom.bishop?.emblemBg !== undefined ? custom.bishop.emblemBg : baseInfo.bishop.emblemBg,
         },
         curia: {
           ...baseInfo.curia,
@@ -923,6 +969,10 @@ export function getDioceseInfo(
           ...(custom.social || {}),
         },
         links: custom.links && custom.links.length > 0 ? custom.links : baseInfo.links,
+        visibility: {
+          ...(baseInfo.visibility || {}),
+          ...(custom.visibility || {}),
+        },
       };
     }
   }

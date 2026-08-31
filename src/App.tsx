@@ -33,15 +33,16 @@ import { useSettings } from "./context/SettingsContext";
 import { APP_VERSION, CHANGELOG } from "./lib/constants";
 import { playSound } from "./lib/sounds";
 import { checkServerVersionWithAntiLoop, safeReloadApp, clearAppCaches } from "./lib/versionManager";
+import { lazyWithRetry } from "./lib/lazyWithRetry";
+import Verifier from "./components/Verifier";
 
-const Verifier = lazy(() => import("./components/Verifier"));
-const Admin = lazy(() => import("./components/Admin"));
-const StudentPortal = lazy(() => import("./components/StudentPortal"));
-const EventsPage = lazy(() => import("./components/EventsPage"));
-const MuralPage = lazy(() => import("./components/MuralPage"));
-const PublicAppointmentsList = lazy(() => import("./components/PublicAppointmentsList"));
-const DioceseHub = lazy(() => import("./components/DioceseHub"));
-const WelcomeModal = lazy(() => import("./components/WelcomeModal"));
+const Admin = lazyWithRetry(() => import("./components/Admin"));
+const StudentPortal = lazyWithRetry(() => import("./components/StudentPortal"));
+const EventsPage = lazyWithRetry(() => import("./components/EventsPage"));
+const MuralPage = lazyWithRetry(() => import("./components/MuralPage"));
+const PublicAppointmentsList = lazyWithRetry(() => import("./components/PublicAppointmentsList"));
+const DioceseHub = lazyWithRetry(() => import("./components/DioceseHub"));
+const WelcomeModal = lazyWithRetry(() => import("./components/WelcomeModal"));
 
 export default function App() {
   const { settings } = useSettings();

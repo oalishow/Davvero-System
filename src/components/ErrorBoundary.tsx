@@ -26,9 +26,18 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     console.error("Uncaught error:", error, errorInfo);
     
     // Automatically reload the page once if it's a chunk load error
-    if (error.name === 'ChunkLoadError' || error.message.includes('dynamically imported module') || error.message.includes('fetch')) {
-       if (!sessionStorage.getItem('reloaded_once')) {
-           sessionStorage.setItem('reloaded_once', 'true');
+    const isChunkError =
+      error.name === 'ChunkLoadError' ||
+      error.message?.includes('dynamically imported module') ||
+      error.message?.includes('Failed to fetch dynamically imported module') ||
+      error.message?.includes('Loading chunk');
+
+    if (isChunkError && typeof window !== 'undefined') {
+       const key = 'error_boundary_chunk_reload';
+       const last = sessionStorage.getItem(key);
+       const now = Date.now();
+       if (!last || now - parseInt(last, 10) > 15000) {
+           sessionStorage.setItem(key, now.toString());
            window.location.reload();
        }
     }

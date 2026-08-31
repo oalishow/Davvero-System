@@ -35,7 +35,7 @@ import {
   Wallet
 } from "lucide-react";
 import { AVAILABLE_DIOCESES, Member } from "../types";
-import { DIOCESES_DATA, getDioceseInfo, DioceseInfo, DioceseLink } from "../data/diocesesData";
+import { DIOCESES_DATA, getDioceseInfo, DioceseInfo, DioceseLink, buildMapsUrl } from "../data/diocesesData";
 import { useSettings } from "../context/SettingsContext";
 import { auth } from "../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
@@ -133,6 +133,18 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
   const dioceseInfo: DioceseInfo = useMemo(() => {
     return getDioceseInfo(selectedDioceseKey, settings.diocesesConfig);
   }, [selectedDioceseKey, settings.diocesesConfig]);
+
+  // Dynamically compute the Google Maps directions URL (automatic whenever address/city changes)
+  const directionsMapsUrl = useMemo(() => {
+    return dioceseInfo.curia.mapsUrl || buildMapsUrl(
+      dioceseInfo.curia.address,
+      dioceseInfo.curia.neighborhood,
+      dioceseInfo.curia.city,
+      dioceseInfo.curia.state,
+      dioceseInfo.curia.cep,
+      dioceseInfo.name
+    );
+  }, [dioceseInfo.curia, dioceseInfo.name]);
 
   // Filter links based on search
   const filteredLinks = useMemo(() => {
@@ -330,16 +342,28 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
         {/* Diocese Cover Banner */}
         <div className={`bg-gradient-to-r ${dioceseInfo.coverGradient} p-6 sm:p-8 text-white relative`}>
           <div className="flex flex-col sm:flex-row items-center sm:items-start text-center sm:text-left gap-6">
-            {/* Emblem / Official Logo / Heraldic Shield */}
-            <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white/15 backdrop-blur-md border-2 border-white/30 p-2 flex items-center justify-center shadow-lg shrink-0 overflow-hidden">
+            {/* Emblem / Official Logo / Heraldic Shield with Dynamic Sizing & Solid Background Support */}
+            <div
+              style={{
+                width: `${dioceseInfo.logoSize || 112}px`,
+                height: `${dioceseInfo.logoSize || 112}px`
+              }}
+              className={`rounded-2xl p-2.5 flex items-center justify-center shadow-lg shrink-0 overflow-hidden transition-all ${
+                dioceseInfo.logoBg === "transparent"
+                  ? "bg-transparent border border-white/30"
+                  : dioceseInfo.logoBg === "glass"
+                  ? "bg-white/20 backdrop-blur-md border-2 border-white/30"
+                  : "bg-white border-2 border-white/90 shadow-md"
+              }`}
+            >
               {dioceseInfo.logoUrl ? (
                 <img
                   src={dioceseInfo.logoUrl}
                   alt={`Logo oficial ${dioceseInfo.name}`}
-                  className="w-full h-full object-contain filter drop-shadow-md"
+                  className="w-full h-full object-contain filter drop-shadow-sm"
                 />
               ) : (
-                <Landmark className="w-12 h-12 sm:w-14 sm:h-14 text-white" />
+                <Landmark className={`text-white ${dioceseInfo.logoBg === "white" ? "!text-sky-700" : ""}`} style={{ width: "60%", height: "60%" }} />
               )}
             </div>
 
@@ -348,7 +372,7 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
                 <span className="px-3 py-0.5 rounded-full text-[11px] font-black uppercase tracking-wider bg-white/20 text-white border border-white/25">
                   {dioceseInfo.type}
                 </span>
-                {dioceseInfo.foundationYear && (
+                {!dioceseInfo.visibility?.hideFoundationYear && dioceseInfo.foundationYear && (
                   <span className="px-3 py-0.5 rounded-full text-[11px] font-bold bg-white/10 text-white/90">
                     Desde {dioceseInfo.foundationYear}
                   </span>
@@ -358,240 +382,281 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
               <h2 className="text-2xl sm:text-3xl font-black tracking-tight text-white mb-1">
                 {dioceseInfo.name}
               </h2>
-              <p className="text-xs sm:text-sm text-white/90 font-medium">
-                Padroeiro(a): <strong className="text-white font-bold">{dioceseInfo.patron}</strong>
-              </p>
+              {!dioceseInfo.visibility?.hidePatron && dioceseInfo.patron && (
+                <p className="text-xs sm:text-sm text-white/90 font-medium">
+                  Padroeiro(a): <strong className="text-white font-bold">{dioceseInfo.patron}</strong>
+                </p>
+              )}
             </div>
           </div>
         </div>
 
         {/* EPISCOPAL IDENTITY & BISHOP PROFILE CARD */}
-        <div className="p-5 sm:p-6 bg-gradient-to-r from-amber-50/70 via-slate-50 to-amber-50/30 dark:from-slate-800 dark:via-slate-850 dark:to-slate-800 border-b border-slate-200 dark:border-slate-700">
-          <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
-            {/* ENLARGED BISHOP PHOTO & EMBLEM ROW */}
-            <div className="flex items-center gap-3 shrink-0">
-              {/* Bishop Photo */}
-              <div className="relative group">
-                <div className="w-24 h-24 sm:w-28 sm:h-28 rounded-2xl bg-white dark:bg-slate-700 border-2 border-amber-400 shadow-md overflow-hidden flex items-center justify-center">
-                  {dioceseInfo.bishop.photoUrl ? (
+        {!dioceseInfo.visibility?.hideBishop && (
+          <div className="p-5 sm:p-6 bg-gradient-to-r from-amber-50/70 via-slate-50 to-amber-50/30 dark:from-slate-800 dark:via-slate-850 dark:to-slate-800 border-b border-slate-200 dark:border-slate-700">
+            <div className="flex flex-col sm:flex-row items-center sm:items-start gap-5">
+              {/* ENLARGED BISHOP PHOTO & EMBLEM ROW (WITH RESIZING CONTROLS SUPPORT) */}
+              <div className="flex items-center gap-3.5 shrink-0">
+                {/* Bishop Photo with Resizing & Zoom */}
+                <div className="relative group">
+                  <div
+                    style={{
+                      width: `${dioceseInfo.bishop.photoSize || 108}px`,
+                      height: `${dioceseInfo.bishop.photoSize || 108}px`
+                    }}
+                    className="rounded-2xl bg-white dark:bg-slate-700 border-2 border-amber-400 shadow-md overflow-hidden flex items-center justify-center transition-all"
+                  >
+                    {dioceseInfo.bishop.photoUrl ? (
+                      <img
+                        src={dioceseInfo.bishop.photoUrl}
+                        alt={dioceseInfo.bishop.name}
+                        style={{
+                          transform: `scale(${(dioceseInfo.bishop.photoZoom || 100) / 100})`
+                        }}
+                        className="w-full h-full object-cover transition-transform duration-300 group-hover:scale-105"
+                      />
+                    ) : (
+                      <Shield className="w-12 h-12 text-amber-500 opacity-60" />
+                    )}
+                  </div>
+                  <div className="absolute -bottom-2 -right-1 bg-amber-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs border border-white">
+                    Episcopal
+                  </div>
+                </div>
+
+                {/* Bishop's Heraldic Shield / Emblem with Resizing and White Background Protection */}
+                {dioceseInfo.bishop.emblemUrl && (
+                  <div
+                    style={{
+                      width: `${dioceseInfo.bishop.emblemSize || 92}px`,
+                      height: `${dioceseInfo.bishop.emblemSize || 92}px`
+                    }}
+                    className={`rounded-2xl p-2 flex flex-col items-center justify-center shadow-sm shrink-0 transition-all ${
+                      dioceseInfo.bishop.emblemBg === "transparent"
+                        ? "bg-transparent border-2 border-dashed border-amber-300 dark:border-amber-600/60"
+                        : dioceseInfo.bishop.emblemBg === "dark"
+                        ? "bg-slate-900 border-2 border-slate-700"
+                        : "bg-white border-2 border-amber-300 dark:border-amber-400 shadow-xs"
+                    }`}
+                  >
                     <img
-                      src={dioceseInfo.bishop.photoUrl}
-                      alt={dioceseInfo.bishop.name}
-                      className="w-full h-full object-cover transition-transform group-hover:scale-105 duration-300"
+                      src={dioceseInfo.bishop.emblemUrl}
+                      alt={`Brasão episcopal ${dioceseInfo.bishop.name}`}
+                      className="max-h-full max-w-full object-contain filter drop-shadow-xs"
                     />
-                  ) : (
-                    <Shield className="w-12 h-12 text-amber-500 opacity-60" />
-                  )}
-                </div>
-                <div className="absolute -bottom-2 -right-1 bg-amber-500 text-white text-[9px] font-black uppercase px-2 py-0.5 rounded-full shadow-xs border border-white">
-                  Episcopal
-                </div>
+                    <span className="text-[8px] font-black uppercase tracking-tighter text-amber-700 dark:text-amber-600 mt-0.5">
+                      Brasão
+                    </span>
+                  </div>
+                )}
               </div>
 
-              {/* Bishop's Heraldic Shield / Emblem (if available) */}
-              {dioceseInfo.bishop.emblemUrl && (
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-white dark:bg-slate-900 border-2 border-dashed border-amber-300 dark:border-amber-600/60 p-1.5 flex flex-col items-center justify-center shadow-sm shrink-0">
-                  <img
-                    src={dioceseInfo.bishop.emblemUrl}
-                    alt={`Brasão episcopal ${dioceseInfo.bishop.name}`}
-                    className="max-h-full max-w-full object-contain filter drop-shadow-sm"
-                  />
-                  <span className="text-[8px] font-black uppercase tracking-tighter text-amber-700 dark:text-amber-400 mt-0.5">
-                    Brasão
-                  </span>
+              {/* Bishop Details */}
+              <div className="flex-1 text-center sm:text-left space-y-1.5">
+                <div className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
+                  <Crown className="w-3.5 h-3.5" />
+                  <span>{dioceseInfo.bishop.title}</span>
                 </div>
-              )}
-            </div>
 
-            {/* Bishop Details */}
-            <div className="flex-1 text-center sm:text-left space-y-1.5">
-              <div className="inline-flex items-center gap-1.5 text-[11px] font-black uppercase tracking-wider text-amber-700 dark:text-amber-400">
-                <Crown className="w-3.5 h-3.5" />
-                <span>{dioceseInfo.bishop.title}</span>
+                <h3 className="text-lg sm:text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
+                  {dioceseInfo.bishop.name}
+                </h3>
+
+                {dioceseInfo.bishop.motto && (
+                  <div className="pt-0.5">
+                    <p className="italic text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-serif bg-amber-500/10 dark:bg-amber-500/15 px-3 py-1.5 rounded-xl inline-block border border-amber-400/20">
+                      Lema: <strong className="font-semibold text-slate-800 dark:text-slate-100">« {dioceseInfo.bishop.motto} »</strong>
+                    </p>
+                  </div>
+                )}
               </div>
-
-              <h3 className="text-lg sm:text-xl font-black text-slate-800 dark:text-slate-100 tracking-tight">
-                {dioceseInfo.bishop.name}
-              </h3>
-
-              {dioceseInfo.bishop.motto && (
-                <div className="pt-0.5">
-                  <p className="italic text-xs sm:text-sm text-slate-600 dark:text-slate-300 font-serif bg-amber-500/10 dark:bg-amber-500/15 px-3 py-1.5 rounded-xl inline-block border border-amber-400/20">
-                    Lema: <strong className="font-semibold text-slate-800 dark:text-slate-100">« {dioceseInfo.bishop.motto} »</strong>
-                  </p>
-                </div>
-              )}
             </div>
           </div>
-        </div>
+        )}
 
         {/* QUICK DIRECT CONTACTS BAR */}
-        <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700">
-          {/* WhatsApp Direct */}
-          {dioceseInfo.curia.whatsapp ? (
-            <a
-              href={`https://wa.me/${dioceseInfo.curia.whatsapp}?text=${encodeURIComponent(
-                `Olá, Cúria da ${dioceseInfo.name}! Gostaria de informações.`
-              )}`}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-900/50 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all hover:scale-[1.02] shadow-sm text-center group"
-            >
-              <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 mb-1 group-hover:scale-110 transition-transform">
-                <MessageCircle className="w-4 h-4" />
-              </div>
-              <span className="text-xs font-black text-slate-800 dark:text-slate-100">WhatsApp</span>
-              <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold truncate max-w-full">
-                {dioceseInfo.curia.whatsappFormatted || "Conversar"}
-              </span>
-            </a>
-          ) : null}
+        {!dioceseInfo.visibility?.hideContacts && (
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 sm:p-4 bg-slate-50 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-700">
+            {/* WhatsApp Direct */}
+            {dioceseInfo.curia.whatsapp ? (
+              <a
+                href={`https://wa.me/${dioceseInfo.curia.whatsapp}?text=${encodeURIComponent(
+                  `Olá, Cúria da ${dioceseInfo.name}! Gostaria de informações.`
+                )}`}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-800 border border-emerald-200 dark:border-emerald-900/50 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 transition-all hover:scale-[1.02] shadow-sm text-center group"
+              >
+                <div className="w-8 h-8 rounded-full bg-emerald-100 dark:bg-emerald-900/40 flex items-center justify-center text-emerald-600 mb-1 group-hover:scale-110 transition-transform">
+                  <MessageCircle className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-100">WhatsApp</span>
+                <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold truncate max-w-full">
+                  {dioceseInfo.curia.whatsappFormatted || "Conversar"}
+                </span>
+              </a>
+            ) : null}
 
-          {/* Telefone Cúria */}
-          {dioceseInfo.curia.phone ? (
-            <a
-              href={`tel:${dioceseInfo.curia.phone}`}
-              className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-900/50 hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-all hover:scale-[1.02] shadow-sm text-center group"
-            >
-              <div className="w-8 h-8 rounded-full bg-sky-100 dark:bg-sky-900/40 flex items-center justify-center text-sky-600 mb-1 group-hover:scale-110 transition-transform">
-                <Phone className="w-4 h-4" />
-              </div>
-              <span className="text-xs font-black text-slate-800 dark:text-slate-100">Ligar p/ Cúria</span>
-              <span className="text-[10px] text-sky-600 dark:text-sky-400 font-bold truncate max-w-full">
-                {dioceseInfo.curia.phoneFormatted}
-              </span>
-            </a>
-          ) : null}
+            {/* Telefone Cúria */}
+            {dioceseInfo.curia.phone ? (
+              <a
+                href={`tel:${dioceseInfo.curia.phone}`}
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-800 border border-sky-200 dark:border-sky-900/50 hover:bg-sky-50 dark:hover:bg-sky-950/30 transition-all hover:scale-[1.02] shadow-sm text-center group"
+              >
+                <div className="w-8 h-8 rounded-full bg-sky-100 dark:bg-sky-900/40 flex items-center justify-center text-sky-600 mb-1 group-hover:scale-110 transition-transform">
+                  <Phone className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-100">Ligar p/ Cúria</span>
+                <span className="text-[10px] text-sky-600 dark:text-sky-400 font-bold truncate max-w-full">
+                  {dioceseInfo.curia.phoneFormatted}
+                </span>
+              </a>
+            ) : null}
 
-          {/* Copiar E-mail */}
-          {dioceseInfo.curia.email ? (
-            <button
-              onClick={() => copyToClipboard(dioceseInfo.curia.email, "email")}
-              className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-900/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-all hover:scale-[1.02] shadow-sm text-center group cursor-pointer"
-            >
-              <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 mb-1 group-hover:scale-110 transition-transform">
-                {copiedEmail ? <Check className="w-4 h-4 text-emerald-600" /> : <Mail className="w-4 h-4" />}
-              </div>
-              <span className="text-xs font-black text-slate-800 dark:text-slate-100">
-                {copiedEmail ? "E-mail Copiado!" : "Copiar E-mail"}
-              </span>
-              <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold truncate max-w-full">
-                {dioceseInfo.curia.email}
-              </span>
-            </button>
-          ) : null}
+            {/* Copiar E-mail */}
+            {dioceseInfo.curia.email ? (
+              <button
+                onClick={() => copyToClipboard(dioceseInfo.curia.email, "email")}
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-800 border border-indigo-200 dark:border-indigo-900/50 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 transition-all hover:scale-[1.02] shadow-sm text-center group cursor-pointer"
+              >
+                <div className="w-8 h-8 rounded-full bg-indigo-100 dark:bg-indigo-900/40 flex items-center justify-center text-indigo-600 mb-1 group-hover:scale-110 transition-transform">
+                  {copiedEmail ? <Check className="w-4 h-4 text-emerald-600" /> : <Mail className="w-4 h-4" />}
+                </div>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-100">
+                  {copiedEmail ? "E-mail Copiado!" : "Copiar E-mail"}
+                </span>
+                <span className="text-[10px] text-indigo-600 dark:text-indigo-400 font-bold truncate max-w-full">
+                  {dioceseInfo.curia.email}
+                </span>
+              </button>
+            ) : null}
 
-          {/* Como Chegar (Google Maps) */}
-          {dioceseInfo.curia.mapsUrl ? (
-            <a
-              href={dioceseInfo.curia.mapsUrl}
-              target="_blank"
-              rel="noopener noreferrer"
-              className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all hover:scale-[1.02] shadow-sm text-center group"
-            >
-              <div className="w-8 h-8 rounded-full bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center text-rose-600 mb-1 group-hover:scale-110 transition-transform">
-                <Navigation className="w-4 h-4" />
-              </div>
-              <span className="text-xs font-black text-slate-800 dark:text-slate-100">Como Chegar</span>
-              <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold truncate max-w-full">
-                {dioceseInfo.curia.city} - {dioceseInfo.curia.state}
-              </span>
-            </a>
-          ) : null}
-        </div>
+            {/* Como Chegar (Google Maps com Atualização Automática de Endereço) */}
+            {directionsMapsUrl ? (
+              <a
+                href={directionsMapsUrl}
+                target="_blank"
+                rel="noopener noreferrer"
+                className="flex flex-col items-center justify-center p-3 rounded-2xl bg-white dark:bg-slate-800 border border-rose-200 dark:border-rose-900/50 hover:bg-rose-50 dark:hover:bg-rose-950/30 transition-all hover:scale-[1.02] shadow-sm text-center group"
+                title="Abrir rota no Google Maps para a Cúria"
+              >
+                <div className="w-8 h-8 rounded-full bg-rose-100 dark:bg-rose-900/40 flex items-center justify-center text-rose-600 mb-1 group-hover:scale-110 transition-transform">
+                  <Navigation className="w-4 h-4" />
+                </div>
+                <span className="text-xs font-black text-slate-800 dark:text-slate-100">Como Chegar</span>
+                <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold truncate max-w-full">
+                  {dioceseInfo.curia.city} - {dioceseInfo.curia.state}
+                </span>
+              </a>
+            ) : null}
+          </div>
+        )}
 
-        {/* CURIA ADDRESS & OFFICE HOURS DETAILS */}
-        <div className="p-4 sm:p-5 text-xs text-slate-600 dark:text-slate-300 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
-          <div className="flex items-start gap-2">
-            <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="font-bold text-slate-800 dark:text-slate-200">
-                {dioceseInfo.curia.address}
-                {dioceseInfo.curia.neighborhood && ` - ${dioceseInfo.curia.neighborhood}`}
-              </p>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                {dioceseInfo.curia.city}/{dioceseInfo.curia.state} • CEP {dioceseInfo.curia.cep}
-              </p>
+        {/* CURIA ADDRESS & OFFICE HOURS DETAILS WITH AUTOMATIC DIRECTIONS LINK */}
+        {!dioceseInfo.visibility?.hideCuria && (
+          <div className="p-4 sm:p-5 text-xs text-slate-600 dark:text-slate-300 flex flex-col sm:flex-row justify-between items-start sm:items-center gap-3">
+            <div className="flex items-start gap-2.5">
+              <MapPin className="w-4 h-4 text-rose-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="font-bold text-slate-800 dark:text-slate-200 flex flex-wrap items-center gap-2">
+                  <span>{dioceseInfo.curia.address}{dioceseInfo.curia.neighborhood && ` - ${dioceseInfo.curia.neighborhood}`}</span>
+                  {directionsMapsUrl && (
+                    <a
+                      href={directionsMapsUrl}
+                      target="_blank"
+                      rel="noopener noreferrer"
+                      className="inline-flex items-center gap-1 px-2 py-0.5 rounded-md bg-rose-50 dark:bg-rose-950/50 text-rose-600 dark:text-rose-400 text-[10px] font-bold hover:underline"
+                    >
+                      <Navigation className="w-2.5 h-2.5" /> Ver no Maps
+                    </a>
+                  )}
+                </p>
+                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                  {dioceseInfo.curia.city}/{dioceseInfo.curia.state} • CEP {dioceseInfo.curia.cep}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-start gap-2 bg-slate-100 dark:bg-slate-700/50 p-2.5 rounded-xl">
+              <Clock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
+              <div>
+                <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
+                  Atendimento da Cúria
+                </p>
+                <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
+                  {dioceseInfo.curia.officeHours}
+                </p>
+              </div>
             </div>
           </div>
-
-          <div className="flex items-start gap-2 bg-slate-100 dark:bg-slate-700/50 p-2.5 rounded-xl">
-            <Clock className="w-4 h-4 text-amber-500 shrink-0 mt-0.5" />
-            <div>
-              <p className="text-[10px] font-black uppercase tracking-wider text-slate-400">
-                Atendimento da Cúria
-              </p>
-              <p className="text-[11px] font-semibold text-slate-700 dark:text-slate-200">
-                {dioceseInfo.curia.officeHours}
-              </p>
-            </div>
-          </div>
-        </div>
+        )}
 
         {/* DIOCESE PIX & DÍZIMO DIOCESANO BLOCK */}
-        {dioceseInfo.pix?.key ? (
-          <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-emerald-50/30 dark:from-emerald-950/30 dark:via-slate-800 dark:to-emerald-950/20 border-t border-emerald-200 dark:border-emerald-900/60 flex flex-col sm:flex-row items-center justify-between gap-4">
-            <div className="flex items-center gap-3.5 min-w-0 w-full sm:w-auto">
-              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-md shrink-0">
-                <Coins className="w-6 h-6" />
-              </div>
-              <div className="min-w-0 flex-1">
-                <div className="flex items-center gap-2">
-                  <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-200/80 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300">
-                    PIX Oficial da Diocese
-                  </span>
-                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
-                    {dioceseInfo.pix.keyType}
-                  </span>
+        {!dioceseInfo.visibility?.hidePix && (
+          dioceseInfo.pix?.key ? (
+            <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-emerald-50/30 dark:from-emerald-950/30 dark:via-slate-800 dark:to-emerald-950/20 border-t border-emerald-200 dark:border-emerald-900/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+              <div className="flex items-center gap-3.5 min-w-0 w-full sm:w-auto">
+                <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-md shrink-0">
+                  <Coins className="w-6 h-6" />
                 </div>
-                <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 font-mono tracking-tight truncate mt-0.5">
-                  {dioceseInfo.pix.key}
-                </p>
-                <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
-                  {dioceseInfo.pix.receiverName || `Mitra Diocesana de ${dioceseInfo.shortName}`}
-                  {dioceseInfo.pix.bankName && ` • ${dioceseInfo.pix.bankName}`}
-                </p>
+                <div className="min-w-0 flex-1">
+                  <div className="flex items-center gap-2">
+                    <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-200/80 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300">
+                      PIX Oficial da Diocese
+                    </span>
+                    <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                      {dioceseInfo.pix.keyType}
+                    </span>
+                  </div>
+                  <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 font-mono tracking-tight truncate mt-0.5">
+                    {dioceseInfo.pix.key}
+                  </p>
+                  <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
+                    {dioceseInfo.pix.receiverName || `Mitra Diocesana de ${dioceseInfo.shortName}`}
+                    {dioceseInfo.pix.bankName && ` • ${dioceseInfo.pix.bankName}`}
+                  </p>
+                </div>
+              </div>
+
+              <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+                <button
+                  type="button"
+                  onClick={() => copyToClipboard(dioceseInfo.pix!.key, "pix")}
+                  className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm active:scale-95 transition-all cursor-pointer"
+                  title="Copiar Chave PIX"
+                >
+                  {copiedPix ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                  <span>{copiedPix ? "PIX Copiado!" : "Copiar Chave"}</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowPixModal(true)}
+                  className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700/80 text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
+                  title="Ver QR Code PIX para pagamento"
+                >
+                  <QrCode className="w-3.5 h-3.5" />
+                  <span>QR Code</span>
+                </button>
               </div>
             </div>
-
-            <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+          ) : isAdmin ? (
+            <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+                <Coins className="w-4 h-4 text-amber-500" />
+                <span>Chave PIX da Diocese ainda não cadastrada.</span>
+              </div>
               <button
                 type="button"
-                onClick={() => copyToClipboard(dioceseInfo.pix!.key, "pix")}
-                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm active:scale-95 transition-all cursor-pointer"
-                title="Copiar Chave PIX"
+                onClick={() => setShowConfigModal(true)}
+                className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer flex items-center gap-1"
               >
-                {copiedPix ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
-                <span>{copiedPix ? "PIX Copiado!" : "Copiar Chave"}</span>
-              </button>
-
-              <button
-                type="button"
-                onClick={() => setShowPixModal(true)}
-                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700/80 text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
-                title="Ver QR Code PIX para pagamento"
-              >
-                <QrCode className="w-3.5 h-3.5" />
-                <span>QR Code</span>
+                <SettingsIcon className="w-3 h-3" />
+                <span>Configurar PIX</span>
               </button>
             </div>
-          </div>
-        ) : isAdmin ? (
-          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 text-xs">
-            <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
-              <Coins className="w-4 h-4 text-amber-500" />
-              <span>Chave PIX da Diocese ainda não cadastrada.</span>
-            </div>
-            <button
-              type="button"
-              onClick={() => setShowConfigModal(true)}
-              className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer flex items-center gap-1"
-            >
-              <SettingsIcon className="w-3 h-3" />
-              <span>Configurar PIX</span>
-            </button>
-          </div>
-        ) : null}
+          ) : null
+        )}
       </div>
 
       {/* SEARCH AND FILTER BAR */}
@@ -620,80 +685,82 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
       </div>
 
       {/* LINKTREE STYLE CARDS GRID */}
-      <div className="space-y-3">
-        <div className="flex items-center justify-between px-1">
-          <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-            <Sparkles className="w-3.5 h-3.5 text-sky-500" />
-            Links Oficiais & Canais ({filteredLinks.length})
-          </h3>
-          <span className="text-[10px] text-slate-400 font-medium">Toque para abrir</span>
-        </div>
+      {!dioceseInfo.visibility?.hideLinks && (
+        <div className="space-y-3">
+          <div className="flex items-center justify-between px-1">
+            <h3 className="text-xs font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <Sparkles className="w-3.5 h-3.5 text-sky-500" />
+              Links Oficiais & Canais ({filteredLinks.length})
+            </h3>
+            <span className="text-[10px] text-slate-400 font-medium">Toque para abrir</span>
+          </div>
 
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
-          {filteredLinks.map((link) => (
-            <a
-              key={link.id}
-              href={link.url}
-              target={link.isExternal !== false ? "_blank" : "_self"}
-              rel="noopener noreferrer"
-              className={`group flex items-center justify-between p-4 sm:p-5 rounded-2xl border transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 ${
-                link.highlight
-                  ? "bg-gradient-to-r from-sky-50 via-white to-indigo-50 dark:from-slate-800 dark:to-slate-800/90 border-sky-300 dark:border-sky-700/80 ring-1 ring-sky-400/20"
-                  : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-sky-400 dark:hover:border-sky-500"
-              }`}
-            >
-              <div className="flex items-center gap-3.5 min-w-0">
-                <div
-                  className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${
-                    link.highlight
-                      ? "bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400"
-                      : "bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300"
-                  }`}
-                >
-                  {renderIcon(link.iconName)}
-                </div>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            {filteredLinks.map((link) => (
+              <a
+                key={link.id}
+                href={link.url}
+                target={link.isExternal !== false ? "_blank" : "_self"}
+                rel="noopener noreferrer"
+                className={`group flex items-center justify-between p-4 sm:p-5 rounded-2xl border transition-all duration-200 shadow-sm hover:shadow-md hover:-translate-y-0.5 ${
+                  link.highlight
+                    ? "bg-gradient-to-r from-sky-50 via-white to-indigo-50 dark:from-slate-800 dark:to-slate-800/90 border-sky-300 dark:border-sky-700/80 ring-1 ring-sky-400/20"
+                    : "bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:border-sky-400 dark:hover:border-sky-500"
+                }`}
+              >
+                <div className="flex items-center gap-3.5 min-w-0">
+                  <div
+                    className={`w-11 h-11 rounded-xl flex items-center justify-center shrink-0 transition-transform group-hover:scale-110 ${
+                      link.highlight
+                        ? "bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400"
+                        : "bg-slate-100 dark:bg-slate-700/60 text-slate-600 dark:text-slate-300"
+                    }`}
+                  >
+                    {renderIcon(link.iconName)}
+                  </div>
 
-                <div className="min-w-0">
-                  <div className="flex items-center gap-2">
-                    <h4 className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight truncate group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
-                      {link.title}
-                    </h4>
-                    {link.highlight && (
-                      <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase bg-sky-500 text-white shrink-0">
-                        Destaque
-                      </span>
+                  <div className="min-w-0">
+                    <div className="flex items-center gap-2">
+                      <h4 className="text-sm font-black text-slate-800 dark:text-slate-100 tracking-tight truncate group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">
+                        {link.title}
+                      </h4>
+                      {link.highlight && (
+                        <span className="px-1.5 py-0.2 rounded-full text-[9px] font-black uppercase bg-sky-500 text-white shrink-0">
+                          Destaque
+                        </span>
+                      )}
+                    </div>
+                    {link.subtitle && (
+                      <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
+                        {link.subtitle}
+                      </p>
                     )}
                   </div>
-                  {link.subtitle && (
-                    <p className="text-xs text-slate-500 dark:text-slate-400 font-medium truncate mt-0.5">
-                      {link.subtitle}
-                    </p>
-                  )}
                 </div>
-              </div>
 
-              <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700/50 flex items-center justify-center text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400 group-hover:bg-sky-100 dark:group-hover:bg-sky-900/30 transition-all shrink-0 ml-2">
-                <ArrowUpRight className="w-4 h-4" />
-              </div>
-            </a>
-          ))}
-        </div>
-
-        {filteredLinks.length === 0 && (
-          <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700">
-            <Search className="w-8 h-8 text-slate-400 mx-auto mb-2 opacity-50" />
-            <p className="text-xs font-bold text-slate-600 dark:text-slate-400">
-              Nenhum link encontrado para "{searchTerm}"
-            </p>
-            <button
-              onClick={() => setSearchTerm("")}
-              className="mt-2 text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline"
-            >
-              Limpar busca
-            </button>
+                <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-700/50 flex items-center justify-center text-slate-400 group-hover:text-sky-600 dark:group-hover:text-sky-400 group-hover:bg-sky-100 dark:group-hover:bg-sky-900/30 transition-all shrink-0 ml-2">
+                  <ArrowUpRight className="w-4 h-4" />
+                </div>
+              </a>
+            ))}
           </div>
-        )}
-      </div>
+
+          {filteredLinks.length === 0 && (
+            <div className="p-8 text-center bg-slate-50 dark:bg-slate-800/40 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700">
+              <Search className="w-8 h-8 text-slate-400 mx-auto mb-2 opacity-50" />
+              <p className="text-xs font-bold text-slate-600 dark:text-slate-400">
+                Nenhum link encontrado para "{searchTerm}"
+              </p>
+              <button
+                onClick={() => setSearchTerm("")}
+                className="mt-2 text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline"
+              >
+                Limpar busca
+              </button>
+            </div>
+          )}
+        </div>
+      )}
 
       {/* MODAL: CONFIGURAÇÃO / EDIÇÃO DE DIOCESES (ADMIN ONLY) */}
       {isAdmin && showConfigModal && (
@@ -767,9 +834,19 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
               )}
             </div>
 
-            <div className="p-4 bg-white rounded-2xl border-2 border-emerald-600 shadow-md inline-block mx-auto">
-              <QRCodeCanvas value={dioceseInfo.pix.key} size={200} />
-            </div>
+            {dioceseInfo.pix.qrCodeImageUrl ? (
+              <div className="p-3 bg-white rounded-2xl border-2 border-emerald-600 shadow-md inline-flex items-center justify-center mx-auto max-w-[240px] max-h-[240px]">
+                <img
+                  src={dioceseInfo.pix.qrCodeImageUrl}
+                  alt={`QR Code PIX ${dioceseInfo.name}`}
+                  className="max-h-[220px] max-w-full object-contain rounded-lg"
+                />
+              </div>
+            ) : (
+              <div className="p-4 bg-white rounded-2xl border-2 border-emerald-600 shadow-md inline-block mx-auto">
+                <QRCodeCanvas value={dioceseInfo.pix.key} size={200} />
+              </div>
+            )}
 
             {dioceseInfo.pix.description && (
               <p className="text-xs text-slate-600 dark:text-slate-300 italic bg-emerald-50 dark:bg-slate-800 p-2.5 rounded-xl border border-emerald-200 dark:border-slate-700">

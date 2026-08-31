@@ -234,44 +234,40 @@ export default function MuralPage({ forcedTab, hideTabs }: { forcedTab?: "academ
           let width = img.width;
           let height = img.height;
           
-          // Redimensionar mantendo proporção (max 1600px para qualidade superior)
-          const MAX_SIZE = 1600;
+          // Redimensionar mantendo proporção (max 1200px para qualidade excelente e peso leve)
+          const MAX_SIZE = 1200;
           if (width > height && width > MAX_SIZE) {
-            height *= MAX_SIZE / width;
+            height = Math.round((height * MAX_SIZE) / width);
             width = MAX_SIZE;
           } else if (height > MAX_SIZE) {
-            width *= MAX_SIZE / height;
+            width = Math.round((width * MAX_SIZE) / height);
             height = MAX_SIZE;
           }
           
-          canvas.width = width;
-          canvas.height = height;
+          canvas.width = Math.max(1, width);
+          canvas.height = Math.max(1, height);
           const ctx = canvas.getContext('2d');
-          ctx?.drawImage(img, 0, 0, width, height);
-          
-          // Comprimir para JPEG (qualidade 0.85 para evitar embaçado)
-          let dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-          
-          // Verificar tamanho (Firestore tem limite de 1MB por documento)
-          // Em Base64, 1 caracter = 1 byte (aproximadamente). O limite rígido é 1,048,576 bytes.
-          if (dataUrl.length > 1000000) { 
-             dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-          }
-          if (dataUrl.length > 1000000) { 
-             dataUrl = canvas.toDataURL('image/jpeg', 0.4);
+          if (ctx) {
+            ctx.imageSmoothingEnabled = true;
+            ctx.imageSmoothingQuality = 'high';
+            ctx.drawImage(img, 0, 0, width, height);
           }
           
-          if (dataUrl.length > 1000000) {
-             alert("⚠️ A imagem é muito grande para salvar diretamente.\n\nTente uma imagem menor.");
-             setIsUploading(false);
-             setUploadProgress(0);
-             return;
+          // Comprimir para JPEG (qualidade 0.82 para fidelidade visual e arquivo leve ~60KB)
+          let dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+          
+          // Ajuste inteligente caso a imagem seja excepcionalmente densa
+          if (dataUrl.length > 800000) { 
+             dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+          }
+          if (dataUrl.length > 800000) { 
+             dataUrl = canvas.toDataURL('image/jpeg', 0.45);
           }
           
           setExternalLink(dataUrl);
           setExternalLinkType('image');
           setUploadProgress(100);
-          setTimeout(() => setIsUploading(false), 500);
+          setTimeout(() => setIsUploading(false), 400);
         };
         img.src = event.target?.result as string;
       };
@@ -279,21 +275,20 @@ export default function MuralPage({ forcedTab, hideTabs }: { forcedTab?: "academ
       return;
     }
 
-    // Se for PDF pequeno (< 600KB), também converte para Base64 para evitar erro de CORS
-    if (file.type === 'application/pdf' && file.size < 600000) {
+    // Se for PDF pequeno (< 800KB), também converte para Base64 para evitar erro de CORS
+    if (file.type === 'application/pdf' && file.size < 800000) {
       setIsUploading(true);
       setUploadProgress(50);
       const reader = new FileReader();
       reader.onload = (event) => {
          const dataUrl = event.target?.result as string;
-         // Segurança: limite do firestore é 1MB. 600KB de arquivo ~ 800KB em Base64
-         if (dataUrl.length < 900000) {
+         if (dataUrl.length < 950000) {
             setExternalLink(dataUrl);
             setExternalLinkType('document');
             setUploadProgress(100);
-            setTimeout(() => setIsUploading(false), 500);
+            setTimeout(() => setIsUploading(false), 400);
          } else {
-            alert("O PDF ficou muito grande após conversão. Para enviar este arquivo, configure o CORS do Firebase Storage.");
+            alert("O PDF selecionado excedeu o limite máximo para anexo direto. Tente compactar o arquivo.");
             setIsUploading(false);
             setUploadProgress(0);
          }
@@ -302,9 +297,9 @@ export default function MuralPage({ forcedTab, hideTabs }: { forcedTab?: "academ
       return;
     }
 
-    // Check size (max 5MB via Storage devido ao CORS)
-    if (file.size > 5 * 1024 * 1024) {
-      alert("⚠️ Arquivo maior que 5MB.\n\nPor favor, envie um arquivo menor ou utilize o Google Drive colando o link no chat.");
+    // Suporte a arquivos de até 25MB
+    if (file.size > 25 * 1024 * 1024) {
+      alert("⚠️ Arquivo maior que 25MB.\n\nPor favor, envie um arquivo menor ou utilize um link compartilhado.");
       return;
     }
 

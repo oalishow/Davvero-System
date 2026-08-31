@@ -100,8 +100,8 @@ export default function InstallPWA() {
                <img src={settings.instLogo} alt="Logo" className="w-full h-full object-contain drop-shadow-2xl" />
             </div>
           ) : (
-            <div className="relative w-24 h-24 bg-gradient-to-br from-sky-400 to-blue-600 rounded-[2rem] mx-auto mb-8 shadow-2xl shadow-sky-500/40 flex items-center justify-center rotate-3 transform hover:rotate-6 transition-transform">
-               <Download className="w-12 h-12 text-white drop-shadow-md" />
+            <div className="relative w-28 h-28 mx-auto mb-8 flex items-center justify-center animate-in zoom-in duration-500 hover:scale-105 transition-transform">
+               <img src="/icon-512.png" alt="DAVVERO" className="w-full h-full object-contain rounded-3xl shadow-2xl shadow-sky-500/30 border border-slate-700/50" />
             </div>
           )}
           <h2 className="relative text-3xl font-black text-slate-800 dark:text-white mb-3 tracking-tight">Instalar DAVVERO System</h2>

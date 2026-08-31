@@ -40,7 +40,8 @@ async function startServer() {
   const app = express();
   const PORT = 3000;
 
-  app.use(express.json());
+  app.use(express.json({ limit: "50mb" }));
+  app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
   // App Version config
   app.get("/api/version", (req, res) => {
@@ -48,6 +49,16 @@ async function startServer() {
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
     res.json({ version: APP_VERSION });
+  });
+
+  // Manifest endpoint with explicit no-cache headers for Android PWA install
+  app.get(["/manifest.json", "/manifest.webmanifest"], (req, res) => {
+    res.setHeader("Content-Type", "application/manifest+json; charset=utf-8");
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
+    res.setHeader("Pragma", "no-cache");
+    res.setHeader("Expires", "0");
+    const manifestPath = path.join(process.cwd(), "public", "manifest.json");
+    res.sendFile(manifestPath);
   });
 
   // Routes for Push Notifications

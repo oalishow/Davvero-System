@@ -5,12 +5,15 @@ import { collection, query, getDocs, orderBy } from 'firebase/firestore';
 import { db, appId } from '../lib/firebase';
 import type { Member } from '../types';
 import { APP_VERSION } from '../lib/constants';
+import { useSettings } from '../context/SettingsContext';
+import DavveroLogo from './DavveroLogo';
 
 interface PrintReportModalProps {
   onClose: () => void;
 }
 
 export default function PrintReportModal({ onClose }: PrintReportModalProps) {
+  const { settings } = useSettings();
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
 
@@ -45,17 +48,13 @@ export default function PrintReportModal({ onClose }: PrintReportModalProps) {
         
         <div className="flex justify-between items-center mb-6 pb-4 border-b border-slate-200 dark:border-slate-700 sticky top-0 bg-white dark:bg-slate-800 z-30 no-print">
           <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0 p-1.5 shadow-sm">
-              <svg viewBox="0 0 100 100" className="w-full h-full text-sky-400">
-                <path d="M50,5 L90,20 C90,60 75,85 50,95 C25,85 10,60 10,20 L50,5 Z" fill="none" stroke="currentColor" strokeWidth="5.5" strokeLinejoin="round" />
-                <path d="M42,15 L58,15 L58,28 L71,28 L71,44 L58,44 L58,65 L42,65 L42,44 L29,44 L29,28 L42,28 Z" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
-                <g transform="translate(20, 38) scale(0.6)">
-                  <path d="M50,32 L82,46 L50,60 L18,46 Z" fill="currentColor" />
-                  <path d="M30,52 L30,65 C40,75 60,75 70,65 L70,52 L50,60 Z" fill="currentColor" opacity="0.85" />
-                  <path d="M50,45 L78,55 L78,70" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="78" cy="72" r="4" fill="currentColor"/>
-                </g>
-              </svg>
+            <div className="w-10 h-10 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0 p-1.5 shadow-sm overflow-hidden border border-slate-700/60">
+              <DavveroLogo
+                src={settings.instLogo}
+                color="#38bdf8"
+                className="w-full h-full object-contain"
+                iconClassName="w-full h-full text-sky-400"
+              />
             </div>
             <div>
               <h2 className="text-xl font-black text-slate-800 dark:text-white">Relatório de Membros</h2>
@@ -79,17 +78,13 @@ export default function PrintReportModal({ onClose }: PrintReportModalProps) {
         {/* Cabeçalho de Impressão (Visível apenas na impressão) */}
         <div className="hidden print:flex items-center justify-between mb-8 border-b-2 border-slate-900 pb-4">
           <div className="flex items-center gap-3.5">
-            <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0 p-1.5 border border-slate-800">
-              <svg viewBox="0 0 100 100" className="w-full h-full text-white">
-                <path d="M50,5 L90,20 C90,60 75,85 50,95 C25,85 10,60 10,20 L50,5 Z" fill="none" stroke="currentColor" strokeWidth="5.5" strokeLinejoin="round" />
-                <path d="M42,15 L58,15 L58,28 L71,28 L71,44 L58,44 L58,65 L42,65 L42,44 L29,44 L29,28 L42,28 Z" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
-                <g transform="translate(20, 38) scale(0.6)">
-                  <path d="M50,32 L82,46 L50,60 L18,46 Z" fill="currentColor" />
-                  <path d="M30,52 L30,65 C40,75 60,75 70,65 L70,52 L50,60 Z" fill="currentColor" opacity="0.85" />
-                  <path d="M50,45 L78,55 L78,70" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                  <circle cx="78" cy="72" r="4" fill="currentColor"/>
-                </g>
-              </svg>
+            <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0 p-1.5 border border-slate-800 overflow-hidden">
+              <DavveroLogo
+                src={settings.instLogo}
+                color="#ffffff"
+                className="w-full h-full object-contain"
+                iconClassName="w-full h-full text-white"
+              />
             </div>
             <div className="text-left">
               <h1 className="text-xl font-black uppercase tracking-wider text-black">Relatório Geral de Membros</h1>

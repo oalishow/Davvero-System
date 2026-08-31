@@ -18,6 +18,7 @@ export default defineConfig(({mode}) => {
         manifest: {
           name: 'DAVVERO System',
           short_name: 'DAVVERO',
+          id: '/?v=davvero-pwa-v3',
           description: 'Sistema avançado de identidades, eventos acadêmicos, seminários e dioceses.',
           theme_color: '#0ea5e9',
           background_color: '#0f172a',
@@ -25,22 +26,40 @@ export default defineConfig(({mode}) => {
           orientation: 'portrait',
           icons: [
             {
-              src: 'icon-192.png',
+              src: '/icon-192.png?v=3',
               type: 'image/png',
               sizes: '192x192',
               purpose: 'any'
             },
             {
-              src: 'icon-512.png',
+              src: '/icon-512.png?v=3',
               type: 'image/png',
               sizes: '512x512',
               purpose: 'any'
             },
             {
-              src: 'icon-512.png',
+              src: '/icon-maskable-192.png?v=3',
+              type: 'image/png',
+              sizes: '192x192',
+              purpose: 'maskable'
+            },
+            {
+              src: '/icon-maskable-512.png?v=3',
               type: 'image/png',
               sizes: '512x512',
               purpose: 'maskable'
+            },
+            {
+              src: '/apple-touch-icon.png?v=3',
+              type: 'image/png',
+              sizes: '180x180',
+              purpose: 'any'
+            },
+            {
+              src: '/icon.svg?v=3',
+              type: 'image/svg+xml',
+              sizes: '512x512',
+              purpose: 'any'
             }
           ]
         }

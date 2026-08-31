@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { createPortal } from "react-dom";
 import { playSound } from "../lib/sounds";
 import {
@@ -58,7 +58,7 @@ import { performAutoBackupIfDue } from "../lib/autoBackup";
 import { Calendar, BriefcaseMedical, LayoutDashboard } from "lucide-react";
 
 export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
-  const { settings, updateSettings } = useSettings();
+  const { settings, updateSettings, loading } = useSettings();
   const [activeTab, setActiveTab] = useState<"dashboard" | "members" | "events" | "appointments" | "notifications">("dashboard");
     const [name, setName] = useState("");
   const [ra, setRa] = useState("");
@@ -314,11 +314,16 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
     });
   };
 
+  const hasCheckedVersionRef = useRef(false);
+
   useEffect(() => {
-    if (settings.version !== APP_VERSION) {
+    if (!loading && settings.version && settings.version !== APP_VERSION && !hasCheckedVersionRef.current) {
+      hasCheckedVersionRef.current = true;
       updateSettings({ version: APP_VERSION }).catch(console.error);
     }
+  }, [loading, settings.version]);
 
+  useEffect(() => {
     const q = query(collection(db, `artifacts/${appId}/public/data/students`));
     const unsub = onSnapshot(q, (snapshot) => {
       const members = snapshot.docs.map(
@@ -329,7 +334,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
     });
 
     return () => unsub();
-  }, [settings.version]);
+  }, []);
 
   const handleLogoutAdmin = async () => {
     playSound('logout');

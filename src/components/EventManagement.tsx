@@ -522,28 +522,27 @@ export default function EventManagement({
                         const canvas = document.createElement('canvas');
                         let width = img.width;
                         let height = img.height;
-                        const MAX_SIZE = 1600;
+                        const MAX_SIZE = 1200;
                         if (width > height && width > MAX_SIZE) {
-                          height *= MAX_SIZE / width;
+                          height = Math.round((height * MAX_SIZE) / width);
                           width = MAX_SIZE;
                         } else if (height > MAX_SIZE) {
-                          width *= MAX_SIZE / height;
+                          width = Math.round((width * MAX_SIZE) / height);
                           height = MAX_SIZE;
                         }
-                        canvas.width = width;
-                        canvas.height = height;
+                        canvas.width = Math.max(1, width);
+                        canvas.height = Math.max(1, height);
                         const ctx = canvas.getContext('2d');
-                        ctx?.drawImage(img, 0, 0, width, height);
-                        
-                        let dataUrl = canvas.toDataURL('image/jpeg', 0.85);
-                        if (dataUrl.length > 1000000) dataUrl = canvas.toDataURL('image/jpeg', 0.6);
-                        if (dataUrl.length > 1000000) dataUrl = canvas.toDataURL('image/jpeg', 0.4);
-                        
-                        if (dataUrl.length > 1000000) {
-                           alert("⚠️ Imagem muito grande. Tente outra.");
-                           e.target.value = "";
-                           return;
+                        if (ctx) {
+                          ctx.imageSmoothingEnabled = true;
+                          ctx.imageSmoothingQuality = 'high';
+                          ctx.drawImage(img, 0, 0, width, height);
                         }
+                        
+                        let dataUrl = canvas.toDataURL('image/jpeg', 0.82);
+                        if (dataUrl.length > 800000) dataUrl = canvas.toDataURL('image/jpeg', 0.65);
+                        if (dataUrl.length > 800000) dataUrl = canvas.toDataURL('image/jpeg', 0.45);
+                        
                         setImageUrl(dataUrl);
                         e.target.value = "";
                       };

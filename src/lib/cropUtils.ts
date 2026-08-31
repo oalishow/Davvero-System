@@ -4,7 +4,7 @@
  */
 export const compressOriginalImage = async (
   imageSrc: string,
-  maxDim = 1200,
+  maxDim = 800,
   quality = 0.82
 ): Promise<string> => {
   return new Promise((resolve, reject) => {
@@ -55,7 +55,7 @@ export const compressOriginalImage = async (
 export const getCroppedImg = async (
   imageSrc: string,
   pixelCrop: { x: number; y: number; width: number; height: number },
-  maxDim = 1200,
+  maxDim = 800,
   quality = 0.82
 ): Promise<string> => {
   const image = new Image();

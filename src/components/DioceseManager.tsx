@@ -33,16 +33,20 @@ import {
   ShieldCheck,
   ArrowUpRight,
   Eye,
+  EyeOff,
   Navigation,
   Sun,
   Moon,
   QrCode,
   Coins,
   Wallet,
-  CreditCard
+  CreditCard,
+  Sliders,
+  ZoomIn,
+  Maximize2
 } from "lucide-react";
 import { AVAILABLE_DIOCESES, Member } from "../types";
-import { DIOCESES_DATA, getDioceseInfo, DioceseInfo, DioceseLink } from "../data/diocesesData";
+import { DIOCESES_DATA, getDioceseInfo, DioceseInfo, DioceseLink, DioceseVisibility, buildMapsUrl } from "../data/diocesesData";
 import { useSettings } from "../context/SettingsContext";
 import { resizeAndConvertToBase64 } from "../lib/imageUtils";
 import { auth } from "../lib/firebase";
@@ -118,7 +122,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
   const [showAddModal, setShowAddModal] = useState(false);
   const [newDioceseName, setNewDioceseName] = useState("");
   const [isProcessingImage, setIsProcessingImage] = useState(false);
-  const [removeBgAuto, setRemoveBgAuto] = useState(true);
+  const [removeBgAuto, setRemoveBgAuto] = useState(false); // Preservar detalhes e transparência nativa de PNG
   const [previewBgDark, setPreviewBgDark] = useState(true);
 
   // Link Editor State
@@ -145,6 +149,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
   const fileInputRef = useRef<HTMLInputElement>(null);
   const bishopPhotoInputRef = useRef<HTMLInputElement>(null);
   const bishopEmblemInputRef = useRef<HTMLInputElement>(null);
+  const pixQrCodeInputRef = useRef<HTMLInputElement>(null);
 
   // Handle Logo Upload
   const handleLogoUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -153,7 +158,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
 
     try {
       setIsProcessingImage(true);
-      const base64 = await resizeAndConvertToBase64(file, 400, {
+      const base64 = await resizeAndConvertToBase64(file, 480, {
         preserveAlpha: true,
         removeWhiteBg: removeBgAuto,
         mimeType: "image/png"
@@ -164,11 +169,11 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
         logoUrl: base64
       }));
 
-      setStatus({ msg: "Logo processada com sucesso!", type: "success" });
+      setStatus({ msg: "Logo oficial processada com máxima fidelidade!", type: "success" });
       setTimeout(() => setStatus(null), 3000);
     } catch (err: any) {
       console.error(err);
-      setStatus({ msg: "Erro ao processar imagem da logo.", type: "error" });
+      setStatus({ msg: err?.message || "Erro ao processar imagem da logo.", type: "error" });
     } finally {
       setIsProcessingImage(false);
       if (fileInputRef.current) fileInputRef.current.value = "";
@@ -182,8 +187,8 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
 
     try {
       setIsProcessingImage(true);
-      const base64 = await resizeAndConvertToBase64(file, 450, {
-        quality: 0.9,
+      const base64 = await resizeAndConvertToBase64(file, 500, {
+        quality: 0.85,
         mimeType: "image/jpeg"
       });
 
@@ -199,7 +204,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
       setTimeout(() => setStatus(null), 3000);
     } catch (err: any) {
       console.error(err);
-      setStatus({ msg: "Erro ao processar foto.", type: "error" });
+      setStatus({ msg: err?.message || "Erro ao processar foto.", type: "error" });
     } finally {
       setIsProcessingImage(false);
       if (bishopPhotoInputRef.current) bishopPhotoInputRef.current.value = "";
@@ -213,7 +218,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
 
     try {
       setIsProcessingImage(true);
-      const base64 = await resizeAndConvertToBase64(file, 400, {
+      const base64 = await resizeAndConvertToBase64(file, 480, {
         preserveAlpha: true,
         removeWhiteBg: removeBgAuto,
         mimeType: "image/png"
@@ -227,14 +232,52 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
         }
       }));
 
-      setStatus({ msg: "Brasão/Emblema episcopal processado com sucesso!", type: "success" });
+      setStatus({ msg: "Brasão/Emblema episcopal processado sem cortes de detalhes!", type: "success" });
       setTimeout(() => setStatus(null), 3000);
     } catch (err: any) {
       console.error(err);
-      setStatus({ msg: "Erro ao processar emblema episcopal.", type: "error" });
+      setStatus({ msg: err?.message || "Erro ao processar emblema episcopal.", type: "error" });
     } finally {
       setIsProcessingImage(false);
       if (bishopEmblemInputRef.current) bishopEmblemInputRef.current.value = "";
+    }
+  };
+
+  // Handle PIX QR Code Upload
+  const handlePixQrCodeUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+
+    try {
+      setIsProcessingImage(true);
+      const base64 = await resizeAndConvertToBase64(file, 350, {
+        quality: 0.88,
+        mimeType: "image/jpeg"
+      });
+
+      setForm(prev => ({
+        ...prev,
+        pix: {
+          ...(prev.pix || {
+            key: "",
+            keyType: "CNPJ",
+            receiverName: "",
+            bankName: "",
+            city: "",
+            description: ""
+          }),
+          qrCodeImageUrl: base64
+        }
+      }));
+
+      setStatus({ msg: "Imagem do QR Code PIX anexada com sucesso!", type: "success" });
+      setTimeout(() => setStatus(null), 3000);
+    } catch (err: any) {
+      console.error(err);
+      setStatus({ msg: err?.message || "Erro ao processar imagem do QR Code.", type: "error" });
+    } finally {
+      setIsProcessingImage(false);
+      if (pixQrCodeInputRef.current) pixQrCodeInputRef.current.value = "";
     }
   };
 
@@ -401,22 +444,43 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
 
   // Generate Google Maps URL automatically
   const handleAutoGenerateMaps = () => {
-    const query = [
+    const generated = buildMapsUrl(
       form.curia.address,
       form.curia.neighborhood,
       form.curia.city,
       form.curia.state,
-      form.curia.cep
-    ].filter(Boolean).join(", ");
-
-    const generated = `https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(query)}`;
+      form.curia.cep,
+      form.name
+    );
     setForm(prev => ({
       ...prev,
       curia: {
         ...prev.curia,
-        mapsUrl: generated
+        mapsUrl: generated || prev.curia.mapsUrl
       }
     }));
+  };
+
+  // Automatically update address field and synchronize Maps "Como Chegar" URL in real-time
+  const updateCuriaAddress = (field: keyof DioceseInfo["curia"], value: string) => {
+    setForm(prev => {
+      const updatedCuria = { ...prev.curia, [field]: value };
+      const autoMapsUrl = buildMapsUrl(
+        field === "address" ? value : updatedCuria.address,
+        field === "neighborhood" ? value : updatedCuria.neighborhood,
+        field === "city" ? value : updatedCuria.city,
+        field === "state" ? value : updatedCuria.state,
+        field === "cep" ? value : updatedCuria.cep,
+        prev.name
+      );
+      return {
+        ...prev,
+        curia: {
+          ...updatedCuria,
+          mapsUrl: autoMapsUrl || updatedCuria.mapsUrl
+        }
+      };
+    });
   };
 
   // Link Management
@@ -660,20 +724,34 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
 
             {/* Logo Preview Container */}
             <div
-              className={`w-full h-44 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center relative overflow-hidden transition-colors ${
+              className={`w-full min-h-[12rem] py-4 rounded-2xl border-2 border-dashed flex flex-col items-center justify-center relative overflow-hidden transition-colors ${
                 previewBgDark
                   ? "bg-slate-900 border-slate-700"
                   : "bg-slate-100 border-slate-300"
               }`}
             >
               {form.logoUrl ? (
-                <div className="relative group p-4 flex flex-col items-center justify-center w-full h-full">
-                  <img
-                    src={form.logoUrl}
-                    alt={`Logo ${form.name}`}
-                    className="max-h-32 max-w-full object-contain filter drop-shadow-md transition-transform group-hover:scale-105"
-                  />
-                  <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity flex items-center justify-center gap-2 backdrop-blur-xs">
+                <div className="relative group p-3 flex flex-col items-center justify-center">
+                  <div
+                    style={{
+                      width: `${form.logoSize || 112}px`,
+                      height: `${form.logoSize || 112}px`
+                    }}
+                    className={`rounded-2xl p-2 flex items-center justify-center transition-all ${
+                      form.logoBg === "transparent"
+                        ? "bg-transparent border border-white/20"
+                        : form.logoBg === "glass"
+                        ? "bg-white/20 backdrop-blur-md border border-white/30"
+                        : "bg-white border-2 border-slate-200 shadow-md"
+                    }`}
+                  >
+                    <img
+                      src={form.logoUrl}
+                      alt={`Logo ${form.name}`}
+                      className="w-full h-full object-contain filter drop-shadow-sm transition-transform group-hover:scale-105"
+                    />
+                  </div>
+                  <div className="absolute inset-0 bg-slate-900/60 opacity-0 group-hover:opacity-100 transition-opacity rounded-2xl flex items-center justify-center gap-2 backdrop-blur-xs">
                     <button
                       type="button"
                       onClick={() => fileInputRef.current?.click()}
@@ -703,6 +781,96 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                   </p>
                 </div>
               )}
+            </div>
+
+            {/* Logo Resizing Slider & Background Controls */}
+            <div className="p-3 bg-slate-50 dark:bg-slate-900/70 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3">
+              <div className="space-y-2">
+                <div className="flex items-center justify-between text-xs">
+                  <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1.5">
+                    <Sliders className="w-3.5 h-3.5 text-sky-500" /> Redimensionar Brasão/Logo da Diocese:
+                  </span>
+                  <span className="font-mono font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 px-2 py-0.5 rounded-md border border-sky-200 dark:border-sky-800">
+                    {form.logoSize || 112}px
+                  </span>
+                </div>
+                <input
+                  type="range"
+                  min="50"
+                  max="260"
+                  step="2"
+                  value={form.logoSize || 112}
+                  onChange={(e) => setForm(prev => ({ ...prev, logoSize: Number(e.target.value) }))}
+                  className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-600"
+                />
+                <div className="flex flex-wrap items-center justify-between gap-1 text-[10px]">
+                  <span className="text-slate-400">Atalhos:</span>
+                  <div className="flex flex-wrap gap-1">
+                    {[
+                      { label: "80px", val: 80 },
+                      { label: "100px", val: 100 },
+                      { label: "112px (Padrão)", val: 112 },
+                      { label: "140px", val: 140 },
+                      { label: "180px", val: 180 },
+                      { label: "220px", val: 220 }
+                    ].map(preset => (
+                      <button
+                        key={preset.val}
+                        type="button"
+                        onClick={() => setForm(prev => ({ ...prev, logoSize: preset.val }))}
+                        className={`px-2 py-0.5 rounded-md font-bold transition-all ${
+                          (form.logoSize || 112) === preset.val
+                            ? "bg-sky-600 text-white shadow-xs"
+                            : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:bg-slate-100"
+                        }`}
+                      >
+                        {preset.label}
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              </div>
+
+              <div className="pt-2 border-t border-slate-200/70 dark:border-slate-800">
+                <span className="text-[10px] font-black uppercase tracking-wider text-slate-500 dark:text-slate-400 block mb-1.5">
+                  Fundo do Emblema no Banner:
+                </span>
+                <div className="grid grid-cols-3 gap-1.5">
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, logoBg: "white" }))}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${
+                      (!form.logoBg || form.logoBg === "white")
+                        ? "bg-white text-slate-900 border-sky-500 shadow-xs ring-1 ring-sky-500"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    Branco Sólido (Protege PNG)
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, logoBg: "glass" }))}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${
+                      form.logoBg === "glass"
+                        ? "bg-white text-slate-900 border-sky-500 shadow-xs ring-1 ring-sky-500"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    Vidro Fosco
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setForm(prev => ({ ...prev, logoBg: "transparent" }))}
+                    className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${
+                      form.logoBg === "transparent"
+                        ? "bg-white text-slate-900 border-sky-500 shadow-xs ring-1 ring-sky-500"
+                        : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                    }`}
+                  >
+                    Transparente
+                  </button>
+                </div>
+              </div>
             </div>
 
             {/* Upload Buttons & Options */}
@@ -746,7 +914,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                   onChange={(e) => setRemoveBgAuto(e.target.checked)}
                   className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4"
                 />
-                <span>Remover fundo branco automaticamente (ideal p/ brasões digitalizados)</span>
+                <span>Remover borda branca externa automaticamente (ideal p/ brasões digitalizados)</span>
               </label>
 
               {/* Direct URL input fallback */}
@@ -794,12 +962,21 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
               />
 
               <div className="flex items-center gap-4">
-                <div className="w-20 h-20 sm:w-24 sm:h-24 rounded-2xl bg-slate-100 dark:bg-slate-700 border-2 border-amber-400/40 shadow-sm overflow-hidden flex items-center justify-center shrink-0">
+                <div
+                  style={{
+                    width: `${form.bishop.photoSize || 108}px`,
+                    height: `${form.bishop.photoSize || 108}px`
+                  }}
+                  className="rounded-2xl bg-slate-100 dark:bg-slate-700 border-2 border-amber-400/40 shadow-sm overflow-hidden flex items-center justify-center shrink-0 transition-all"
+                >
                   {form.bishop.photoUrl ? (
                     <img
                       src={form.bishop.photoUrl}
                       alt={form.bishop.name}
-                      className="w-full h-full object-cover"
+                      style={{
+                        transform: `scale(${(form.bishop.photoZoom || 100) / 100})`
+                      }}
+                      className="w-full h-full object-cover transition-transform"
                     />
                   ) : (
                     <Shield className="w-10 h-10 text-amber-500 opacity-60" />
@@ -836,6 +1013,94 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                   />
                 </div>
               </div>
+
+              {/* Photo Resizing and Zoom Sliders */}
+              <div className="p-3 bg-slate-50 dark:bg-slate-900/60 rounded-xl border border-slate-200 dark:border-slate-700/80 space-y-3">
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                        <Sliders className="w-3 h-3 text-sky-500" /> Tamanho da Foto do Bispo:
+                      </span>
+                      <span className="font-mono font-bold text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-950/60 px-1.5 py-0.5 rounded border border-sky-200 dark:border-sky-800">
+                        {form.bishop.photoSize || 108}px
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="60"
+                      max="260"
+                      step="2"
+                      value={form.bishop.photoSize || 108}
+                      onChange={(e) => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, photoSize: Number(e.target.value) } }))}
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-600"
+                    />
+                    <div className="flex flex-wrap gap-1 text-[9px]">
+                      {[
+                        { label: "80px", val: 80 },
+                        { label: "108px (Padrão)", val: 108 },
+                        { label: "140px", val: 140 },
+                        { label: "180px", val: 180 },
+                        { label: "220px", val: 220 }
+                      ].map(preset => (
+                        <button
+                          key={preset.val}
+                          type="button"
+                          onClick={() => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, photoSize: preset.val } }))}
+                          className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                            (form.bishop.photoSize || 108) === preset.val
+                              ? "bg-sky-600 text-white"
+                              : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+
+                  <div className="space-y-1.5">
+                    <div className="flex items-center justify-between text-[11px]">
+                      <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                        <ZoomIn className="w-3 h-3 text-amber-500" /> Zoom/Enquadramento:
+                      </span>
+                      <span className="font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                        {form.bishop.photoZoom || 100}%
+                      </span>
+                    </div>
+                    <input
+                      type="range"
+                      min="100"
+                      max="200"
+                      step="2"
+                      value={form.bishop.photoZoom || 100}
+                      onChange={(e) => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, photoZoom: Number(e.target.value) } }))}
+                      className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-600"
+                    />
+                    <div className="flex flex-wrap gap-1 text-[9px]">
+                      {[
+                        { label: "100% (Normal)", val: 100 },
+                        { label: "115%", val: 115 },
+                        { label: "130%", val: 130 },
+                        { label: "150%", val: 150 }
+                      ].map(preset => (
+                        <button
+                          key={preset.val}
+                          type="button"
+                          onClick={() => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, photoZoom: preset.val } }))}
+                          className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                            (form.bishop.photoZoom || 100) === preset.val
+                              ? "bg-amber-600 text-white"
+                              : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+              </div>
             </div>
 
             {/* 2. BRASÃO / EMBLEMA EPISCOPAL DO BISPO */}
@@ -862,15 +1127,23 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
 
               <div className="flex items-center gap-4">
                 <div
-                  className={`w-20 h-20 sm:w-24 sm:h-24 rounded-2xl border-2 border-dashed flex items-center justify-center p-1.5 overflow-hidden shrink-0 transition-colors ${
-                    previewBgDark ? "bg-slate-900 border-slate-700" : "bg-slate-100 border-slate-300"
+                  style={{
+                    width: `${form.bishop.emblemSize || 92}px`,
+                    height: `${form.bishop.emblemSize || 92}px`
+                  }}
+                  className={`rounded-2xl border-2 p-2 flex flex-col items-center justify-center overflow-hidden shrink-0 transition-all ${
+                    form.bishop.emblemBg === "transparent"
+                      ? "bg-transparent border-dashed border-amber-300 dark:border-amber-600/60"
+                      : form.bishop.emblemBg === "dark"
+                      ? "bg-slate-900 border-slate-700"
+                      : "bg-white border-amber-300 dark:border-amber-400 shadow-xs"
                   }`}
                 >
                   {form.bishop.emblemUrl ? (
                     <img
                       src={form.bishop.emblemUrl}
                       alt={`Brasão episcopal ${form.bishop.name}`}
-                      className="w-full h-full object-contain filter drop-shadow-md"
+                      className="w-full h-full object-contain filter drop-shadow-xs"
                     />
                   ) : (
                     <div className="text-center">
@@ -908,6 +1181,95 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                     onChange={(e) => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, emblemUrl: e.target.value.trim() || null } }))}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-[11px] font-mono text-slate-800 dark:text-slate-200 outline-none focus:border-amber-500"
                   />
+                </div>
+              </div>
+
+              {/* Bishop Emblem Resizing Slider & Background Controls */}
+              <div className="p-3 bg-amber-50/50 dark:bg-amber-950/20 rounded-xl border border-amber-200/80 dark:border-amber-900/40 space-y-3">
+                <div className="space-y-1.5">
+                  <div className="flex items-center justify-between text-xs">
+                    <span className="font-bold text-slate-700 dark:text-slate-200 flex items-center gap-1">
+                      <Sliders className="w-3.5 h-3.5 text-amber-500" /> Redimensionar Brasão Episcopal:
+                    </span>
+                    <span className="font-mono font-bold text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/60 px-1.5 py-0.5 rounded border border-amber-200 dark:border-amber-800">
+                      {form.bishop.emblemSize || 92}px
+                    </span>
+                  </div>
+                  <input
+                    type="range"
+                    min="50"
+                    max="260"
+                    step="2"
+                    value={form.bishop.emblemSize || 92}
+                    onChange={(e) => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, emblemSize: Number(e.target.value) } }))}
+                    className="w-full h-2 bg-amber-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-amber-600"
+                  />
+                  <div className="flex flex-wrap items-center justify-between gap-1 text-[10px]">
+                    <span className="text-slate-400">Atalhos:</span>
+                    <div className="flex flex-wrap gap-1">
+                      {[
+                        { label: "70px", val: 70 },
+                        { label: "92px (Padrão)", val: 92 },
+                        { label: "120px", val: 120 },
+                        { label: "160px", val: 160 },
+                        { label: "200px", val: 200 }
+                      ].map(preset => (
+                        <button
+                          key={preset.val}
+                          type="button"
+                          onClick={() => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, emblemSize: preset.val } }))}
+                          className={`px-1.5 py-0.5 rounded font-bold transition-all ${
+                            (form.bishop.emblemSize || 92) === preset.val
+                              ? "bg-amber-600 text-white shadow-xs"
+                              : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                          }`}
+                        >
+                          {preset.label}
+                        </button>
+                      ))}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="pt-2 border-t border-amber-200/50 dark:border-amber-900/30">
+                  <span className="text-[10px] font-black uppercase tracking-wider text-amber-800 dark:text-amber-300 block mb-1.5">
+                    Fundo do Brasão Episcopal:
+                  </span>
+                  <div className="grid grid-cols-3 gap-1.5">
+                    <button
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, emblemBg: "white" } }))}
+                      className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${
+                        (!form.bishop.emblemBg || form.bishop.emblemBg === "white")
+                          ? "bg-white text-amber-900 border-amber-500 shadow-xs ring-1 ring-amber-500"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                      }`}
+                    >
+                      Branco (Recomendado)
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, emblemBg: "dark" } }))}
+                      className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${
+                        form.bishop.emblemBg === "dark"
+                          ? "bg-slate-900 text-white border-amber-500 shadow-xs ring-1 ring-amber-500"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                      }`}
+                    >
+                      Fundo Escuro
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => setForm(prev => ({ ...prev, bishop: { ...prev.bishop, emblemBg: "transparent" } }))}
+                      className={`py-1.5 px-2 rounded-lg text-[10px] font-bold border transition-all ${
+                        form.bishop.emblemBg === "transparent"
+                          ? "bg-white text-slate-900 border-amber-500 shadow-xs ring-1 ring-amber-500"
+                          : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 border-slate-200 dark:border-slate-700"
+                      }`}
+                    >
+                      Transparente
+                    </button>
+                  </div>
                 </div>
               </div>
             </div>
@@ -1114,7 +1476,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                 <input
                   type="text"
                   value={form.curia.address}
-                  onChange={(e) => setForm(prev => ({ ...prev, curia: { ...prev.curia, address: e.target.value } }))}
+                  onChange={(e) => updateCuriaAddress("address", e.target.value)}
                   placeholder="ex: Av. Nelson Spielmann, 521"
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-100 outline-none focus:border-sky-500"
                 />
@@ -1127,7 +1489,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                 <input
                   type="text"
                   value={form.curia.neighborhood || ""}
-                  onChange={(e) => setForm(prev => ({ ...prev, curia: { ...prev.curia, neighborhood: e.target.value } }))}
+                  onChange={(e) => updateCuriaAddress("neighborhood", e.target.value)}
                   placeholder="ex: Centro"
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-100 outline-none focus:border-sky-500"
                 />
@@ -1141,7 +1503,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                   <input
                     type="text"
                     value={form.curia.city}
-                    onChange={(e) => setForm(prev => ({ ...prev, curia: { ...prev.curia, city: e.target.value } }))}
+                    onChange={(e) => updateCuriaAddress("city", e.target.value)}
                     placeholder="Marília"
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-100 outline-none focus:border-sky-500"
                   />
@@ -1153,7 +1515,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                   <input
                     type="text"
                     value={form.curia.state}
-                    onChange={(e) => setForm(prev => ({ ...prev, curia: { ...prev.curia, state: e.target.value.toUpperCase() } }))}
+                    onChange={(e) => updateCuriaAddress("state", e.target.value.toUpperCase())}
                     placeholder="SP"
                     maxLength={2}
                     className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-100 outline-none focus:border-sky-500 uppercase text-center font-bold"
@@ -1168,7 +1530,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                 <input
                   type="text"
                   value={form.curia.cep}
-                  onChange={(e) => setForm(prev => ({ ...prev, curia: { ...prev.curia, cep: e.target.value } }))}
+                  onChange={(e) => updateCuriaAddress("cep", e.target.value)}
                   placeholder="ex: 17509-001"
                   className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-100 outline-none focus:border-sky-500 font-mono"
                 />
@@ -1449,6 +1811,100 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
               </div>
             </div>
 
+            {/* UPLOAD DA IMAGEM DO QR CODE PIX */}
+            <div className="p-4 rounded-xl bg-slate-50 dark:bg-slate-900/60 border border-slate-200 dark:border-slate-700 space-y-3">
+              <div className="flex items-center justify-between">
+                <div className="flex items-center gap-2">
+                  <QrCode className="w-4 h-4 text-emerald-500" />
+                  <span className="text-xs font-black text-slate-800 dark:text-slate-200">
+                    Imagem Personalizada do QR Code PIX (Opcional)
+                  </span>
+                </div>
+                {form.pix?.qrCodeImageUrl && (
+                  <span className="text-[9px] font-black uppercase px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                    QR Code Anexado
+                  </span>
+                )}
+              </div>
+
+              <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                Você pode fazer o upload da imagem do QR Code exportada do aplicativo do banco da Diocese ou do banner de arrecadação.
+              </p>
+
+              <input
+                type="file"
+                ref={pixQrCodeInputRef}
+                onChange={handlePixQrCodeUpload}
+                accept="image/*"
+                className="hidden"
+              />
+
+              <div className="flex flex-col sm:flex-row items-center gap-4 pt-1">
+                {form.pix?.qrCodeImageUrl ? (
+                  <div className="w-24 h-24 rounded-xl bg-white p-1.5 border-2 border-emerald-500 shadow-md flex items-center justify-center shrink-0">
+                    <img
+                      src={form.pix.qrCodeImageUrl}
+                      alt="QR Code PIX Diocese"
+                      className="max-h-full max-w-full object-contain"
+                    />
+                  </div>
+                ) : (
+                  <div className="w-24 h-24 rounded-xl bg-slate-200 dark:bg-slate-800 border-2 border-dashed border-slate-300 dark:border-slate-700 flex flex-col items-center justify-center text-slate-400 shrink-0">
+                    <QrCode className="w-8 h-8 opacity-40 mb-1" />
+                    <span className="text-[9px] font-bold">Sem imagem</span>
+                  </div>
+                )}
+
+                <div className="flex-1 w-full space-y-2">
+                  <div className="flex flex-wrap gap-2">
+                    <button
+                      type="button"
+                      onClick={() => pixQrCodeInputRef.current?.click()}
+                      className="px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold inline-flex items-center gap-1.5 cursor-pointer shadow-xs active:scale-95 transition-all"
+                    >
+                      <Upload className="w-3.5 h-3.5" />
+                      <span>{form.pix?.qrCodeImageUrl ? "Trocar Imagem QR Code" : "Fazer Upload do QR Code"}</span>
+                    </button>
+
+                    {form.pix?.qrCodeImageUrl && (
+                      <button
+                        type="button"
+                        onClick={() =>
+                          setForm((prev) => ({
+                            ...prev,
+                            pix: {
+                              ...(prev.pix || { key: "" }),
+                              qrCodeImageUrl: null
+                            }
+                          }))
+                        }
+                        className="px-3 py-2 rounded-xl bg-rose-50 hover:bg-rose-100 text-rose-600 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 dark:text-rose-300 text-xs font-bold inline-flex items-center gap-1 transition-colors cursor-pointer"
+                      >
+                        <Trash2 className="w-3.5 h-3.5" />
+                        <span>Remover Imagem</span>
+                      </button>
+                    )}
+                  </div>
+
+                  <input
+                    type="url"
+                    placeholder="Ou insira a URL direta da imagem do QR Code..."
+                    value={form.pix?.qrCodeImageUrl || ""}
+                    onChange={(e) =>
+                      setForm((prev) => ({
+                        ...prev,
+                        pix: {
+                          ...(prev.pix || { key: "" }),
+                          qrCodeImageUrl: e.target.value.trim() || null
+                        }
+                      }))
+                    }
+                    className="w-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-2.5 py-1.5 text-[11px] font-mono text-slate-800 dark:text-slate-200 outline-none focus:border-emerald-500"
+                  />
+                </div>
+              </div>
+            </div>
+
             {/* Quick Preview Box for PIX */}
             {form.pix?.key && (
               <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-900/50 flex items-center justify-between gap-3 text-xs">
@@ -1470,6 +1926,323 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
                 </span>
               </div>
             )}
+          </div>
+
+          {/* VISIBILIDADE & OCULTAÇÃO DE INFORMAÇÕES NO PAINEL DA DIOCESE */}
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2.5">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Eye className="w-4 h-4 text-amber-500" />
+                4. Visibilidade & Ocultação de Seções no Painel
+              </h3>
+              <button
+                type="button"
+                onClick={() =>
+                  setForm((prev) => ({
+                    ...prev,
+                    visibility: {
+                      hideBishop: false,
+                      hideCuria: false,
+                      hideContacts: false,
+                      hidePix: false,
+                      hideSocial: false,
+                      hideLinks: false,
+                      hidePatron: false,
+                      hideFoundationYear: false
+                    }
+                  }))
+                }
+                className="text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer"
+              >
+                Exibir Todas
+              </button>
+            </div>
+
+            <p className="text-xs text-slate-500 dark:text-slate-400">
+              Selecione quais informações ou blocos você deseja exibir ou ocultar na visualização pública do painel desta diocese:
+            </p>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 text-xs">
+              {/* Ocultar Perfil Episcopal */}
+              <label
+                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  form.visibility?.hideBishop
+                    ? "bg-slate-100/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-700 text-slate-400"
+                    : "bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-900/40 text-slate-800 dark:text-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {form.visibility?.hideBishop ? (
+                    <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold block leading-tight">Perfil Episcopal & Bispo</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Foto, Lema, Título e Brasão</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.visibility?.hideBishop || false}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      visibility: {
+                        ...(prev.visibility || {}),
+                        hideBishop: e.target.checked
+                      }
+                    }))
+                  }
+                  className="rounded text-amber-600 focus:ring-amber-500 w-4 h-4 shrink-0 ml-2"
+                />
+              </label>
+
+              {/* Ocultar Contatos Rápidos */}
+              <label
+                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  form.visibility?.hideContacts
+                    ? "bg-slate-100/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-700 text-slate-400"
+                    : "bg-emerald-50/60 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-900/40 text-slate-800 dark:text-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {form.visibility?.hideContacts ? (
+                    <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold block leading-tight">Barra de Contatos Rápidos</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">WhatsApp, Fone, E-mail, Mapa</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.visibility?.hideContacts || false}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      visibility: {
+                        ...(prev.visibility || {}),
+                        hideContacts: e.target.checked
+                      }
+                    }))
+                  }
+                  className="rounded text-emerald-600 focus:ring-emerald-500 w-4 h-4 shrink-0 ml-2"
+                />
+              </label>
+
+              {/* Ocultar Cúria e Horários */}
+              <label
+                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  form.visibility?.hideCuria
+                    ? "bg-slate-100/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-700 text-slate-400"
+                    : "bg-rose-50/60 dark:bg-rose-950/20 border-rose-200 dark:border-rose-900/40 text-slate-800 dark:text-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {form.visibility?.hideCuria ? (
+                    <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-rose-600 dark:text-rose-400 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold block leading-tight">Cúria & Horários</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Endereço, CEP e Atendimento</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.visibility?.hideCuria || false}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      visibility: {
+                        ...(prev.visibility || {}),
+                        hideCuria: e.target.checked
+                      }
+                    }))
+                  }
+                  className="rounded text-rose-600 focus:ring-rose-500 w-4 h-4 shrink-0 ml-2"
+                />
+              </label>
+
+              {/* Ocultar PIX & Dízimo */}
+              <label
+                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  form.visibility?.hidePix
+                    ? "bg-slate-100/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-700 text-slate-400"
+                    : "bg-teal-50/60 dark:bg-teal-950/20 border-teal-200 dark:border-teal-900/40 text-slate-800 dark:text-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {form.visibility?.hidePix ? (
+                    <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-teal-600 dark:text-teal-400 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold block leading-tight">Chave PIX & Dízimo</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Card de doação e QR Code</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.visibility?.hidePix || false}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      visibility: {
+                        ...(prev.visibility || {}),
+                        hidePix: e.target.checked
+                      }
+                    }))
+                  }
+                  className="rounded text-teal-600 focus:ring-teal-500 w-4 h-4 shrink-0 ml-2"
+                />
+              </label>
+
+              {/* Ocultar Redes Sociais */}
+              <label
+                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  form.visibility?.hideSocial
+                    ? "bg-slate-100/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-700 text-slate-400"
+                    : "bg-sky-50/60 dark:bg-sky-950/20 border-sky-200 dark:border-sky-900/40 text-slate-800 dark:text-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {form.visibility?.hideSocial ? (
+                    <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold block leading-tight">Redes Sociais Oficiais</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Instagram, YouTube, Facebook, Site</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.visibility?.hideSocial || false}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      visibility: {
+                        ...(prev.visibility || {}),
+                        hideSocial: e.target.checked
+                      }
+                    }))
+                  }
+                  className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4 shrink-0 ml-2"
+                />
+              </label>
+
+              {/* Ocultar Links Linktree */}
+              <label
+                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  form.visibility?.hideLinks
+                    ? "bg-slate-100/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-700 text-slate-400"
+                    : "bg-purple-50/60 dark:bg-purple-950/20 border-purple-200 dark:border-purple-900/40 text-slate-800 dark:text-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {form.visibility?.hideLinks ? (
+                    <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-purple-600 dark:text-purple-400 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold block leading-tight">Lista de Links (Linktree)</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Canais, links e botões adicionais</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.visibility?.hideLinks || false}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      visibility: {
+                        ...(prev.visibility || {}),
+                        hideLinks: e.target.checked
+                      }
+                    }))
+                  }
+                  className="rounded text-purple-600 focus:ring-purple-500 w-4 h-4 shrink-0 ml-2"
+                />
+              </label>
+
+              {/* Ocultar Padroeiro */}
+              <label
+                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  form.visibility?.hidePatron
+                    ? "bg-slate-100/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-700 text-slate-400"
+                    : "bg-blue-50/60 dark:bg-blue-950/20 border-blue-200 dark:border-blue-900/40 text-slate-800 dark:text-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {form.visibility?.hidePatron ? (
+                    <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-blue-600 dark:text-blue-400 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold block leading-tight">Padroeiro(a)</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Nome do Padroeiro na Capa</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.visibility?.hidePatron || false}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      visibility: {
+                        ...(prev.visibility || {}),
+                        hidePatron: e.target.checked
+                      }
+                    }))
+                  }
+                  className="rounded text-blue-600 focus:ring-blue-500 w-4 h-4 shrink-0 ml-2"
+                />
+              </label>
+
+              {/* Ocultar Fundação */}
+              <label
+                className={`flex items-center justify-between p-3 rounded-xl border transition-all cursor-pointer ${
+                  form.visibility?.hideFoundationYear
+                    ? "bg-slate-100/80 dark:bg-slate-900/80 border-slate-300 dark:border-slate-700 text-slate-400"
+                    : "bg-indigo-50/60 dark:bg-indigo-950/20 border-indigo-200 dark:border-indigo-900/40 text-slate-800 dark:text-slate-200"
+                }`}
+              >
+                <div className="flex items-center gap-2 min-w-0">
+                  {form.visibility?.hideFoundationYear ? (
+                    <EyeOff className="w-4 h-4 text-slate-400 shrink-0" />
+                  ) : (
+                    <Eye className="w-4 h-4 text-indigo-600 dark:text-indigo-400 shrink-0" />
+                  )}
+                  <div>
+                    <span className="font-bold block leading-tight">Ano de Fundação</span>
+                    <span className="text-[10px] text-slate-500 dark:text-slate-400">Selo "Desde XXXX"</span>
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={form.visibility?.hideFoundationYear || false}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      visibility: {
+                        ...(prev.visibility || {}),
+                        hideFoundationYear: e.target.checked
+                      }
+                    }))
+                  }
+                  className="rounded text-indigo-600 focus:ring-indigo-500 w-4 h-4 shrink-0 ml-2"
+                />
+              </label>
+            </div>
           </div>
 
           {/* REDES SOCIAIS OFICIAIS */}

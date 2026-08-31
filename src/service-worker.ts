@@ -55,9 +55,14 @@ registerRoute(
   })
 );
 
-// Cache para imagens profile/eventos
+// Cache para imagens profile/eventos (exclui ícones do sistema e manifest para garantir atualização imediata)
 registerRoute(
-  ({ request, url }) => request.destination === 'image' || url.origin.includes('firebasestorage.googleapis.com'),
+  ({ request, url }) =>
+    (request.destination === 'image' || url.origin.includes('firebasestorage.googleapis.com')) &&
+    !url.pathname.includes('icon') &&
+    !url.pathname.includes('apple-touch-icon') &&
+    !url.pathname.includes('favicon') &&
+    !url.pathname.includes('manifest'),
   new StaleWhileRevalidate({
     cacheName: 'images-cache',
     plugins: [

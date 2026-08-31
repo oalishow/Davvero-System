@@ -10,6 +10,7 @@ import { markAllNotificationsAsRead, markNotificationAsRead, clearAllNotificatio
 import { getSoundVolume, setSoundVolume, playSound } from '../lib/sounds';
 import { getHapticsEnabled, setHapticsEnabled, triggerHaptic } from '../lib/haptics';
 import ChangelogModal from './ChangelogModal';
+import DavveroLogo from './DavveroLogo';
 
 const STUDENT_BOND_KEY = 'davveroId_student_identity';
 const STUDENT_TRACK_KEY = 'davveroId_student_track_ra';
@@ -146,39 +147,17 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
          style={{ backgroundColor: instColor }}
        ></div>
        
-       {instLogo ? (
-         <img 
+       <div 
+         className="w-[75%] h-[75%] flex items-center justify-center z-10"
+         style={{ filter: 'drop-shadow(0 0 2px white) drop-shadow(0 0 1px white)' }}
+       >
+         <DavveroLogo 
            src={instLogo} 
-           alt="Logo" 
-           className="w-[75%] h-[75%] object-contain z-10" 
-           style={{ filter: 'drop-shadow(0 0 2px white) drop-shadow(0 0 1px white)' }}
+           color={instColor || '#0284c7'} 
+           className="w-full h-full object-contain"
+           iconClassName="w-full h-full"
          />
-       ) : (
-         <svg 
-           viewBox="0 0 100 100" 
-           className="w-[65%] h-[65%] z-10" 
-           style={{ 
-             color: instColor,
-             filter: 'drop-shadow(0 0 2px white) drop-shadow(0 0 1px white)'
-           }}
-         >
-            {/* Shield Outline */}
-            <path d="M50,5 L90,20 C90,60 75,85 50,95 C25,85 10,60 10,20 L50,5 Z" fill="none" stroke="currentColor" strokeWidth="5.5" strokeLinejoin="round" />
-            
-            {/* Hollow Cross */}
-            <path d="M42,15 L58,15 L58,28 L71,28 L71,44 L58,44 L58,65 L42,65 L42,44 L29,44 L29,28 L42,28 Z" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
-            
-            {/* Mortarboard / Academic Cap */}
-            <g transform="translate(20, 38) scale(0.6)">
-              <path d="M50,32 L82,46 L50,60 L18,46 Z" fill="currentColor" />
-              <path d="M30,52 L30,65 C40,75 60,75 70,65 L70,52 L50,60 Z" fill="currentColor" opacity="0.85" />
-              
-              {/* Tassel */}
-              <path d="M50,45 L78,55 L78,70" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-              <circle cx="78" cy="72" r="4" fill="currentColor"/>
-            </g>
-         </svg>
-       )}
+       </div>
        
        {/* Scanning line animation */}
        <motion.div 

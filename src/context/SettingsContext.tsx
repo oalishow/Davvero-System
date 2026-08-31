@@ -1,8 +1,16 @@
-import React, { createContext, useContext, useState, useEffect } from 'react';
+import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { doc, onSnapshot, setDoc } from 'firebase/firestore';
 import { db, appId } from '../lib/firebase';
-import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH } from '../lib/constants';
+import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION } from '../lib/constants';
 import type { DioceseInfo } from '../data/diocesesData';
+import { AVAILABLE_DIOCESES, AVAILABLE_SEMINARIES } from '../types';
+
+export const sanitizeDocKey = (key: string): string => {
+  if (!key) return "DEFAULT";
+  return encodeURIComponent(key.trim().toUpperCase())
+    .replace(/%/g, '_')
+    .replace(/[^A-Z0-9_\-]/gi, '_');
+};
 
 export interface AppSettings {
   url: string;
@@ -259,25 +267,26 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     return DEFAULT_SETTINGS;
   });
   const [loading, setLoading] = useState(true);
+  
+  // Track active individual listeners to avoid duplicate subscriptions
+  const activeDioceseListeners = useRef<Map<string, () => void>>(new Map());
+  const activeSeminaryListeners = useRef<Map<string, () => void>>(new Map());
 
   useEffect(() => {
     const docRef = doc(db, SETTINGS_DOC_PATH(appId));
     const unsubscribes: (() => void)[] = [];
     
-    // Listener principal
+    // 1. Listener principal de configurações
     const unsubMain = onSnapshot(docRef, (snapshot) => {
       if (snapshot.exists()) {
         const data = snapshot.data() as any;
         
-        // Garantir que campos de visibilidade novos existam mesclando com o default
         const mergedVisibleFields = {
           ...DEFAULT_SETTINGS.visibleFields,
           ...(data.visibleFields || {})
         };
 
-        // Remove heavy fields from main data if they are empty/null to avoid 
-        // overwriting the active loaded assets from the secondary snapshots
-        const heavyFieldsList = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature'];
+        const heavyFieldsList = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature', 'diocesesConfig', 'seminariesConfig'];
         heavyFieldsList.forEach(field => {
           if (data[field] === null || data[field] === undefined) {
             delete data[field];
@@ -299,15 +308,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     });
     unsubscribes.push(unsubMain);
 
-    // Listeners para Ativos Pesados individuais
-    const heavyFieldsList = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature'];
-    heavyFieldsList.forEach(field => {
+    // 2. Listeners para Ativos Pesados Individuais (Logos e Assinaturas Principais)
+    const singleHeavyFields = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature'];
+    singleHeavyFields.forEach(field => {
       const assetRef = doc(db, ASSETS_DOC_PATH(appId, field));
       const unsubAsset = onSnapshot(assetRef, (snapshot) => {
         if (snapshot.exists()) {
-          const { data } = snapshot.data();
-          // Aceita o data mesmo se for null, para refletir deletes no realtime
-          setSettings(prev => ({ ...prev, [field]: data || null }));
+          const snapData = snapshot.data();
+          const val = snapData?.data !== undefined ? snapData.data : snapData;
+          setSettings(prev => ({ ...prev, [field]: val }));
         }
       }, (err) => {
         console.warn(`Aviso ao carregar asset ${field}:`, err?.message || err);
@@ -315,8 +324,187 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       unsubscribes.push(unsubAsset);
     });
 
-    return () => unsubscribes.forEach(u => u());
+    // Helper para se inscrever em uma diocese individual
+    const subscribeToDiocese = (dioceseKey: string) => {
+      const cleanKey = dioceseKey.trim().toUpperCase();
+      if (!cleanKey || activeDioceseListeners.current.has(cleanKey)) return;
+
+      const docKey = sanitizeDocKey(cleanKey);
+      const dioceseRef = doc(db, ASSETS_DOC_PATH(appId, `diocese_${docKey}`));
+      
+      const unsub = onSnapshot(dioceseRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const snapData = snapshot.data();
+          const val = snapData?.data !== undefined ? snapData.data : snapData;
+          if (val) {
+            setSettings(prev => ({
+              ...prev,
+              diocesesConfig: {
+                ...(prev.diocesesConfig || {}),
+                [cleanKey]: val
+              }
+            }));
+          } else {
+            setSettings(prev => {
+              const current = { ...(prev.diocesesConfig || {}) };
+              delete current[cleanKey];
+              return { ...prev, diocesesConfig: current };
+            });
+          }
+        }
+      }, (err) => {
+        console.warn(`Aviso ao carregar diocese ${cleanKey}:`, err?.message || err);
+      });
+
+      activeDioceseListeners.current.set(cleanKey, unsub);
+    };
+
+    // Helper para se inscrever em um seminário individual
+    const subscribeToSeminary = (seminaryKey: string) => {
+      const cleanKey = seminaryKey.trim();
+      if (!cleanKey || activeSeminaryListeners.current.has(cleanKey)) return;
+
+      const docKey = sanitizeDocKey(cleanKey);
+      const semRef = doc(db, ASSETS_DOC_PATH(appId, `seminary_${docKey}`));
+      
+      const unsub = onSnapshot(semRef, (snapshot) => {
+        if (snapshot.exists()) {
+          const snapData = snapshot.data();
+          const val = snapData?.data !== undefined ? snapData.data : snapData;
+          if (val) {
+            setSettings(prev => ({
+              ...prev,
+              seminariesConfig: {
+                ...(prev.seminariesConfig || {}),
+                [cleanKey]: val
+              }
+            }));
+          } else {
+            setSettings(prev => {
+              const current = { ...(prev.seminariesConfig || {}) };
+              delete current[cleanKey];
+              return { ...prev, seminariesConfig: current };
+            });
+          }
+        }
+      }, (err) => {
+        console.warn(`Aviso ao carregar seminário ${cleanKey}:`, err?.message || err);
+      });
+
+      activeSeminaryListeners.current.set(cleanKey, unsub);
+    };
+
+    // 3. Listener do Manifesto de Dioceses
+    const diocesesManifestRef = doc(db, ASSETS_DOC_PATH(appId, 'dioceses_manifest'));
+    const unsubDiocesesManifest = onSnapshot(diocesesManifestRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const keys: string[] = data?.keys || [];
+        keys.forEach(k => subscribeToDiocese(k));
+      }
+    }, (err) => {
+      console.warn("Aviso ao carregar manifesto de dioceses:", err?.message || err);
+    });
+    unsubscribes.push(unsubDiocesesManifest);
+
+    // 4. Listener do Manifesto de Seminários
+    const seminariesManifestRef = doc(db, ASSETS_DOC_PATH(appId, 'seminaries_manifest'));
+    const unsubSeminariesManifest = onSnapshot(seminariesManifestRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const data = snapshot.data();
+        const keys: string[] = data?.keys || [];
+        keys.forEach(k => subscribeToSeminary(k));
+      }
+    }, (err) => {
+      console.warn("Aviso ao carregar manifesto de seminários:", err?.message || err);
+    });
+    unsubscribes.push(unsubSeminariesManifest);
+
+    // Inicializar listeners para todas as dioceses e seminários padrão do sistema
+    AVAILABLE_DIOCESES.forEach(d => subscribeToDiocese(d));
+    AVAILABLE_SEMINARIES.forEach(s => subscribeToSeminary(s));
+
+    // 5. Suporte a Migração & Compatibilidade Legada:
+    // Listener do documento legado `_asset_diocesesConfig` (se contiver dados de antes da migração em lote)
+    const legacyDiocesesRef = doc(db, ASSETS_DOC_PATH(appId, 'diocesesConfig'));
+    const unsubLegacyDioceses = onSnapshot(legacyDiocesesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const snapData = snapshot.data();
+        if (snapData && !snapData.isSplit && snapData.data && typeof snapData.data === 'object') {
+          // Dados legados encontrados antes da partição
+          Object.keys(snapData.data).forEach(k => subscribeToDiocese(k));
+          setSettings(prev => ({
+            ...prev,
+            diocesesConfig: {
+              ...snapData.data,
+              ...(prev.diocesesConfig || {})
+            }
+          }));
+        }
+      }
+    }, (err) => {
+      console.warn("Aviso doc legado diocesesConfig:", err?.message || err);
+    });
+    unsubscribes.push(unsubLegacyDioceses);
+
+    // Listener do documento legado `_asset_seminariesConfig`
+    const legacySeminariesRef = doc(db, ASSETS_DOC_PATH(appId, 'seminariesConfig'));
+    const unsubLegacySeminaries = onSnapshot(legacySeminariesRef, (snapshot) => {
+      if (snapshot.exists()) {
+        const snapData = snapshot.data();
+        if (snapData && !snapData.isSplit && snapData.data && typeof snapData.data === 'object') {
+          Object.keys(snapData.data).forEach(k => subscribeToSeminary(k));
+          setSettings(prev => ({
+            ...prev,
+            seminariesConfig: {
+              ...snapData.data,
+              ...(prev.seminariesConfig || {})
+            }
+          }));
+        }
+      }
+    }, (err) => {
+      console.warn("Aviso doc legado seminariesConfig:", err?.message || err);
+    });
+    unsubscribes.push(unsubLegacySeminaries);
+
+    return () => {
+      unsubscribes.forEach(u => u());
+      activeDioceseListeners.current.forEach(u => u());
+      activeDioceseListeners.current.clear();
+      activeSeminaryListeners.current.forEach(u => u());
+      activeSeminaryListeners.current.clear();
+    };
   }, []);
+
+  // Monitorar customDioceses para inscrever listeners sob demanda
+  useEffect(() => {
+    if (settings.customDioceses && settings.customDioceses.length > 0) {
+      settings.customDioceses.forEach(d => {
+        const cleanKey = d.trim().toUpperCase();
+        if (cleanKey && !activeDioceseListeners.current.has(cleanKey)) {
+          const docKey = sanitizeDocKey(cleanKey);
+          const dioceseRef = doc(db, ASSETS_DOC_PATH(appId, `diocese_${docKey}`));
+          const unsub = onSnapshot(dioceseRef, (snapshot) => {
+            if (snapshot.exists()) {
+              const snapData = snapshot.data();
+              const val = snapData?.data !== undefined ? snapData.data : snapData;
+              if (val) {
+                setSettings(prev => ({
+                  ...prev,
+                  diocesesConfig: {
+                    ...(prev.diocesesConfig || {}),
+                    [cleanKey]: val
+                  }
+                }));
+              }
+            }
+          });
+          activeDioceseListeners.current.set(cleanKey, unsub);
+        }
+      });
+    }
+  }, [settings.customDioceses]);
 
   useEffect(() => {
     if (settings) {
@@ -331,23 +519,98 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     setSettings(prev => ({ ...prev, ...newSettings }));
 
     const docRef = doc(db, SETTINGS_DOC_PATH(appId));
-    
-    const heavyFields = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature'];
-    
     const settingsToSave = { ...newSettings };
     const assetOperations: Promise<any>[] = [];
 
-    heavyFields.forEach(field => {
+    // 1. Tratamento seguro e particionado de diocesesConfig (Evita estourar o limite de 1MB por documento)
+    if ('diocesesConfig' in newSettings) {
+      const diocesesMap = newSettings.diocesesConfig || {};
+      const dioceseKeys = Object.keys(diocesesMap);
+
+      // Salva cada diocese individualmente em seu próprio documento (~30KB-50KB por doc)
+      dioceseKeys.forEach(k => {
+        const cleanKey = k.trim().toUpperCase();
+        const dioceseData = diocesesMap[k];
+        const dioceseDocRef = doc(db, ASSETS_DOC_PATH(appId, `diocese_${sanitizeDocKey(cleanKey)}`));
+        if (dioceseData) {
+          assetOperations.push(setDoc(dioceseDocRef, { data: dioceseData, key: cleanKey, updatedAt: new Date().toISOString() }));
+        } else {
+          assetOperations.push(setDoc(dioceseDocRef, { data: null, key: cleanKey, updatedAt: new Date().toISOString() }));
+        }
+      });
+
+      // Se alguma diocese existia antes e foi removida no novo estado, marca como nula
+      if (settings.diocesesConfig) {
+        Object.keys(settings.diocesesConfig).forEach(oldKey => {
+          const cleanOldKey = oldKey.trim().toUpperCase();
+          if (!(cleanOldKey in diocesesMap) && !(oldKey in diocesesMap)) {
+            const dioceseDocRef = doc(db, ASSETS_DOC_PATH(appId, `diocese_${sanitizeDocKey(cleanOldKey)}`));
+            assetOperations.push(setDoc(dioceseDocRef, { data: null, key: cleanOldKey, updatedAt: new Date().toISOString() }));
+          }
+        });
+      }
+
+      // Salva o manifesto com a lista de chaves ativas
+      const diocesesManifestRef = doc(db, ASSETS_DOC_PATH(appId, 'dioceses_manifest'));
+      assetOperations.push(setDoc(diocesesManifestRef, { keys: dioceseKeys, updatedAt: new Date().toISOString() }));
+
+      // Sobrescreve o antigo `_asset_diocesesConfig` com um documento leve (apenas chaves),
+      // eliminando instantaneamente o documento anterior de > 1MB do Firestore!
+      const legacyDiocesesDocRef = doc(db, ASSETS_DOC_PATH(appId, 'diocesesConfig'));
+      assetOperations.push(setDoc(legacyDiocesesDocRef, { isSplit: true, keys: dioceseKeys, updatedAt: new Date().toISOString() }));
+
+      delete (settingsToSave as any).diocesesConfig;
+    }
+
+    // 2. Tratamento seguro e particionado de seminariesConfig
+    if ('seminariesConfig' in newSettings) {
+      const seminariesMap = newSettings.seminariesConfig || {};
+      const seminaryKeys = Object.keys(seminariesMap);
+
+      seminaryKeys.forEach(k => {
+        const cleanKey = k.trim();
+        const semData = seminariesMap[k];
+        const semDocRef = doc(db, ASSETS_DOC_PATH(appId, `seminary_${sanitizeDocKey(cleanKey)}`));
+        if (semData) {
+          assetOperations.push(setDoc(semDocRef, { data: semData, key: cleanKey, updatedAt: new Date().toISOString() }));
+        } else {
+          assetOperations.push(setDoc(semDocRef, { data: null, key: cleanKey, updatedAt: new Date().toISOString() }));
+        }
+      });
+
+      if (settings.seminariesConfig) {
+        Object.keys(settings.seminariesConfig).forEach(oldKey => {
+          const cleanOldKey = oldKey.trim();
+          if (!(cleanOldKey in seminariesMap) && !(oldKey in seminariesMap)) {
+            const semDocRef = doc(db, ASSETS_DOC_PATH(appId, `seminary_${sanitizeDocKey(cleanOldKey)}`));
+            assetOperations.push(setDoc(semDocRef, { data: null, key: cleanOldKey, updatedAt: new Date().toISOString() }));
+          }
+        });
+      }
+
+      const seminariesManifestRef = doc(db, ASSETS_DOC_PATH(appId, 'seminaries_manifest'));
+      assetOperations.push(setDoc(seminariesManifestRef, { keys: seminaryKeys, updatedAt: new Date().toISOString() }));
+
+      const legacySeminariesDocRef = doc(db, ASSETS_DOC_PATH(appId, 'seminariesConfig'));
+      assetOperations.push(setDoc(legacySeminariesDocRef, { isSplit: true, keys: seminaryKeys, updatedAt: new Date().toISOString() }));
+
+      delete (settingsToSave as any).seminariesConfig;
+    }
+
+    // 3. Ativos individuais pesados (Logos e Assinaturas)
+    const singleHeavyFields = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature'];
+    singleHeavyFields.forEach(field => {
       if (field in newSettings) {
         const val = (newSettings as any)[field];
         const assetRef = doc(db, ASSETS_DOC_PATH(appId, field));
         
-        if (val && typeof val === 'string' && val.length > 500) {
-          // Salva asset grande separado
-          assetOperations.push(setDoc(assetRef, { data: val }));
-          delete (settingsToSave as any)[field];
+        if (val !== undefined && val !== null) {
+          const isLargeString = typeof val === 'string' && val.length > 500;
+          if (isLargeString) {
+            assetOperations.push(setDoc(assetRef, { data: val }));
+            delete (settingsToSave as any)[field];
+          }
         } else if (val === null) {
-          // Quando deletado explicitamente, limpa do doc separado e permite que o null continue pro settingsToSave principal
           assetOperations.push(setDoc(assetRef, { data: null }));
         }
       }

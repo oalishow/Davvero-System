@@ -55,6 +55,7 @@ import { useSettings } from "../context/SettingsContext";
 import TermsOfUseModal from "./TermsOfUseModal";
 import { playSound } from '../lib/sounds';
 import { isWebAuthnSupported, registerBiometric, verifyBiometric } from "../lib/webauthn";
+import { compressOriginalImage } from "../lib/cropUtils";
 
 const AsyncCertificateRenderer = memo(
   ({
@@ -557,8 +558,9 @@ export default function StudentPortal({
     const file = e.target.files?.[0];
     if (!file || !member) return;
 
-    if (file.size > 2 * 1024 * 1024) {
-      await showConfirm("O arquivo é muito grande. O limite é 2MB.", { type: 'error' });
+    // Support files up to 25MB
+    if (file.size > 25 * 1024 * 1024) {
+      await showConfirm("O arquivo é muito grande. O limite máximo é 25MB.", { type: 'error' });
       return;
     }
 
@@ -566,10 +568,20 @@ export default function StudentPortal({
     try {
       const reader = new FileReader();
       reader.onload = async (ev) => {
-        const base64 = ev.target?.result as string;
+        let base64 = ev.target?.result as string;
+
+        // If it's an image, compress it into an ultra-clean, compact payload (~60KB)
+        if (file.type.startsWith("image/")) {
+          try {
+            base64 = await compressOriginalImage(base64, 1200, 0.82);
+          } catch (compErr) {
+            console.warn("Could not compress certificate image:", compErr);
+          }
+        }
+
         const newCert = {
           id: 'ext_cert_' + Date.now(),
-          title: file.name.slice(0, 50),
+          title: file.name.slice(0, 60),
           fileUrl: base64,
           uploadedAt: new Date().toISOString()
         };
@@ -2210,7 +2222,7 @@ export default function StudentPortal({
                         <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-dashed border-sky-300 dark:border-sky-700 text-center">
                            <label className="cursor-pointer text-xs font-bold text-sky-600 dark:text-sky-400 flex flex-col items-center justify-center gap-2 hover:text-sky-500 transition-colors py-2">
                              {isUploadingCert ? <Loader2 className="w-6 h-6 animate-spin" /> : <ShieldCheck className="w-6 h-6" />}
-                             <span>{isUploadingCert ? "Anexando..." : "Anexar Novo Certificado (Máx 2MB)"}</span>
+                             <span>{isUploadingCert ? "Anexando..." : "Anexar Novo Certificado (PDF ou Imagem)"}</span>
                              <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleUploadExternalCertificate} disabled={isUploadingCert} />
                            </label>
                         </div>

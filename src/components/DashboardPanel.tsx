@@ -2,6 +2,8 @@ import { useState, useEffect, useCallback } from "react";
 import { collection, query, getDocs, onSnapshot, orderBy, limit } from "firebase/firestore";
 import { db, appId } from "../lib/firebase";
 import { getFullTelemetryData, TelemetryStats } from "../lib/telemetry";
+import { useSettings } from "../context/SettingsContext";
+import DavveroLogo from "./DavveroLogo";
 import { 
   BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip as RechartsTooltip, Legend, ResponsiveContainer,
   PieChart, Pie, Cell, LineChart, Line, AreaChart, Area
@@ -18,6 +20,7 @@ const SCAN_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6'];
 const DEVICE_COLORS = ['#10b981', '#0ea5e9', '#6366f1'];
 
 export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
+  const { settings } = useSettings();
   const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
   const [autoRefresh, setAutoRefresh] = useState(true);
@@ -273,21 +276,17 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
       {/* Printable Header - Visible only when printing */}
       <div className="hidden print:flex items-center justify-between mb-6 border-b-2 border-slate-900 pb-4">
         <div className="flex items-center gap-3.5">
-          <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0 p-1.5 border border-slate-800">
-            <svg viewBox="0 0 100 100" className="w-full h-full text-white">
-              <path d="M50,5 L90,20 C90,60 75,85 50,95 C25,85 10,60 10,20 L50,5 Z" fill="none" stroke="currentColor" strokeWidth="5.5" strokeLinejoin="round" />
-              <path d="M42,15 L58,15 L58,28 L71,28 L71,44 L58,44 L58,65 L42,65 L42,44 L29,44 L29,28 L42,28 Z" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
-              <g transform="translate(20, 38) scale(0.6)">
-                <path d="M50,32 L82,46 L50,60 L18,46 Z" fill="currentColor" />
-                <path d="M30,52 L30,65 C40,75 60,75 70,65 L70,52 L50,60 Z" fill="currentColor" opacity="0.85" />
-                <path d="M50,45 L78,55 L78,70" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
-                <circle cx="78" cy="72" r="4" fill="currentColor"/>
-              </g>
-            </svg>
+          <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0 p-1.5 border border-slate-800 overflow-hidden">
+            <DavveroLogo
+              src={settings.instLogo}
+              color="#ffffff"
+              className="w-full h-full object-contain"
+              iconClassName="w-full h-full text-white"
+            />
           </div>
           <div className="text-left">
             <h1 className="text-xl font-black uppercase tracking-wider text-black">Relatório Geral de Telemetria & Painel</h1>
-            <p className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">DAVVERO SYSTEM • AUDITORIA & MÉTRICAS EM TEMPO REAL</p>
+            <p className="text-[10px] font-bold text-slate-700 uppercase tracking-widest">{settings.instName ? `${settings.instName.toUpperCase()} • AUDITORIA & MÉTRICAS EM TEMPO REAL` : "DAVVERO SYSTEM • AUDITORIA & MÉTRICAS EM TEMPO REAL"}</p>
           </div>
         </div>
         <div className="text-right text-xs">
