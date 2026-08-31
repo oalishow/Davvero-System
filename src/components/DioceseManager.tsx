@@ -35,7 +35,11 @@ import {
   Eye,
   Navigation,
   Sun,
-  Moon
+  Moon,
+  QrCode,
+  Coins,
+  Wallet,
+  CreditCard
 } from "lucide-react";
 import { AVAILABLE_DIOCESES, Member } from "../types";
 import { DIOCESES_DATA, getDioceseInfo, DioceseInfo, DioceseLink } from "../data/diocesesData";
@@ -1259,11 +1263,220 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
             </div>
           </div>
 
+          {/* DADOS PIX & DÍZIMO / DOAÇÕES */}
+          <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
+            <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2.5">
+              <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                <Coins className="w-4 h-4 text-emerald-500" />
+                3. Chave PIX Oficial & Dízimo Diocesano
+              </h3>
+              <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border border-emerald-500/20 uppercase tracking-wider">
+                Doações & Cúria
+              </span>
+            </div>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  Chave PIX da Diocese:
+                </label>
+                <input
+                  type="text"
+                  value={form.pix?.key || ""}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      pix: {
+                        ...(prev.pix || {
+                          key: "",
+                          keyType: "CNPJ",
+                          receiverName: "",
+                          bankName: "",
+                          city: "",
+                          description: ""
+                        }),
+                        key: e.target.value
+                      }
+                    }))
+                  }
+                  placeholder="ex: 44.444.444/0001-44 ou curia@diocese.org.br"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-mono font-bold text-slate-800 dark:text-slate-100 outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  Tipo da Chave:
+                </label>
+                <select
+                  value={form.pix?.keyType || "CNPJ"}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      pix: {
+                        ...(prev.pix || {
+                          key: "",
+                          keyType: "CNPJ",
+                          receiverName: "",
+                          bankName: "",
+                          city: "",
+                          description: ""
+                        }),
+                        keyType: e.target.value as any
+                      }
+                    }))
+                  }
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 font-semibold text-slate-800 dark:text-slate-100 outline-none focus:border-emerald-500 cursor-pointer"
+                >
+                  <option value="CNPJ">CNPJ (Mitra Diocesana)</option>
+                  <option value="E-mail">E-mail</option>
+                  <option value="Telefone">Telefone / Celular</option>
+                  <option value="Chave Aleatória">Chave Aleatória (EVP)</option>
+                  <option value="Outro">Outro</option>
+                </select>
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  Titular / Razão Social (Favorecido):
+                </label>
+                <input
+                  type="text"
+                  value={form.pix?.receiverName || ""}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      pix: {
+                        ...(prev.pix || {
+                          key: "",
+                          keyType: "CNPJ",
+                          receiverName: "",
+                          bankName: "",
+                          city: "",
+                          description: ""
+                        }),
+                        receiverName: e.target.value
+                      }
+                    }))
+                  }
+                  placeholder="ex: Mitra Diocesana de Assis"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-100 outline-none focus:border-emerald-500 font-semibold"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  Instituição Financeira / Banco:
+                </label>
+                <input
+                  type="text"
+                  value={form.pix?.bankName || ""}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      pix: {
+                        ...(prev.pix || {
+                          key: "",
+                          keyType: "CNPJ",
+                          receiverName: "",
+                          bankName: "",
+                          city: "",
+                          description: ""
+                        }),
+                        bankName: e.target.value
+                      }
+                    }))
+                  }
+                  placeholder="ex: Banco do Brasil / Sicoob"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-100 outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div>
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  Cidade do Titular / Conta:
+                </label>
+                <input
+                  type="text"
+                  value={form.pix?.city || ""}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      pix: {
+                        ...(prev.pix || {
+                          key: "",
+                          keyType: "CNPJ",
+                          receiverName: "",
+                          bankName: "",
+                          city: "",
+                          description: ""
+                        }),
+                        city: e.target.value
+                      }
+                    }))
+                  }
+                  placeholder="ex: Assis - SP"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-100 outline-none focus:border-emerald-500"
+                />
+              </div>
+
+              <div className="sm:col-span-2">
+                <label className="block text-[10px] font-bold uppercase tracking-wider text-slate-500 dark:text-slate-400 mb-1">
+                  Finalidade / Mensagem Pastoral:
+                </label>
+                <input
+                  type="text"
+                  value={form.pix?.description || ""}
+                  onChange={(e) =>
+                    setForm((prev) => ({
+                      ...prev,
+                      pix: {
+                        ...(prev.pix || {
+                          key: "",
+                          keyType: "CNPJ",
+                          receiverName: "",
+                          bankName: "",
+                          city: "",
+                          description: ""
+                        }),
+                        description: e.target.value
+                      }
+                    }))
+                  }
+                  placeholder="ex: Dízimo Diocesano, Manutenção da Cúria e Apoio às Vocações Sacerdotais"
+                  className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-slate-800 dark:text-slate-100 outline-none focus:border-emerald-500"
+                />
+              </div>
+            </div>
+
+            {/* Quick Preview Box for PIX */}
+            {form.pix?.key && (
+              <div className="p-3 bg-emerald-50/70 dark:bg-emerald-950/30 rounded-xl border border-emerald-200 dark:border-emerald-900/50 flex items-center justify-between gap-3 text-xs">
+                <div className="flex items-center gap-2.5 min-w-0">
+                  <div className="w-8 h-8 rounded-lg bg-emerald-500 text-white flex items-center justify-center shrink-0">
+                    <QrCode className="w-4 h-4" />
+                  </div>
+                  <div className="min-w-0">
+                    <p className="font-bold text-slate-800 dark:text-slate-200 truncate">
+                      {form.pix.receiverName || "Chave PIX Diocesana"}
+                    </p>
+                    <p className="text-[11px] font-mono text-emerald-700 dark:text-emerald-400 truncate">
+                      {form.pix.keyType}: {form.pix.key}
+                    </p>
+                  </div>
+                </div>
+                <span className="text-[10px] uppercase font-black px-2 py-0.5 rounded bg-emerald-200/60 dark:bg-emerald-900/60 text-emerald-800 dark:text-emerald-200 shrink-0">
+                  Configurado
+                </span>
+              </div>
+            )}
+          </div>
+
           {/* REDES SOCIAIS OFICIAIS */}
           <div className="bg-white dark:bg-slate-800 p-5 rounded-2xl border border-slate-200 dark:border-slate-700 shadow-sm space-y-4">
             <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-100 flex items-center gap-2 border-b border-slate-100 dark:border-slate-700 pb-2.5">
               <Globe className="w-4 h-4 text-sky-500" />
-              3. Redes Sociais & Portal
+              4. Redes Sociais & Portal
             </h3>
 
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-3.5 text-xs">
@@ -1326,7 +1539,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
             <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2.5">
               <h3 className="text-xs font-black uppercase tracking-wider text-slate-800 dark:text-slate-100 flex items-center gap-2">
                 <Sparkles className="w-4 h-4 text-sky-500" />
-                4. Links & Canais do Linktree ({form.links.length})
+                5. Links & Canais do Linktree ({form.links.length})
               </h3>
 
               <button

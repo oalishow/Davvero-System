@@ -1,8 +1,8 @@
 {
   "name": "DAVVERO System",
   "short_name": "DAVVERO",
-  "id": "/davvero-id-pwa",
-  "description": "Sistema avançado de verificação de identidades institucionais.",
+  "id": "/davvero-id-pwa-v2",
+  "description": "Sistema avançado de identidades, eventos acadêmicos, seminários e dioceses.",
   "start_url": "/?source=pwa",
   "display": "standalone",
   "display_override": ["window-controls-overlay", "standalone", "minimal-ui"],
@@ -11,28 +11,28 @@
   "theme_color": "#0ea5e9",
   "icons": [
     {
-      "src": "/icon.svg",
-      "sizes": "192x192",
-      "type": "image/svg+xml",
-      "purpose": "any"
-    },
-    {
-      "src": "/icon.svg",
-      "sizes": "512x512",
-      "type": "image/svg+xml",
-      "purpose": "any maskable"
-    },
-    {
-      "src": "/icon.svg",
+      "src": "/icon-192.png",
       "sizes": "192x192",
       "type": "image/png",
       "purpose": "any"
     },
     {
-      "src": "/icon.svg",
+      "src": "/icon-512.png",
       "sizes": "512x512",
       "type": "image/png",
-      "purpose": "any maskable"
+      "purpose": "any"
+    },
+    {
+      "src": "/icon-512.png",
+      "sizes": "512x512",
+      "type": "image/png",
+      "purpose": "maskable"
+    },
+    {
+      "src": "/icon.svg",
+      "sizes": "512x512",
+      "type": "image/svg+xml",
+      "purpose": "any"
     }
   ]
 }

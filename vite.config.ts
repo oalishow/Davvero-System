@@ -16,25 +16,31 @@ export default defineConfig(({mode}) => {
         filename: 'service-worker.ts',
         registerType: 'autoUpdate',
         manifest: {
-          name: 'ID Estudantil',
-          short_name: 'Minha ID',
-          description: 'Identidade Estudantil e Gestão de Eventos',
+          name: 'DAVVERO System',
+          short_name: 'DAVVERO',
+          description: 'Sistema avançado de identidades, eventos acadêmicos, seminários e dioceses.',
           theme_color: '#0ea5e9',
+          background_color: '#0f172a',
+          display: 'standalone',
+          orientation: 'portrait',
           icons: [
             {
-              src: 'favicon.ico',
-              sizes: '64x64 32x32 24x24 16x16',
-              type: 'image/x-icon'
+              src: 'icon-192.png',
+              type: 'image/png',
+              sizes: '192x192',
+              purpose: 'any'
             },
             {
-              src: 'logo192.png',
+              src: 'icon-512.png',
               type: 'image/png',
-              sizes: '192x192'
+              sizes: '512x512',
+              purpose: 'any'
             },
             {
-              src: 'logo512.png',
+              src: 'icon-512.png',
               type: 'image/png',
-              sizes: '512x512'
+              sizes: '512x512',
+              purpose: 'maskable'
             }
           ]
         }

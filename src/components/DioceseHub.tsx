@@ -29,7 +29,10 @@ import {
   Shield,
   Settings as SettingsIcon,
   Image as ImageIcon,
-  Crown
+  Crown,
+  Coins,
+  QrCode,
+  Wallet
 } from "lucide-react";
 import { AVAILABLE_DIOCESES, Member } from "../types";
 import { DIOCESES_DATA, getDioceseInfo, DioceseInfo, DioceseLink } from "../data/diocesesData";
@@ -114,7 +117,9 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
   const [searchTerm, setSearchTerm] = useState("");
   const [copiedEmail, setCopiedEmail] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [copiedPix, setCopiedPix] = useState(false);
   const [showShareModal, setShowShareModal] = useState(false);
+  const [showPixModal, setShowPixModal] = useState(false);
   const [showConfigModal, setShowConfigModal] = useState(false);
 
   // Sync with user's selection and save preference
@@ -141,15 +146,18 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
     );
   }, [dioceseInfo, searchTerm]);
 
-  const copyToClipboard = async (text: string, type: "email" | "link") => {
+  const copyToClipboard = async (text: string, type: "email" | "link" | "pix") => {
     try {
       await navigator.clipboard.writeText(text);
       if (type === "email") {
         setCopiedEmail(true);
         setTimeout(() => setCopiedEmail(false), 2500);
-      } else {
+      } else if (type === "link") {
         setCopiedLink(true);
         setTimeout(() => setCopiedLink(false), 2500);
+      } else if (type === "pix") {
+        setCopiedPix(true);
+        setTimeout(() => setCopiedPix(false), 2500);
       }
     } catch {
       // Fallback
@@ -519,6 +527,71 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
             </div>
           </div>
         </div>
+
+        {/* DIOCESE PIX & DÍZIMO DIOCESANO BLOCK */}
+        {dioceseInfo.pix?.key ? (
+          <div className="p-4 sm:p-5 bg-gradient-to-r from-emerald-50 via-teal-50/50 to-emerald-50/30 dark:from-emerald-950/30 dark:via-slate-800 dark:to-emerald-950/20 border-t border-emerald-200 dark:border-emerald-900/60 flex flex-col sm:flex-row items-center justify-between gap-4">
+            <div className="flex items-center gap-3.5 min-w-0 w-full sm:w-auto">
+              <div className="w-12 h-12 rounded-2xl bg-emerald-500 text-white flex items-center justify-center shadow-md shrink-0">
+                <Coins className="w-6 h-6" />
+              </div>
+              <div className="min-w-0 flex-1">
+                <div className="flex items-center gap-2">
+                  <span className="text-[10px] font-black uppercase tracking-widest px-2 py-0.5 rounded-full bg-emerald-200/80 dark:bg-emerald-900/80 text-emerald-800 dark:text-emerald-300">
+                    PIX Oficial da Diocese
+                  </span>
+                  <span className="text-[10px] font-bold text-slate-500 dark:text-slate-400">
+                    {dioceseInfo.pix.keyType}
+                  </span>
+                </div>
+                <p className="text-xs sm:text-sm font-black text-slate-800 dark:text-slate-100 font-mono tracking-tight truncate mt-0.5">
+                  {dioceseInfo.pix.key}
+                </p>
+                <p className="text-[11px] text-slate-600 dark:text-slate-400 truncate">
+                  {dioceseInfo.pix.receiverName || `Mitra Diocesana de ${dioceseInfo.shortName}`}
+                  {dioceseInfo.pix.bankName && ` • ${dioceseInfo.pix.bankName}`}
+                </p>
+              </div>
+            </div>
+
+            <div className="flex items-center gap-2 w-full sm:w-auto justify-end shrink-0">
+              <button
+                type="button"
+                onClick={() => copyToClipboard(dioceseInfo.pix!.key, "pix")}
+                className="flex-1 sm:flex-none inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold shadow-sm active:scale-95 transition-all cursor-pointer"
+                title="Copiar Chave PIX"
+              >
+                {copiedPix ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedPix ? "PIX Copiado!" : "Copiar Chave"}</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setShowPixModal(true)}
+                className="inline-flex items-center justify-center gap-1.5 px-3.5 py-2 rounded-xl bg-white dark:bg-slate-800 hover:bg-emerald-50 dark:hover:bg-slate-700 text-emerald-700 dark:text-emerald-400 border border-emerald-300 dark:border-emerald-700/80 text-xs font-bold shadow-xs active:scale-95 transition-all cursor-pointer"
+                title="Ver QR Code PIX para pagamento"
+              >
+                <QrCode className="w-3.5 h-3.5" />
+                <span>QR Code</span>
+              </button>
+            </div>
+          </div>
+        ) : isAdmin ? (
+          <div className="p-3.5 bg-slate-50 dark:bg-slate-800/80 border-t border-slate-200 dark:border-slate-700 flex items-center justify-between gap-3 text-xs">
+            <div className="flex items-center gap-2 text-slate-500 dark:text-slate-400">
+              <Coins className="w-4 h-4 text-amber-500" />
+              <span>Chave PIX da Diocese ainda não cadastrada.</span>
+            </div>
+            <button
+              type="button"
+              onClick={() => setShowConfigModal(true)}
+              className="text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline cursor-pointer flex items-center gap-1"
+            >
+              <SettingsIcon className="w-3 h-3" />
+              <span>Configurar PIX</span>
+            </button>
+          </div>
+        ) : null}
       </div>
 
       {/* SEARCH AND FILTER BAR */}
@@ -662,10 +735,62 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
               />
               <button
                 onClick={() => copyToClipboard(shareDioceseUrl, "link")}
-                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-bold text-xs flex items-center gap-1 transition-all active:scale-95 shrink-0"
+                className="px-3 py-1.5 bg-sky-600 hover:bg-sky-500 text-white rounded-lg font-bold text-xs flex items-center gap-1 transition-all active:scale-95 shrink-0 cursor-pointer"
               >
                 {copiedLink ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
                 <span>{copiedLink ? "Copiado!" : "Copiar"}</span>
+              </button>
+            </div>
+          </div>
+        </Modal>
+      )}
+
+      {/* PIX MODAL */}
+      {showPixModal && dioceseInfo.pix?.key && (
+        <Modal
+          isOpen={showPixModal}
+          onClose={() => setShowPixModal(false)}
+          title={`PIX Oficial • ${dioceseInfo.name}`}
+        >
+          <div className="space-y-4 text-center">
+            <div className="space-y-1">
+              <span className="text-[10px] font-black uppercase tracking-widest px-2.5 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800 inline-block">
+                {dioceseInfo.pix.keyType} Oficial
+              </span>
+              <h4 className="text-base font-black text-slate-800 dark:text-slate-100">
+                {dioceseInfo.pix.receiverName || dioceseInfo.name}
+              </h4>
+              {dioceseInfo.pix.bankName && (
+                <p className="text-xs text-slate-500 dark:text-slate-400 font-medium">
+                  {dioceseInfo.pix.bankName} {dioceseInfo.pix.city && `• ${dioceseInfo.pix.city}`}
+                </p>
+              )}
+            </div>
+
+            <div className="p-4 bg-white rounded-2xl border-2 border-emerald-600 shadow-md inline-block mx-auto">
+              <QRCodeCanvas value={dioceseInfo.pix.key} size={200} />
+            </div>
+
+            {dioceseInfo.pix.description && (
+              <p className="text-xs text-slate-600 dark:text-slate-300 italic bg-emerald-50 dark:bg-slate-800 p-2.5 rounded-xl border border-emerald-200 dark:border-slate-700">
+                « {dioceseInfo.pix.description} »
+              </p>
+            )}
+
+            <div className="flex items-center gap-2 bg-slate-100 dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 text-xs">
+              <input
+                type="text"
+                readOnly
+                value={dioceseInfo.pix.key}
+                className="bg-transparent flex-1 outline-none font-mono text-xs font-bold text-slate-800 dark:text-slate-200"
+              />
+              <button
+                type="button"
+                onClick={() => copyToClipboard(dioceseInfo.pix!.key, "pix")}
+                className="px-3.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-lg font-bold text-xs flex items-center gap-1.5 transition-all active:scale-95 shrink-0 cursor-pointer shadow-xs"
+              >
+                {copiedPix ? <Check className="w-3.5 h-3.5" /> : <Copy className="w-3.5 h-3.5" />}
+                <span>{copiedPix ? "Copiado!" : "Copiar Chave"}</span>
               </button>
             </div>
           </div>

@@ -1,3 +1,12 @@
+export interface DiocesePix {
+  key: string;
+  keyType?: "CNPJ" | "E-mail" | "Telefone" | "Chave Aleatória" | "Outro";
+  receiverName?: string;
+  bankName?: string;
+  city?: string;
+  description?: string;
+}
+
 export interface DioceseLink {
   id: string;
   title: string;
@@ -24,6 +33,7 @@ export interface DioceseInfo {
   };
   patron: string;
   foundationYear?: string;
+  pix?: DiocesePix;
   curia: {
     address: string;
     neighborhood?: string;
@@ -62,6 +72,14 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
     },
     patron: "São Pedro Apóstolo / Nossa Senhora da Glória",
     foundationYear: "1952",
+    pix: {
+      key: "44.475.253/0001-44",
+      keyType: "CNPJ",
+      receiverName: "Mitra Diocesana de Marília",
+      bankName: "Sicoob / Banco do Brasil",
+      city: "Marília - SP",
+      description: "Dízimo Diocesano, Manutenção da Cúria e Apoio aos Seminários"
+    },
     curia: {
       address: "Av. Nelson Spielmann, 521",
       neighborhood: "Centro",
@@ -172,6 +190,14 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
     },
     patron: "São Francisco de Assis",
     foundationYear: "1928",
+    pix: {
+      key: "44.364.577/0001-09",
+      keyType: "CNPJ",
+      receiverName: "Mitra Diocesana de Assis",
+      bankName: "Banco do Brasil",
+      city: "Assis - SP",
+      description: "Dízimo Diocesano, Manutenção da Cúria e Obras de Evangelização"
+    },
     curia: {
       address: "Rua Dom José Lázaro Neves, 414 (CEDIPAS)",
       neighborhood: "Vila Xavier / Centro",
@@ -264,6 +290,14 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
     },
     patron: "Santo Antônio de Pádua",
     foundationYear: "1926",
+    pix: {
+      key: "49.886.071/0001-20",
+      keyType: "CNPJ",
+      receiverName: "Mitra Diocesana de Lins",
+      bankName: "Banco do Brasil",
+      city: "Lins - SP",
+      description: "Dízimo Diocesano e Contribuições Pastorais"
+    },
     curia: {
       address: "Rua Dom Pedro II, 45",
       neighborhood: "Centro",
@@ -275,11 +309,11 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
       phoneFormatted: "(14) 3533-3500",
       whatsapp: "5514997453500",
       whatsappFormatted: "(14) 99745-3500",
-      email: "curiadiocesana@diocesedelins.com.br",
+      email: "curiadiocesana@diocesedelins.org.br",
       officeHours: "Segunda a Sexta, das 08h às 11h30 e das 13h às 17h"
     },
     social: {
-      website: "https://diocesedelins.com.br",
+      website: "https://diocesedelins.org.br",
       instagram: "https://instagram.com/diocesedelins",
       youtube: "https://youtube.com/@diocesedelins",
       facebook: "https://facebook.com/diocesedelins"
@@ -291,7 +325,7 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
         id: "lins-site",
         title: "Site Oficial da Diocese de Lins",
         subtitle: "Informativos, eventos, clero e história diocesana",
-        url: "https://diocesedelins.com.br",
+        url: "https://diocesedelins.org.br",
         category: "oficial",
         iconName: "globe",
         isExternal: true,
@@ -328,7 +362,7 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
         id: "lins-paroquias",
         title: "Relação de Paróquias & Padres",
         subtitle: "Contatos e localização das paróquias das 4 regiões pastorais",
-        url: "https://diocesedelins.com.br/paroquias",
+        url: "https://diocesedelins.org.br/paroquias",
         category: "servico",
         iconName: "map",
         isExternal: true
@@ -347,6 +381,14 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
     },
     patron: "Divino Espírito Santo",
     foundationYear: "1964",
+    pix: {
+      key: "44.544.756/0001-83",
+      keyType: "CNPJ",
+      receiverName: "Mitra Diocesana de Bauru",
+      bankName: "Sicoob / Banco do Brasil",
+      city: "Bauru - SP",
+      description: "Dízimo Diocesano, Cúria e Ações de Evangelização"
+    },
     curia: {
       address: "Rua Gomes de Faria, 9-70",
       neighborhood: "Jardim Estoril",
@@ -430,6 +472,14 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
     },
     patron: "Senhor Bom Jesus da Cana Verde",
     foundationYear: "1998",
+    pix: {
+      key: "03.048.878/0001-88",
+      keyType: "CNPJ",
+      receiverName: "Mitra Diocesana de Ourinhos",
+      bankName: "Banco do Brasil",
+      city: "Ourinhos - SP",
+      description: "Dízimo Diocesano e Sustentação das Pastorais"
+    },
     curia: {
       address: "Rua Monsenhor Córdova, 185",
       neighborhood: "Centro",
@@ -441,11 +491,11 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
       phoneFormatted: "(14) 3322-4112",
       whatsapp: "5514997624112",
       whatsappFormatted: "(14) 99762-4112",
-      email: "curia@dioceseourinhos.org.br",
+      email: "curia@diocesedeourinhos.org.br",
       officeHours: "Segunda a Sexta, das 08h às 11h30 e das 13h às 17h"
     },
     social: {
-      website: "https://dioceseourinhos.org.br",
+      website: "https://diocesedeourinhos.org.br",
       instagram: "https://instagram.com/diocese_de_ourinhos",
       youtube: "https://youtube.com/@diocesedeourinhos",
       facebook: "https://facebook.com/diocesedeourinhos"
@@ -457,7 +507,7 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
         id: "ourinhos-site",
         title: "Portal Oficial da Diocese de Ourinhos",
         subtitle: "Notícias, clero, horários de missas e documentos",
-        url: "https://dioceseourinhos.org.br",
+        url: "https://diocesedeourinhos.org.br",
         category: "oficial",
         iconName: "globe",
         isExternal: true,
@@ -504,6 +554,14 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
     },
     patron: "São Sebastião",
     foundationYear: "1960",
+    pix: {
+      key: "55.356.555/0001-23",
+      keyType: "CNPJ",
+      receiverName: "Mitra Diocesana de Presidente Prudente",
+      bankName: "Banco do Brasil",
+      city: "Presidente Prudente - SP",
+      description: "Dízimo Diocesano e Obras da Igreja Particular de Prudente"
+    },
     curia: {
       address: "Rua Padre João Goetz, 400",
       neighborhood: "Jardim Petrópolis",
@@ -587,6 +645,14 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
     },
     patron: "Nossa Senhora Aparecida",
     foundationYear: "1994",
+    pix: {
+      key: "00.176.471/0001-72",
+      keyType: "CNPJ",
+      receiverName: "Mitra Diocesana de Araçatuba",
+      bankName: "Sicoob Credicitrus / Banco do Brasil",
+      city: "Araçatuba - SP",
+      description: "Dízimo Diocesano, Cúria e Formação de Seminaristas"
+    },
     curia: {
       address: "Rua Floriano Peixoto, 218",
       neighborhood: "Centro",
@@ -661,6 +727,14 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
     },
     patron: "Sant'Ana",
     foundationYear: "1908 (Erigida) / 1958 (Elevada a Arquidiocese)",
+    pix: {
+      key: "46.634.345/0001-08",
+      keyType: "CNPJ",
+      receiverName: "Mitra Arquidiocesana de Botucatu",
+      bankName: "Banco do Brasil",
+      city: "Botucatu - SP",
+      description: "Dízimo Arquidiocesano, Manutenção e Apoio Pastoral"
+    },
     curia: {
       address: "Rua Dr. Costa Leite, 536",
       neighborhood: "Centro",
@@ -769,6 +843,14 @@ export function getDioceseInfo(
         },
         patron: "Padroeiro Diocesano",
         foundationYear: "",
+        pix: {
+          key: "",
+          keyType: "CNPJ",
+          receiverName: `Mitra Diocesana de ${rawKey}`,
+          bankName: "",
+          city: `${rawKey} - SP`,
+          description: "Dízimo e Doações para a Cúria Diocesana"
+        },
         curia: {
           address: "Cúria Diocesana",
           neighborhood: "Centro",
@@ -800,7 +882,7 @@ export function getDioceseInfo(
             highlight: true,
           },
         ],
-        coverGradient: "from-sky-700 via-indigo-800 to-slate-900",
+        coverGradient: "from-sky-700 via-indigo-800 to-slate-950",
         themeColor: "#0284c7",
       };
     }
@@ -827,6 +909,7 @@ export function getDioceseInfo(
         foundationYear: custom.foundationYear !== undefined ? custom.foundationYear : baseInfo.foundationYear,
         coverGradient: custom.coverGradient || baseInfo.coverGradient,
         themeColor: custom.themeColor || baseInfo.themeColor,
+        pix: custom.pix ? { ...baseInfo.pix, ...custom.pix } : baseInfo.pix,
         bishop: {
           ...baseInfo.bishop,
           ...(custom.bishop || {}),
