@@ -479,7 +479,30 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
 
       <div className="hidden print:block absolute inset-0 bg-white z-[300] p-8 text-black">
          <div className="max-w-3xl mx-auto">
-            <h1 className="text-2xl font-bold uppercase tracking-widest border-b-2 border-black pb-4 mb-8">Ficha Cadastral Individual - DAVVERO System</h1>
+            <div className="flex items-center justify-between border-b-2 border-black pb-4 mb-8">
+              <div className="flex items-center gap-3.5">
+                <div className="w-12 h-12 rounded-xl bg-slate-900 flex items-center justify-center text-white shrink-0 p-1.5 border border-slate-800">
+                  <svg viewBox="0 0 100 100" className="w-full h-full text-white">
+                    <path d="M50,5 L90,20 C90,60 75,85 50,95 C25,85 10,60 10,20 L50,5 Z" fill="none" stroke="currentColor" strokeWidth="5.5" strokeLinejoin="round" />
+                    <path d="M42,15 L58,15 L58,28 L71,28 L71,44 L58,44 L58,65 L42,65 L42,44 L29,44 L29,28 L42,28 Z" fill="none" stroke="currentColor" strokeWidth="3" strokeLinejoin="round" />
+                    <g transform="translate(20, 38) scale(0.6)">
+                      <path d="M50,32 L82,46 L50,60 L18,46 Z" fill="currentColor" />
+                      <path d="M30,52 L30,65 C40,75 60,75 70,65 L70,52 L50,60 Z" fill="currentColor" opacity="0.85" />
+                      <path d="M50,45 L78,55 L78,70" stroke="currentColor" strokeWidth="4" fill="none" strokeLinecap="round" strokeLinejoin="round"/>
+                      <circle cx="78" cy="72" r="4" fill="currentColor"/>
+                    </g>
+                  </svg>
+                </div>
+                <div>
+                  <h1 className="text-xl font-black uppercase tracking-wider">Ficha Cadastral Individual</h1>
+                  <p className="text-[10px] font-bold text-gray-600 uppercase tracking-widest">DAVVERO SYSTEM • REGISTO ACADÊMICO & DIOCESANO</p>
+                </div>
+              </div>
+              <div className="text-right text-xs">
+                <p className="font-mono font-bold">{member.alphaCode}</p>
+                <p className="text-[10px] text-gray-500">{new Date().toLocaleDateString('pt-BR')}</p>
+              </div>
+            </div>
             
             <div className="flex gap-8 mb-8">
                <div className="w-32 h-40 border-2 border-black rounded-lg overflow-hidden shrink-0">
