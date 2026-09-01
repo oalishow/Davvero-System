@@ -24,6 +24,10 @@ import {
   PenTool,
   Maximize2,
   Mail,
+  BookmarkPlus,
+  Layers,
+  Building,
+  Sliders,
 } from "lucide-react";
 import type { Event, CertificateTemplate } from "../types";
 import { updateEvent, db, appId } from "../lib/firebase";
@@ -79,7 +83,7 @@ export default function CertificateEditor({
 
   const isDioceseEvent = Boolean(event.isDiocese || event.dioceseId);
 
-  const [activeTab, setActiveTab] = useState<"text" | "design" | "logo" | "signatures">("text");
+  const [activeTab, setActiveTab] = useState<"text" | "design" | "logo" | "signatures" | "presets">("text");
 
   const existingTemplate = (type === "organizer" ? event.organizationCertificateTemplate : event.certificateTemplate);
 
@@ -114,6 +118,14 @@ export default function CertificateEditor({
       showLogo: true,
       logoSize: 70,
       logoPosition: "top-center",
+      showLogo2: false,
+      logo2Size: 60,
+      logo2Position: "top-right",
+      backgroundOpacity: 100,
+      keepFrameWithCustomBg: false,
+      institutionAddress: settings.instAddress || "",
+      institutionEmail: settings.instEmail || "",
+      showInstitutionFooter: true,
       signatureSize: 65,
       signaturePosition: "space-around",
       signatureOffsetY: 0,
@@ -123,6 +135,110 @@ export default function CertificateEditor({
   const [isGenerating, setIsGenerating] = useState(false);
   const [isSaving, setIsSaving] = useState(false);
   const rendererRef = useRef<HTMLDivElement>(null);
+
+  // Template Presets (Salvar e Carregar modelos prontos)
+  const [savedPresets, setSavedPresets] = useState<{ id: string; name: string; template: Partial<CertificateTemplate>; savedAt: string }[]>([]);
+  const [presetNameInput, setPresetNameInput] = useState("");
+  const [isSavingPreset, setIsSavingPreset] = useState(false);
+
+  // Carregar presets salvos globalmente
+  useEffect(() => {
+    const loadPresets = async () => {
+      try {
+        const snap = await getDoc(doc(db, `artifacts/${appId}/public/data/cert_presets`));
+        if (snap.exists() && snap.data()?.presets) {
+          setSavedPresets(snap.data().presets);
+        }
+      } catch (err) {
+        console.warn("Could not load cert presets", err);
+      }
+    };
+    loadPresets();
+  }, []);
+
+  const handleSaveAsPreset = async () => {
+    const name = presetNameInput.trim() || `Modelo ${savedPresets.length + 1} (${new Date().toLocaleDateString("pt-BR")})`;
+    setIsSavingPreset(true);
+    try {
+      // Create preset payload (exclude event-specific texts)
+      const presetTemplate: Partial<CertificateTemplate> = {
+        fontFamily: template.fontFamily,
+        bgStyle: template.bgStyle,
+        fontSize: template.fontSize,
+        isBold: template.isBold,
+        textAlign: template.textAlign,
+        textBoxWidth: template.textBoxWidth,
+        titleText: template.titleText,
+        subtitleText: template.subtitleText,
+        showLogo: template.showLogo,
+        logoSize: template.logoSize,
+        logoPosition: template.logoPosition,
+        showLogo2: template.showLogo2,
+        logo2Size: template.logo2Size,
+        logo2Position: template.logo2Position,
+        backgroundOpacity: template.backgroundOpacity,
+        keepFrameWithCustomBg: template.keepFrameWithCustomBg,
+        institutionAddress: template.institutionAddress,
+        institutionEmail: template.institutionEmail,
+        showInstitutionFooter: template.showInstitutionFooter,
+        showFajopaDirectorSignature: template.showFajopaDirectorSignature,
+        fajopaDirectorName: template.fajopaDirectorName,
+        showSeminarRectorSignature: template.showSeminarRectorSignature,
+        seminarRectorName: template.seminarRectorName,
+        showSignature1: template.showSignature1,
+        signature1Name: template.signature1Name,
+        signature1Role: template.signature1Role,
+        showSignature2: template.showSignature2,
+        signature2Name: template.signature2Name,
+        signature2Role: template.signature2Role,
+        showSignature3: template.showSignature3,
+        signature3Name: template.signature3Name,
+        signature3Role: template.signature3Role,
+        signatureSize: template.signatureSize,
+        signaturePosition: template.signaturePosition,
+        signatureOffsetY: template.signatureOffsetY,
+      };
+
+      const newPreset = {
+        id: `preset_${Date.now()}`,
+        name,
+        template: presetTemplate,
+        savedAt: new Date().toISOString()
+      };
+
+      const updated = [newPreset, ...savedPresets.slice(0, 19)];
+      await setDoc(doc(db, `artifacts/${appId}/public/data/cert_presets`), { presets: updated }, { merge: true });
+      setSavedPresets(updated);
+      setPresetNameInput("");
+      showAlert(`Modelo "${name}" salvo com sucesso para reutilizar em qualquer certificado!`, { type: "success" });
+    } catch (err: any) {
+      console.error(err);
+      showAlert("Erro ao salvar modelo: " + (err.message || "Erro desconhecido"), { type: "error" });
+    } finally {
+      setIsSavingPreset(false);
+    }
+  };
+
+  const handleApplyPreset = async (preset: { id: string; name: string; template: Partial<CertificateTemplate> }) => {
+    if (await showConfirm(`Deseja aplicar as configurações visuais do modelo "${preset.name}"? O texto do corpo deste certificado será mantido.`, { type: "info" })) {
+      setTemplate((prev) => ({
+        ...prev,
+        ...preset.template,
+        // Keep current event body text unless empty
+        bodyText: prev.bodyText || preset.template.bodyText || ""
+      }));
+      showAlert(`Modelo "${preset.name}" aplicado com sucesso!`, { type: "success" });
+    }
+  };
+
+  const handleDeletePreset = async (presetId: string, name: string) => {
+    if (await showConfirm(`Deseja excluir o modelo salvo "${name}"?`, { type: "warning" })) {
+      const filtered = savedPresets.filter(p => p.id !== presetId);
+      await setDoc(doc(db, `artifacts/${appId}/public/data/cert_presets`), { presets: filtered }, { merge: true });
+      setSavedPresets(filtered);
+      showAlert("Modelo excluído.", { type: "info" });
+    }
+  };
 
   // Zoom state
   const [zoom, setZoom] = useState(0.75);
@@ -190,6 +306,7 @@ export default function CertificateEditor({
             ...prev,
             ...(assetsData.backgroundImageUrl && { backgroundImageUrl: assetsData.backgroundImageUrl }),
             ...(assetsData.logoUrl && { logoUrl: assetsData.logoUrl }),
+            ...(assetsData.logo2Url && { logo2Url: assetsData.logo2Url }),
             ...(assetsData.fajopaDirectorSignatureUrl && {
               fajopaDirectorSignatureUrl: assetsData.fajopaDirectorSignatureUrl,
             }),
@@ -436,7 +553,7 @@ Instruções RIGOROSAS:
       }
       delete finalTemplate.backgroundImageUrl;
 
-      // 2. Logo
+      // 2. Logo 1
       if (template.logoUrl) {
         assetsData.logoUrl = template.logoUrl;
         hasAnyAssets = true;
@@ -445,6 +562,16 @@ Instruções RIGOROSAS:
         finalTemplate.hasCustomLogo = false;
       }
       delete finalTemplate.logoUrl;
+
+      // 2.1 Logo 2 (Secondary Logo)
+      if (template.logo2Url) {
+        assetsData.logo2Url = template.logo2Url;
+        hasAnyAssets = true;
+        finalTemplate.hasCustomLogo2 = true;
+      } else {
+        finalTemplate.hasCustomLogo2 = false;
+      }
+      delete finalTemplate.logo2Url;
 
       // 3. FAJOPA Signature
       if (template.fajopaDirectorSignatureUrl) {
@@ -670,6 +797,18 @@ Instruções RIGOROSAS:
                 <PenTool className="w-3.5 h-3.5" />
                 Assinaturas
               </button>
+
+              <button
+                onClick={() => setActiveTab("presets")}
+                className={`flex-1 py-2 px-3 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 whitespace-nowrap ${
+                  activeTab === "presets"
+                    ? "bg-sky-500 text-white shadow-sm"
+                    : "text-slate-600 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800"
+                }`}
+              >
+                <BookmarkPlus className="w-3.5 h-3.5 text-amber-400" />
+                Modelos Salvos
+              </button>
             </div>
 
             {/* CONTEÚDO DA ABA ATIVA */}
@@ -879,125 +1018,272 @@ Instruções RIGOROSAS:
                     <Sparkles className="w-4 h-4 text-emerald-200 animate-pulse" />
                     {isGenerating ? "Redigindo com Gemini..." : "Redigir com IA Gemini"}
                   </button>
+
+                  {/* Endereço da Faculdade e E-mail de Contato (Rodapé do Certificado) */}
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Rodapé Institucional da Faculdade</h4>
+                        <p className="text-[10px] text-slate-500">Exibido em fonte sutil no rodapé do certificado</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={template.showInstitutionFooter ?? true}
+                          onChange={(e) => setTemplate({ ...template, showInstitutionFooter: e.target.checked })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-8 h-4.5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-3.5 after:w-3.5 after:transition-all peer-checked:bg-sky-600"></div>
+                      </label>
+                    </div>
+
+                    <div className="space-y-2">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          Endereço da Faculdade / Campus:
+                        </label>
+                        <input
+                          type="text"
+                          placeholder="Ex: Rodovia SP-330, Km 300 - Campus Universitário, CEP 14000-000"
+                          value={template.institutionAddress || ""}
+                          onChange={(e) => setTemplate({ ...template, institutionAddress: e.target.value })}
+                          className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500 shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                          E-mail Oficial de Contato da Faculdade:
+                        </label>
+                        <input
+                          type="email"
+                          placeholder="Ex: secretaria.academica@faculdade.edu.br"
+                          value={template.institutionEmail || ""}
+                          onChange={(e) => setTemplate({ ...template, institutionEmail: e.target.value })}
+                          className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500 shadow-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
                 </div>
               )}
 
-              {/* ABA 2: LOGO DO EVENTO */}
+              {/* ABA 2: LOGO DO EVENTO & LOGO SECUNDÁRIA */}
               {activeTab === "logo" && (
-                <div className="space-y-4">
-                  <div className="flex items-center justify-between">
-                    <div>
-                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Logo no Certificado</h4>
-                      <p className="text-[11px] text-slate-500">Adicione a logo oficial do evento ou instituição</p>
-                    </div>
-                    <label className="relative inline-flex items-center cursor-pointer">
-                      <input
-                        type="checkbox"
-                        checked={template.showLogo ?? true}
-                        onChange={(e) => setTemplate({ ...template, showLogo: e.target.checked })}
-                        className="sr-only peer"
-                      />
-                      <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-600"></div>
-                    </label>
-                  </div>
-
-                  {/* Preview da Logo */}
-                  <div className="bg-white dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 flex flex-col items-center justify-center min-h-[120px] text-center space-y-3">
-                    {template.logoUrl || (template.showLogo && event.imageUrl) ? (
-                      <div className="relative group">
-                        <img
-                          src={template.logoUrl || event.imageUrl}
-                          alt="Logo do Evento"
-                          style={{ height: `${template.logoSize || 70}px` }}
-                          className="object-contain max-w-[200px] drop-shadow-sm rounded-lg"
+                <div className="space-y-5">
+                  {/* LOGO PRINCIPAL (LOGO 1) */}
+                  <div className="p-4 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Logo 1 (Principal)</h4>
+                        <p className="text-[11px] text-slate-500">Logo do evento ou brasão principal</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={template.showLogo ?? true}
+                          onChange={(e) => setTemplate({ ...template, showLogo: e.target.checked })}
+                          className="sr-only peer"
                         />
-                        {template.logoUrl && (
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-sky-600"></div>
+                      </label>
+                    </div>
+
+                    {/* Preview da Logo 1 */}
+                    <div className="bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center min-h-[100px] text-center space-y-2.5">
+                      {template.logoUrl || (template.showLogo && event.imageUrl) ? (
+                        <div className="relative group">
+                          <img
+                            src={template.logoUrl || event.imageUrl}
+                            alt="Logo 1 do Evento"
+                            style={{ height: `${template.logoSize || 70}px` }}
+                            className="object-contain max-w-[180px] drop-shadow-sm rounded-lg"
+                          />
+                          {template.logoUrl && (
+                            <button
+                              onClick={() => setTemplate({ ...template, logoUrl: undefined })}
+                              className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-md"
+                              title="Remover Logo Customizada"
+                            >
+                              <Trash2 className="w-3.5 h-3.5" />
+                            </button>
+                          )}
+                        </div>
+                      ) : (
+                        <div className="text-slate-400 text-xs flex flex-col items-center gap-1">
+                          <ImageIcon className="w-7 h-7 opacity-40" />
+                          <span>Nenhuma logo principal selecionada</span>
+                        </div>
+                      )}
+
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800 w-full">
+                        <label className="py-1.5 px-3 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 rounded-xl text-xs font-bold cursor-pointer transition-colors flex items-center gap-1.5">
+                          <Upload className="w-3.5 h-3.5" />
+                          {template.logoUrl ? "Trocar Logo 1" : "Enviar Logo 1"}
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            onChange={(e) => handleUploadImage(e, "logoUrl")}
+                          />
+                        </label>
+
+                        {event.imageUrl && !template.logoUrl && (
                           <button
-                            onClick={() => setTemplate({ ...template, logoUrl: undefined })}
-                            className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-md"
-                            title="Remover Logo Customizada"
+                            type="button"
+                            onClick={() => setTemplate({ ...template, logoUrl: event.imageUrl })}
+                            className="py-1.5 px-3 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-300 rounded-xl text-xs font-bold transition-colors"
                           >
-                            <Trash2 className="w-3.5 h-3.5" />
+                            Usar Capa do Evento
                           </button>
                         )}
                       </div>
-                    ) : (
-                      <div className="text-slate-400 text-xs flex flex-col items-center gap-1.5">
-                        <ImageIcon className="w-8 h-8 opacity-40" />
-                        <span>Nenhuma logo selecionada</span>
-                      </div>
-                    )}
+                    </div>
 
-                    <div className="flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-slate-100 dark:border-slate-850 w-full">
-                      <label className="py-2 px-3 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 rounded-xl text-xs font-bold cursor-pointer transition-colors flex items-center gap-1.5">
-                        <Upload className="w-3.5 h-3.5" />
-                        {template.logoUrl ? "Trocar Logo (PNG/JPG)" : "Enviar Nova Logo"}
-                        <input
-                          type="file"
-                          className="hidden"
-                          accept="image/*"
-                          onChange={(e) => handleUploadImage(e, "logoUrl")}
-                        />
+                    {/* Posição da Logo 1 */}
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">
+                        Posição da Logo 1
                       </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { id: "top-center", label: "Centro" },
+                          { id: "top-left", label: "Esq." },
+                          { id: "top-right", label: "Dir." },
+                        ].map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setTemplate({ ...template, logoPosition: p.id as any })}
+                            className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all ${
+                              (template.logoPosition || "top-center") === p.id
+                                ? "border-sky-500 bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400"
+                                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
 
-                      {event.imageUrl && !template.logoUrl && (
-                        <button
-                          type="button"
-                          onClick={() => setTemplate({ ...template, logoUrl: event.imageUrl })}
-                          className="py-2 px-3 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors"
-                        >
-                          Usar Imagem do Evento
-                        </button>
+                    {/* Tamanho da Logo 1 */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Altura Logo 1:</span>
+                        <span className="font-bold text-sky-600">{template.logoSize || 70}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="35"
+                        max="140"
+                        step="5"
+                        value={template.logoSize || 70}
+                        onChange={(e) => setTemplate({ ...template, logoSize: Number(e.target.value) })}
+                        className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+                      />
+                    </div>
+                  </div>
+
+                  {/* LOGO SECUNDÁRIA (LOGO 2) */}
+                  <div className="p-4 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200">Logo 2 (Apoiador / Parceria)</h4>
+                        <p className="text-[11px] text-slate-500">Adicione uma segunda logo ou brasão diocesano</p>
+                      </div>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={template.showLogo2 ?? Boolean(template.logo2Url)}
+                          onChange={(e) => setTemplate({ ...template, showLogo2: e.target.checked })}
+                          className="sr-only peer"
+                        />
+                        <div className="w-9 h-5 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-4 after:w-4 after:transition-all peer-checked:bg-emerald-600"></div>
+                      </label>
+                    </div>
+
+                    {/* Preview da Logo 2 */}
+                    <div className="bg-slate-50 dark:bg-slate-900/60 p-3 rounded-xl border border-slate-200/80 dark:border-slate-800 flex flex-col items-center justify-center min-h-[90px] text-center space-y-2.5">
+                      {template.logo2Url ? (
+                        <div className="relative group">
+                          <img
+                            src={template.logo2Url}
+                            alt="Logo Secundária"
+                            style={{ height: `${template.logo2Size || 60}px` }}
+                            className="object-contain max-w-[180px] drop-shadow-sm rounded-lg"
+                          />
+                          <button
+                            onClick={() => setTemplate({ ...template, logo2Url: undefined })}
+                            className="absolute -top-2 -right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-md"
+                            title="Remover Logo 2"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+                      ) : (
+                        <div className="text-slate-400 text-xs flex flex-col items-center gap-1">
+                          <ImageIcon className="w-6 h-6 opacity-40" />
+                          <span>Nenhuma segunda logo anexada</span>
+                        </div>
                       )}
-                    </div>
-                  </div>
 
-                  {/* Posição da Logo */}
-                  <div>
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-1.5 block">
-                      Posicionamento da Logo
-                    </label>
-                    <div className="grid grid-cols-3 gap-2">
-                      {[
-                        { id: "top-center", label: "Centro Superior" },
-                        { id: "top-left", label: "Canto Esquerdo" },
-                        { id: "top-right", label: "Canto Direito" },
-                      ].map((p) => (
-                        <button
-                          key={p.id}
-                          type="button"
-                          onClick={() => setTemplate({ ...template, logoPosition: p.id as any })}
-                          className={`py-2 px-2 rounded-xl text-xs font-bold border transition-all ${
-                            (template.logoPosition || "top-center") === p.id
-                              ? "border-sky-500 bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400"
-                              : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300"
-                          }`}
-                        >
-                          {p.label}
-                        </button>
-                      ))}
+                      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 w-full flex justify-center">
+                        <label className="py-1.5 px-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 rounded-xl text-xs font-bold cursor-pointer transition-colors flex items-center gap-1.5">
+                          <Upload className="w-3.5 h-3.5" />
+                          {template.logo2Url ? "Trocar Logo 2" : "Enviar Logo 2 (PNG/JPG)"}
+                          <input
+                            type="file"
+                            className="hidden"
+                            accept="image/*"
+                            onChange={(e) => handleUploadImage(e, "logo2Url")}
+                          />
+                        </label>
+                      </div>
                     </div>
-                  </div>
 
-                  {/* Tamanho da Logo */}
-                  <div className="bg-white dark:bg-slate-950 p-3.5 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-2">
-                    <div className="flex justify-between items-center text-xs">
-                      <span className="font-semibold text-slate-700 dark:text-slate-300">Tamanho da Logo:</span>
-                      <span className="font-bold text-sky-600">{template.logoSize || 70}px</span>
+                    {/* Posição da Logo 2 */}
+                    <div>
+                      <label className="text-[10px] font-bold text-slate-500 uppercase mb-1 block">
+                        Posição da Logo 2
+                      </label>
+                      <div className="grid grid-cols-3 gap-1.5">
+                        {[
+                          { id: "top-right", label: "Canto Dir." },
+                          { id: "top-left", label: "Canto Esq." },
+                          { id: "top-center", label: "Centro" },
+                        ].map((p) => (
+                          <button
+                            key={p.id}
+                            type="button"
+                            onClick={() => setTemplate({ ...template, logo2Position: p.id as any })}
+                            className={`py-1.5 px-2 rounded-xl text-xs font-bold border transition-all ${
+                              (template.logo2Position || "top-right") === p.id
+                                ? "border-emerald-500 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400"
+                                : "border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300"
+                            }`}
+                          >
+                            {p.label}
+                          </button>
+                        ))}
+                      </div>
                     </div>
-                    <input
-                      type="range"
-                      min="40"
-                      max="150"
-                      step="5"
-                      value={template.logoSize || 70}
-                      onChange={(e) => setTemplate({ ...template, logoSize: Number(e.target.value) })}
-                      className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
-                    />
-                    <div className="flex justify-between text-[10px] text-slate-400">
-                      <span>Pequena (40px)</span>
-                      <span>Média (70px)</span>
-                      <span>Grande (150px)</span>
+
+                    {/* Tamanho da Logo 2 */}
+                    <div className="space-y-1.5">
+                      <div className="flex justify-between items-center text-xs">
+                        <span className="text-[11px] font-semibold text-slate-600 dark:text-slate-400">Altura Logo 2:</span>
+                        <span className="font-bold text-emerald-600">{template.logo2Size || 60}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="30"
+                        max="120"
+                        step="5"
+                        value={template.logo2Size || 60}
+                        onChange={(e) => setTemplate({ ...template, logo2Size: Number(e.target.value) })}
+                        className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-emerald-500"
+                      />
                     </div>
                   </div>
                 </div>
@@ -1056,30 +1342,83 @@ Instruções RIGOROSAS:
                   </div>
 
                   {/* Fundo Personalizado */}
-                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800">
-                    <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase mb-2 block">
-                      Ou utilize uma Arte de Fundo Personalizada
-                    </label>
+                  <div className="pt-3 border-t border-slate-100 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <label className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase block">
+                        Arte de Fundo Personalizada
+                      </label>
+                      {template.backgroundImageUrl && (
+                        <span className="text-[10px] font-bold text-sky-600 dark:text-sky-400">
+                          Opacidade: {template.backgroundOpacity ?? 100}%
+                        </span>
+                      )}
+                    </div>
+
                     {template.backgroundImageUrl ? (
-                      <div className="relative w-full h-20 bg-slate-100 rounded-2xl overflow-hidden border-2 border-sky-500 shadow-sm">
-                        <img
-                          src={template.backgroundImageUrl}
-                          alt="Fundo Personalizado"
-                          className="w-full h-full object-cover opacity-90"
-                        />
-                        <button
-                          onClick={() => setTemplate({ ...template, backgroundImageUrl: undefined })}
-                          className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-md"
-                          title="Remover fundo"
-                        >
-                          <Trash2 className="w-3.5 h-3.5" />
-                        </button>
+                      <div className="space-y-3">
+                        <div className="relative w-full h-24 bg-slate-100 dark:bg-slate-900 rounded-2xl overflow-hidden border-2 border-sky-500 shadow-sm flex items-center justify-center">
+                          <img
+                            src={template.backgroundImageUrl}
+                            alt="Fundo Personalizado"
+                            style={{ opacity: (template.backgroundOpacity ?? 100) / 100 }}
+                            className="w-full h-full object-cover transition-opacity"
+                          />
+                          <button
+                            onClick={() => setTemplate({ ...template, backgroundImageUrl: undefined })}
+                            className="absolute top-2 right-2 p-1.5 bg-red-500 text-white rounded-full hover:bg-red-600 shadow-md transition-transform active:scale-95"
+                            title="Remover fundo"
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </button>
+                        </div>
+
+                        {/* Slider de Transparência / Opacidade */}
+                        <div className="p-3 bg-white dark:bg-slate-950 rounded-xl border border-slate-200 dark:border-slate-800 space-y-2">
+                          <div className="flex justify-between items-center text-xs">
+                            <span className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-1.5">
+                              <Sliders className="w-3.5 h-3.5 text-sky-500" />
+                              Transparência do Fundo (Marca d'água):
+                            </span>
+                            <span className="font-bold font-mono text-sky-600">{template.backgroundOpacity ?? 100}%</span>
+                          </div>
+                          <input
+                            type="range"
+                            min="10"
+                            max="100"
+                            step="5"
+                            value={template.backgroundOpacity ?? 100}
+                            onChange={(e) => setTemplate({ ...template, backgroundOpacity: Number(e.target.value) })}
+                            className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+                          />
+                          <div className="flex justify-between text-[10px] text-slate-400">
+                            <span>Muito Transparente (10%)</span>
+                            <span>Marca d'água (30-50%)</span>
+                            <span>Opaco (100%)</span>
+                          </div>
+
+                          {/* Checkbox Manter Moldura do Tema */}
+                          <div className="pt-2 border-t border-slate-100 dark:border-slate-850 flex items-center justify-between">
+                            <label htmlFor="keepFrame" className="text-xs text-slate-700 dark:text-slate-300 font-medium cursor-pointer">
+                              Manter moldura e bordas do tema com o fundo
+                            </label>
+                            <input
+                              type="checkbox"
+                              id="keepFrame"
+                              checked={template.keepFrameWithCustomBg ?? false}
+                              onChange={(e) => setTemplate({ ...template, keepFrameWithCustomBg: e.target.checked })}
+                              className="rounded text-sky-600 focus:ring-sky-500 w-4 h-4 cursor-pointer"
+                            />
+                          </div>
+                        </div>
                       </div>
                     ) : (
-                      <label className="w-full py-3 px-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl flex items-center justify-center gap-2 cursor-pointer hover:border-sky-500 hover:bg-sky-50/50 dark:hover:bg-sky-900/10 transition-colors">
-                        <Upload className="w-4 h-4 text-slate-400" />
-                        <span className="text-xs font-medium text-slate-600 dark:text-slate-400">
-                          Enviar imagem de fundo (PNG / JPG de alta resolução)
+                      <label className="w-full py-3.5 px-4 border-2 border-dashed border-slate-200 dark:border-slate-800 rounded-2xl flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:border-sky-500 hover:bg-sky-50/50 dark:hover:bg-sky-900/10 transition-colors">
+                        <Upload className="w-5 h-5 text-sky-500" />
+                        <span className="text-xs font-bold text-slate-700 dark:text-slate-300">
+                          Enviar imagem de fundo (PNG / JPG)
+                        </span>
+                        <span className="text-[10px] text-slate-400 text-center">
+                          Permite aplicar transparência ou usar como marca d'água no certificado
                         </span>
                         <input
                           type="file"
@@ -1644,6 +1983,102 @@ Instruções RIGOROSAS:
                       </div>
                     </>
                   )}
+                </div>
+              )}
+
+              {/* ABA 5: MODELOS SALVOS (PRESETS REUTILIZÁVEIS) */}
+              {activeTab === "presets" && (
+                <div className="space-y-4">
+                  <div className="bg-gradient-to-br from-amber-500/10 via-amber-500/5 to-transparent border border-amber-500/20 p-4 rounded-2xl space-y-2">
+                    <div className="flex items-center gap-2">
+                      <BookmarkPlus className="w-4 h-4 text-amber-500" />
+                      <h4 className="text-xs font-bold text-slate-800 dark:text-slate-100">
+                        Salvar e Reutilizar Configurações
+                      </h4>
+                    </div>
+                    <p className="text-[11px] text-slate-600 dark:text-slate-400 leading-relaxed">
+                      Salve o layout completo (logos, posições, fontes, cores, opacidade e assinaturas) como um modelo personalizado para aplicar em outros eventos com apenas 1 clique.
+                    </p>
+                  </div>
+
+                  {/* Form para Salvar Preset Atual */}
+                  <div className="p-4 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3">
+                    <label className="text-[10px] font-bold text-slate-500 uppercase block">
+                      Salvar Configuração Atual Como Novo Modelo:
+                    </label>
+                    <div className="flex items-center gap-2">
+                      <input
+                        type="text"
+                        placeholder="Ex: Padrão Diocesano 2026 / Formatura"
+                        value={presetNameInput}
+                        onChange={(e) => setPresetNameInput(e.target.value)}
+                        className="flex-1 bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-amber-500"
+                      />
+                      <button
+                        type="button"
+                        onClick={handleSaveAsPreset}
+                        disabled={!presetNameInput.trim() || isSavingPreset}
+                        className="px-3.5 py-2 bg-amber-500 hover:bg-amber-600 disabled:opacity-50 text-white rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 shadow-sm shrink-0"
+                      >
+                        <Save className="w-3.5 h-3.5" />
+                        {isSavingPreset ? "Salvando..." : "Salvar"}
+                      </button>
+                    </div>
+                  </div>
+
+                  {/* Lista de Presets Salvos */}
+                  <div className="space-y-2.5">
+                    <div className="flex items-center justify-between">
+                      <span className="text-[11px] font-bold text-slate-600 dark:text-slate-400 uppercase">
+                        Modelos Salvos ({savedPresets.length})
+                      </span>
+                    </div>
+
+                    {savedPresets.length === 0 ? (
+                      <div className="p-6 bg-white dark:bg-slate-950 rounded-2xl border border-dashed border-slate-200 dark:border-slate-800 text-center space-y-2">
+                        <BookmarkPlus className="w-8 h-8 text-slate-300 dark:text-slate-700 mx-auto" />
+                        <p className="text-xs text-slate-500">Nenhum modelo customizado salvo ainda.</p>
+                        <p className="text-[11px] text-slate-400">Configure seu certificado e digite um nome acima para salvar.</p>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        {savedPresets.map((preset) => (
+                          <div
+                            key={preset.id}
+                            className="p-3.5 bg-white dark:bg-slate-950 rounded-2xl border border-slate-200 dark:border-slate-800 flex items-center justify-between gap-3 hover:border-amber-500/50 transition-colors shadow-xs"
+                          >
+                            <div className="min-w-0 flex-1">
+                              <h5 className="text-xs font-bold text-slate-800 dark:text-slate-100 truncate">
+                                {preset.name}
+                              </h5>
+                              <p className="text-[10px] text-slate-400 mt-0.5">
+                                Criado em {new Date(preset.savedAt || Date.now()).toLocaleDateString("pt-BR")}
+                              </p>
+                            </div>
+
+                            <div className="flex items-center gap-1.5 shrink-0">
+                              <button
+                                type="button"
+                                onClick={() => handleApplyPreset(preset)}
+                                className="px-3 py-1.5 bg-sky-50 dark:bg-sky-950/50 hover:bg-sky-100 dark:hover:bg-sky-900/60 text-sky-700 dark:text-sky-300 rounded-xl text-xs font-bold transition-colors flex items-center gap-1"
+                              >
+                                <CheckCircle className="w-3 h-3 text-sky-500" />
+                                Aplicar
+                              </button>
+                              <button
+                                type="button"
+                                onClick={() => handleDeletePreset(preset.id, preset.name)}
+                                className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors"
+                                title="Excluir Modelo"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                              </button>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
             </div>

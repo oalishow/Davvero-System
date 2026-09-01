@@ -90,10 +90,24 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
       template.signaturePosition === 'space-between' ? 'justify-between px-10' :
       'justify-around px-8';
 
-    // Event Logo configuration
+    // Event Logo 1 configuration
     const logoSource = template.logoUrl || (template.showLogo ? event.imageUrl : undefined);
     const logoHeight = template.logoSize || 70;
     const logoPos = template.logoPosition || "top-center";
+
+    // Event Logo 2 configuration (Secondary Logo)
+    const logo2Source = template.logo2Url;
+    const showLogo2 = template.showLogo2 && Boolean(logo2Source);
+    const logo2Height = template.logo2Size || 60;
+    const logo2Pos = template.logo2Position || "top-right";
+
+    // Background Transparency & Opacity
+    const bgOpacity = typeof template.backgroundOpacity === 'number' ? template.backgroundOpacity / 100 : 1;
+
+    // Institution Address & Contact
+    const instAddress = template.institutionAddress ?? (template.showInstitutionFooter !== false ? settings.instAddress : undefined);
+    const instEmail = template.institutionEmail ?? (template.showInstitutionFooter !== false ? settings.instEmail : undefined);
+    const showInstFooter = template.showInstitutionFooter ?? Boolean(instAddress || instEmail);
 
     // Design Themes Library
     const themes: Record<string, { bg: string; border: React.ReactNode; titleColor: string; subtitleColor: string; defaultTextStyle: string; signatureLineColor: string; nameColor: string; roleColor: string; watermarkColor: string }> = {
@@ -352,27 +366,28 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
         id={id || `cert-node-${isOrganizer ? "org" : "part"}-${event.id}`}
         className={`w-[1123px] h-[794px] min-w-[1123px] min-h-[794px] max-w-[1123px] max-h-[794px] aspect-[297/210] relative flex flex-col justify-between p-14 overflow-hidden select-none box-border ${fontClass} ${currentTheme.bg}`}
       >
-        {/* Custom background image overlay */}
+        {/* Custom background image overlay with custom opacity/transparency */}
         {template.backgroundImageUrl && (
           <img 
             src={template.backgroundImageUrl} 
-            className="absolute inset-0 w-full h-full object-cover z-0 opacity-100 mix-blend-multiply" 
+            className="absolute inset-0 w-full h-full object-cover z-0 mix-blend-multiply transition-opacity pointer-events-none" 
+            style={{ opacity: bgOpacity }}
             alt="Background" 
             crossOrigin="anonymous" 
           />
         )}
         
-        {!template.backgroundImageUrl && currentTheme.border}
+        {(!template.backgroundImageUrl || template.keepFrameWithCustomBg) && currentTheme.border}
 
         {/* Top Header Section with Logo and Titles */}
         <div className="relative z-10 flex flex-col items-center pt-2 shrink-0">
           
-          {/* Logo positioning: top-left or top-right absolute, or top-center inline with transparent alpha support */}
+          {/* Logo 1 positioning: top-left or top-right absolute, or top-center inline */}
           {logoSource && logoPos === "top-left" && (
             <div className="absolute top-0 left-4 z-20">
               <img 
                 src={logoSource} 
-                alt="Event Logo" 
+                alt="Event Logo 1" 
                 style={{ height: `${logoHeight}px` }} 
                 className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
                 crossOrigin="anonymous" 
@@ -384,7 +399,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
             <div className="absolute top-0 right-4 z-20">
               <img 
                 src={logoSource} 
-                alt="Event Logo" 
+                alt="Event Logo 1" 
                 style={{ height: `${logoHeight}px` }} 
                 className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
                 crossOrigin="anonymous" 
@@ -392,17 +407,54 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
             </div>
           )}
 
-          {logoSource && logoPos === "top-center" && (
-            <div className="mb-2.5 flex justify-center">
+          {/* Logo 2 positioning (Secondary Logo) */}
+          {showLogo2 && logo2Source && logo2Pos === "top-left" && (
+            <div className="absolute top-0 left-4 z-20">
               <img 
-                src={logoSource} 
-                alt="Event Logo" 
-                style={{ height: `${logoHeight}px` }} 
-                className="object-contain max-w-[240px] drop-shadow-sm bg-transparent" 
+                src={logo2Source} 
+                alt="Logo Secundária" 
+                style={{ height: `${logo2Height}px` }} 
+                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
                 crossOrigin="anonymous" 
               />
             </div>
           )}
+
+          {showLogo2 && logo2Source && logo2Pos === "top-right" && (
+            <div className="absolute top-0 right-4 z-20">
+              <img 
+                src={logo2Source} 
+                alt="Logo Secundária" 
+                style={{ height: `${logo2Height}px` }} 
+                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
+                crossOrigin="anonymous" 
+              />
+            </div>
+          )}
+
+          {/* Top-center logos row if either or both are top-center */}
+          {(logoSource && logoPos === "top-center") || (showLogo2 && logo2Source && logo2Pos === "top-center") ? (
+            <div className="mb-2.5 flex items-center justify-center gap-6">
+              {logoSource && logoPos === "top-center" && (
+                <img 
+                  src={logoSource} 
+                  alt="Event Logo 1" 
+                  style={{ height: `${logoHeight}px` }} 
+                  className="object-contain max-w-[200px] drop-shadow-sm bg-transparent" 
+                  crossOrigin="anonymous" 
+                />
+              )}
+              {showLogo2 && logo2Source && logo2Pos === "top-center" && (
+                <img 
+                  src={logo2Source} 
+                  alt="Logo Secundária" 
+                  style={{ height: `${logo2Height}px` }} 
+                  className="object-contain max-w-[200px] drop-shadow-sm bg-transparent" 
+                  crossOrigin="anonymous" 
+                />
+              )}
+            </div>
+          ) : null}
 
           <h1 className={`text-5xl sm:text-6xl font-black tracking-widest uppercase mb-1.5 text-center ${currentTheme.titleColor}`}>
             {titleText}
@@ -598,6 +650,17 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
              <p className="text-[12px] font-mono font-bold tracking-wider">{event.id.slice(0,8).toUpperCase()}-{(member.id || member.ra || "DOC").slice(0,8).toUpperCase()}</p>
           </div>
         </div>
+
+        {/* Center-Bottom: Institution Address & Contact (Clean, discreet & official) */}
+        {showInstFooter && (instAddress || instEmail) && (
+          <div className="absolute bottom-4 inset-x-0 mx-auto max-w-[620px] text-center z-20 pointer-events-none px-4">
+            <p className={`text-[10px] leading-tight font-medium tracking-normal ${template.bgStyle === 'theme-solemn' ? 'text-slate-400/90' : 'text-slate-600/90'}`}>
+              {instAddress && <span>{instAddress}</span>}
+              {instAddress && instEmail && <span className="mx-1.5 opacity-60">•</span>}
+              {instEmail && <span className="font-mono">{instEmail}</span>}
+            </p>
+          </div>
+        )}
 
         {/* Institution Brand Stamp */}
         <div className="absolute bottom-5 right-9 opacity-40 pointer-events-none z-20">

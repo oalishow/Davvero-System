@@ -101,6 +101,22 @@ export interface CertificateTemplate {
   logoSize?: number; // 40 to 160px
   logoPosition?: "top-center" | "top-left" | "top-right";
   hasCustomLogo?: boolean;
+
+  // Secondary Logo (Logo 2)
+  logo2Url?: string;
+  showLogo2?: boolean;
+  logo2Size?: number;
+  logo2Position?: "top-center" | "top-left" | "top-right";
+  hasCustomLogo2?: boolean;
+
+  // Background Opacity & Transparency Control (0 to 100%)
+  backgroundOpacity?: number; // default 100% or 15-100%
+  keepFrameWithCustomBg?: boolean; // Se mantém as molduras mesmo com fundo personalizado
+
+  // Institution Address & Contact Footer Info
+  institutionAddress?: string; // ex: "Av. Tiradentes, 998 - Centro"
+  institutionEmail?: string; // ex: "contato@fajopa.edu.br"
+  showInstitutionFooter?: boolean;
   
   fontSize?: number; // 20 to 42px
   isBold?: boolean;
