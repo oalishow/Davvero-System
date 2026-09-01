@@ -41,7 +41,9 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
     setLoading(true);
     const q = query(collection(db, `artifacts/${appId}/public/data/students`));
     const unsub = onSnapshot(q, (snapshot) => {
-      const loaded = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Member);
+      const loaded = snapshot.docs
+        .filter((d) => !d.id.startsWith('_') && Boolean(d.data()?.name))
+        .map((doc) => ({ id: doc.id, ...doc.data() }) as Member);
       loaded.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       // Apenas exibe membros aprovados e não excluídos (pula docs de config)
       setMembers(loaded.filter(m => m.alphaCode && !m.deletedAt && m.isApproved !== false));

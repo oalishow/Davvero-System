@@ -173,46 +173,70 @@ async function startServer() {
   });
 
   // Helper to build nodemailer transporter from settings or env
-  function getMailTransporter(customSmtp?: any) {
-    let host = (customSmtp?.host || process.env.SMTP_HOST || "").trim();
-    const port = Number(customSmtp?.port || process.env.SMTP_PORT || 587);
-    const secure = customSmtp?.secure !== undefined 
-      ? Boolean(customSmtp.secure) 
+  async function getMailTransporter(customSmtp?: any) {
+    let smtpData = customSmtp;
+
+    // Se customSmtp não foi fornecido ou está incompleto, buscar do Firestore
+    if (!smtpData || !smtpData.user || !smtpData.pass) {
+      try {
+        const settingsSnap = await db
+          .collection("artifacts")
+          .doc("banco-de-dados-fajopa")
+          .collection("public")
+          .doc("data")
+          .collection("students")
+          .doc("_settings_global")
+          .get();
+
+        if (settingsSnap.exists) {
+          const cloudSettings = settingsSnap.data();
+          if (cloudSettings?.smtpConfig?.user && cloudSettings?.smtpConfig?.pass) {
+            smtpData = {
+              ...cloudSettings.smtpConfig,
+              ...smtpData
+            };
+          }
+        }
+      } catch (err) {
+        console.warn("[Email] Não foi possível carregar configurações de SMTP do banco:", err);
+      }
+    }
+
+    let host = (smtpData?.host || process.env.SMTP_HOST || "").trim();
+    const port = Number(smtpData?.port || process.env.SMTP_PORT || 587);
+    const secure = smtpData?.secure !== undefined 
+      ? Boolean(smtpData.secure) 
       : (process.env.SMTP_SECURE === "true" || port === 465);
     
-    let user = (customSmtp?.user || process.env.SMTP_USER || "").trim();
-    let pass = (customSmtp?.pass || process.env.SMTP_PASS || "").trim();
+    let user = (smtpData?.user || process.env.SMTP_USER || "").trim();
+    let pass = (smtpData?.pass || process.env.SMTP_PASS || "").trim();
 
     // Auto-clean Google App Passwords if pasted with spaces (e.g. "abcd efgh ijkl mnop" -> "abcdefghijklmnop")
     if (host.includes("gmail") || host.includes("google") || user.endsWith("@gmail.com") || user.endsWith("@fajopa.edu.br")) {
       pass = pass.replace(/\s+/g, "");
+      if (!host || host.toLowerCase() === "gmail" || host.toLowerCase() === "google") {
+        host = "smtp.gmail.com";
+      }
     }
 
     if (!host || !user || !pass) {
       return null;
     }
 
-    if (host.includes("gmail") || host.includes("google") || user.endsWith("@gmail.com") || user.endsWith("@fajopa.edu.br")) {
-      return nodemailer.createTransport({
-        service: "gmail",
-        auth: {
-          user,
-          pass,
-        },
-        tls: {
-          rejectUnauthorized: false
-        }
-      });
-    }
+    const effectivePort = port || (secure ? 465 : 587);
+    const isSecure = secure || effectivePort === 465;
 
     return nodemailer.createTransport({
       host,
-      port,
-      secure,
+      port: effectivePort,
+      secure: isSecure,
       auth: {
         user,
         pass,
       },
+      connectionTimeout: 15000,
+      greetingTimeout: 15000,
+      socketTimeout: 25000,
       tls: {
         rejectUnauthorized: false
       }
@@ -224,8 +248,8 @@ async function startServer() {
     if (rawMsg.includes("535") || rawMsg.includes("BadCredentials") || rawMsg.includes("Username and Password not accepted")) {
       return "Erro de Autenticação do Gmail (535): O Google não aceita a sua senha comum de login. É obrigatório usar uma 'Senha de App' de 16 letras gerada em sua Conta Google (myaccount.google.com/apppasswords).";
     }
-    if (rawMsg.includes("ETIMEDOUT") || rawMsg.includes("ECONNREFUSED")) {
-      return "Não foi possível conectar ao servidor SMTP. Verifique o endereço do Host e o número da Porta (ex: 587).";
+    if (rawMsg.includes("ETIMEDOUT") || rawMsg.includes("ECONNREFUSED") || rawMsg.includes("Timeout")) {
+      return `Não foi possível conectar ao servidor SMTP (${rawMsg}). Verifique o endereço do Host e a Porta (Porta 465 com SSL marcado, ou Porta 587 com SSL desmarcado).`;
     }
     return rawMsg;
   }
@@ -248,7 +272,7 @@ async function startServer() {
     }
 
     try {
-      const transporter = getMailTransporter(customSmtp);
+      const transporter = await getMailTransporter(customSmtp);
       const fromName = customSmtp?.fromName || process.env.SMTP_FROM_NAME || "DAVVERO System";
       const fromEmail = customSmtp?.fromEmail || customSmtp?.user || process.env.SMTP_FROM_EMAIL || process.env.SMTP_USER || "secretaria@fajopa.edu.br";
 
@@ -304,7 +328,7 @@ async function startServer() {
   app.post("/api/email/test-connection", async (req, res) => {
     const { customSmtp, testRecipient } = req.body;
     try {
-      const transporter = getMailTransporter(customSmtp);
+      const transporter = await getMailTransporter(customSmtp);
       if (!transporter) {
         return res.status(400).json({ 
           success: false, 
@@ -343,6 +367,38 @@ async function startServer() {
         success: false, 
         error: formatSmtpError(err)
       });
+    }
+  });
+
+  // Unsubscribe Endpoint
+  app.post("/api/email/unsubscribe", async (req, res) => {
+    const { email } = req.body;
+    if (!email || typeof email !== "string") {
+      return res.status(400).json({ error: "Email parameter is required." });
+    }
+    try {
+      const snap = await db.collection("artifacts").doc("banco-de-dados-fajopa").collection("public").doc("data").collection("students")
+        .where("email", "==", email.trim())
+        .get();
+
+      if (!snap.empty) {
+        const batch = db.batch();
+        snap.forEach(docSnap => {
+          batch.update(docSnap.ref, {
+            emailNotificationsEnabled: false,
+            emailUnsubscribedAt: new Date().toISOString()
+          });
+        });
+        await batch.commit();
+      }
+
+      return res.status(200).json({
+        success: true,
+        message: `O e-mail ${email} foi descadastrado com sucesso.`
+      });
+    } catch (err: any) {
+      console.error("[Email] Erro ao descadastrar email:", err);
+      return res.status(500).json({ success: false, error: err?.message || "Erro ao descadastrar e-mail." });
     }
   });
 

@@ -155,13 +155,14 @@ export default function Verifier({
     try {
       // 1. Search for Event in Cache or Firestore
       let foundEvent: Event | undefined = eventsCache.find((e) => {
-        const eIdUpper = (e.id || "").toUpperCase();
+        const eIdUpper = (e.id || "").toUpperCase().trim();
+        if (!eIdUpper || !eventPart) return false;
         return (
           eIdUpper === eventPart ||
-          eIdUpper.startsWith(eventPart) ||
+          (eventPart.length >= 6 && eIdUpper.startsWith(eventPart)) ||
           (eventPart.length >= 6 && eIdUpper.includes(eventPart)) ||
-          (eventPart.length >= 8 && eventPart.startsWith(eIdUpper.slice(0, 8))) ||
-          (e.title && e.title.toUpperCase().includes(eventPart))
+          (eventPart.length >= 8 && eIdUpper.length >= 8 && eventPart.slice(0, 8) === eIdUpper.slice(0, 8)) ||
+          (e.title && eventPart.length >= 5 && e.title.toUpperCase().includes(eventPart))
         );
       });
 
@@ -171,13 +172,14 @@ export default function Verifier({
         const eventsSnap = await getD(col(db, `artifacts/${appId}/public/data/events`));
         const allEvents = eventsSnap.docs.map((d) => ({ ...d.data(), id: d.id } as Event));
         foundEvent = allEvents.find((e) => {
-          const eIdUpper = (e.id || "").toUpperCase();
+          const eIdUpper = (e.id || "").toUpperCase().trim();
+          if (!eIdUpper || !eventPart) return false;
           return (
             eIdUpper === eventPart ||
-            eIdUpper.startsWith(eventPart) ||
+            (eventPart.length >= 6 && eIdUpper.startsWith(eventPart)) ||
             (eventPart.length >= 6 && eIdUpper.includes(eventPart)) ||
-            (eventPart.length >= 8 && eventPart.startsWith(eIdUpper.slice(0, 8))) ||
-            (e.title && e.title.toUpperCase().includes(eventPart))
+            (eventPart.length >= 8 && eIdUpper.length >= 8 && eventPart.slice(0, 8) === eIdUpper.slice(0, 8)) ||
+            (e.title && eventPart.length >= 5 && e.title.toUpperCase().includes(eventPart))
           );
         });
       }
@@ -201,12 +203,13 @@ export default function Verifier({
 
         // Look for attendance matching memberPart
         const matchedAtt = eventAttendances.find((a) => {
-          const sId = (a.studentId || "").toUpperCase();
+          const sId = (a.studentId || "").toUpperCase().trim();
+          if (!sId) return false;
           return (
             sId === memberPart ||
-            sId.startsWith(memberPart) ||
-            (memberPart.length >= 8 && memberPart.startsWith(sId.slice(0, 8))) ||
-            (memberPart.length >= 6 && sId.slice(0, 6) === memberPart.slice(0, 6))
+            (memberPart.length >= 6 && sId.startsWith(memberPart)) ||
+            (memberPart.length >= 8 && sId.length >= 8 && (memberPart.startsWith(sId.slice(0, 8)) || sId.startsWith(memberPart.slice(0, 8)))) ||
+            (memberPart.length >= 6 && sId.length >= 6 && sId.slice(0, 6) === memberPart.slice(0, 6))
           );
         });
 
@@ -227,57 +230,51 @@ export default function Verifier({
         }
       }
 
-      // 2b. Priority 2: Direct match in membersCache or Firestore students
-      if (!foundMember && memberPart !== "DOC" && memberPart !== "VISITOR") {
-        const memberPartClean = memberPart.replace(/\D/g, "");
+      // Safe helper to match member without false positives
+      const matchMemberByCode = (m: Member, target: string) => {
+        if (!m || !target) return false;
+        const targetClean = target.replace(/\D/g, "");
+        const mId = (m.id || "").toUpperCase().trim();
+        const mRa = (m.ra || "").toUpperCase().trim();
+        const mAlpha = (m.alphaCode || "").toUpperCase().trim();
+        const mCpf = (m.cpf || "").replace(/\D/g, "");
 
-        // Tier 1: Exact matches
-        foundMember = membersCache.find((m) => {
-          const mIdUpper = (m.id || "").toUpperCase();
-          const mRaUpper = (m.ra || "").toUpperCase();
-          const mAlphaUpper = (m.alphaCode || "").toUpperCase();
-          const mCpfClean = (m.cpf || "").replace(/\D/g, "");
+        // Exact Matches
+        if (mId && mId === target) return true;
+        if (mRa && mRa === target) return true;
+        if (mAlpha && mAlpha === target) return true;
+        if (targetClean.length >= 6 && mCpf === targetClean) return true;
 
-          return (
-            mIdUpper === memberPart ||
-            mRaUpper === memberPart ||
-            mAlphaUpper === memberPart ||
-            (memberPartClean.length >= 6 && mCpfClean === memberPartClean)
-          );
-        });
-
-        // Tier 2: Prefix matches
-        if (!foundMember) {
-          foundMember = membersCache.find((m) => {
-            const mIdUpper = (m.id || "").toUpperCase();
-            const mRaUpper = (m.ra || "").toUpperCase();
-            return (
-              (memberPart.length >= 4 && (mIdUpper.startsWith(memberPart) || mRaUpper.startsWith(memberPart))) ||
-              (memberPart.length >= 8 && (memberPart.startsWith(mIdUpper.slice(0, 8)) || memberPart.startsWith(mRaUpper.slice(0, 8))))
-            );
-          });
+        // Strict prefix / slice matches (minimum 6 characters to prevent empty/short string false positives)
+        if (target.length >= 6) {
+          if (mId && mId.length >= 6) {
+            if (mId.startsWith(target) || target.startsWith(mId.slice(0, 8)) || mId.slice(0, 8) === target.slice(0, 8)) return true;
+          }
+          if (mRa && mRa.length >= 6) {
+            if (mRa.startsWith(target) || target.startsWith(mRa.slice(0, 8)) || mRa.slice(0, 8) === target.slice(0, 8)) return true;
+          }
+          if (mAlpha && mAlpha.length >= 6) {
+            if (mAlpha.startsWith(target) || target.startsWith(mAlpha.slice(0, 8)) || mAlpha.slice(0, 8) === target.slice(0, 8)) return true;
+          }
         }
 
-        // Tier 3: Fetch all from Firestore if still not in cache
-        if (!foundMember) {
-          const { collection: col, getDocs: getD } = await import("firebase/firestore");
-          const studentsSnap = await getD(col(db, `artifacts/${appId}/public/data/students`));
-          const allStudents = studentsSnap.docs.map((d) => ({ ...d.data(), id: d.id } as Member));
-          foundMember = allStudents.find((m) => {
-            const mIdUpper = (m.id || "").toUpperCase();
-            const mRaUpper = (m.ra || "").toUpperCase();
-            const mAlphaUpper = (m.alphaCode || "").toUpperCase();
-            const mCpfClean = (m.cpf || "").replace(/\D/g, "");
+        return false;
+      };
 
-            return (
-              mIdUpper === memberPart ||
-              mRaUpper === memberPart ||
-              mAlphaUpper === memberPart ||
-              (memberPartClean.length >= 6 && mCpfClean === memberPartClean) ||
-              (memberPart.length >= 4 && (mIdUpper.startsWith(memberPart) || mRaUpper.startsWith(memberPart))) ||
-              (memberPart.length >= 8 && memberPart.startsWith(mIdUpper.slice(0, 8)))
-            );
-          });
+      // 2b. Priority 2: Direct match in membersCache or Firestore students
+      if (!foundMember && memberPart !== "DOC" && memberPart !== "VISITOR") {
+        foundMember = membersCache.find((m) => matchMemberByCode(m, memberPart));
+
+        // Tier 3: Fetch from Firestore if still not in cache
+        if (!foundMember) {
+          try {
+            const { collection: col, getDocs: getD } = await import("firebase/firestore");
+            const studentsSnap = await getD(col(db, `artifacts/${appId}/public/data/students`));
+            const allStudents = studentsSnap.docs.map((d) => ({ ...d.data(), id: d.id } as Member));
+            foundMember = allStudents.find((m) => matchMemberByCode(m, memberPart));
+          } catch (e) {
+            console.warn("Failed to fetch students from Firestore for validation", e);
+          }
         }
       }
 
@@ -331,6 +328,16 @@ export default function Verifier({
           certCode: certDisplayCode,
         });
         playSound("success");
+
+        // Auto-scroll to verification panel to show validation animation
+        setTimeout(() => {
+          const panel = document.getElementById("verification-result-panel");
+          if (panel) {
+            panel.scrollIntoView({ behavior: "smooth", block: "start" });
+          } else {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }
+        }, 100);
       } else {
         recordQRScan("certificate", rawCode, "Não Encontrado");
         showAlert(
@@ -342,6 +349,13 @@ export default function Verifier({
           status: "NOT_FOUND",
         });
         playSound("error");
+
+        setTimeout(() => {
+          const panel = document.getElementById("verification-result-panel");
+          if (panel) {
+            panel.scrollIntoView({ behavior: "smooth", block: "start" });
+          }
+        }, 100);
       }
     } catch (err: any) {
       console.error("Error verifying certificate:", err);
@@ -358,6 +372,18 @@ export default function Verifier({
       } else {
         playSound('error');
       }
+
+      // Smooth scroll down to the verification result panel to display the validation animation
+      const scrollTimer = setTimeout(() => {
+        const resultPanel = document.getElementById("verification-result-panel");
+        if (resultPanel) {
+          resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }, 80);
+
+      return () => clearTimeout(scrollTimer);
     }
   }, [validationResult]);
 
@@ -1067,7 +1093,7 @@ export default function Verifier({
 
   if (validationResult) {
     return (
-      <div className="w-full flex flex-col items-center pt-1 pb-4 px-2">
+      <div id="verification-result-panel" className="w-full flex flex-col items-center pt-1 pb-4 px-2">
         {successMsg && (
           <div className="mt-4 p-3 bg-emerald-50 text-emerald-600 text-sm font-medium rounded-xl border border-emerald-200">
             {successMsg}

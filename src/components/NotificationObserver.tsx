@@ -19,14 +19,28 @@ const STUDENT_TRACK_KEY = 'davveroId_student_track_ra';
  */
 export default function NotificationObserver() {
   const isMasterLogged = typeof window !== 'undefined' && localStorage.getItem('adminMasterLogged') === 'true';
-  const bondedId = typeof window !== 'undefined' ? (localStorage.getItem(STUDENT_BOND_KEY) || localStorage.getItem(STUDENT_TRACK_KEY)) : null;
+  const bondedId = typeof window !== 'undefined' ? localStorage.getItem(STUDENT_BOND_KEY) : null;
+  const trackRa = typeof window !== 'undefined' ? localStorage.getItem(STUDENT_TRACK_KEY) : null;
+  const docId = typeof window !== 'undefined' ? localStorage.getItem('davveroId_student_doc_id') : null;
   
-  // Determine recipient for notifications (admin or the specific student)
-  const recipientId = isMasterLogged ? "admin" : bondedId ? bondedId : null;
+  // Determine recipient identifiers for notifications (admin, student docId, alphaCode, RA)
+  const recipientIds: string[] = [];
+  if (isMasterLogged) {
+    recipientIds.push("admin");
+  }
+  if (bondedId) {
+    recipientIds.push(bondedId);
+  }
+  if (trackRa && !recipientIds.includes(trackRa)) {
+    recipientIds.push(trackRa);
+  }
+  if (docId && !recipientIds.includes(docId)) {
+    recipientIds.push(docId);
+  }
   
   // Hook central que escuta as notificações do Firestore e gerencia badges
-  const { unreadCount } = useNotifications(recipientId);
-  useDobloMonitor(recipientId);
+  const { unreadCount } = useNotifications(recipientIds.length > 0 ? recipientIds : null);
+  useDobloMonitor(bondedId || trackRa || null);
 
   const unsubRef = useRef<(() => void) | null>(null);
 

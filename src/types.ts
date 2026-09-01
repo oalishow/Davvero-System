@@ -24,6 +24,8 @@ export interface Member {
   cpf?: string;
   birthdate?: string;
   email?: string;
+  phone?: string;
+  registrationType?: "quick" | "full";
   validityDate?: string;
   alphaCode?: string;
   photoUrl?: string | null;
@@ -45,6 +47,8 @@ export interface Member {
   hasPendingAction?: boolean;
   deletionRequested?: boolean;
   deletionRequestedAt?: string;
+  emailNotificationsEnabled?: boolean;
+  emailUnsubscribedAt?: string;
   acceptedTermsVersion?: number;
   externalCertificates?: {
     id: string;
@@ -148,6 +152,11 @@ export interface Event {
   googleFormsLink?: string; // Link externo para Forms
   hotmartLink?: string;     // Link externo para Hotmart
   isPinned?: boolean; // Se o evento está fixado
+  manuallyReopened?: boolean; // Permite reabrir evento mesmo após o término
+  reopenedAt?: string; // Data/hora em que foi reaberto manualmente
+  certificateReleaseMode?: "attended_only" | "all_registered"; // Disponibilizar para presentes ou todos os inscritos
+  allowAllRegisteredCertificates?: boolean; // Se true, todos os inscritos recebem certificado
+  autoSendCertificatesOnClose?: boolean; // Se false, remove o envio automático de e-mail ao término
   presenceConfig?: {
     enabled: boolean;
     openMode: "default_30min" | "custom";

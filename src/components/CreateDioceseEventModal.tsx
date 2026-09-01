@@ -65,7 +65,9 @@ export default function CreateDioceseEventModal({
   const [link, setLink] = useState(eventToEdit?.link || "");
   const [description, setDescription] = useState(eventToEdit?.description || "");
   const [imageUrl, setImageUrl] = useState(eventToEdit?.imageUrl || "");
-  const [hours, setHours] = useState(eventToEdit?.hours ? String(eventToEdit.hours) : "");
+  const [hours, setHours] = useState(
+    eventToEdit?.hours !== undefined && eventToEdit?.hours !== null ? String(eventToEdit.hours) : ""
+  );
   const [maxParticipants, setMaxParticipants] = useState(
     eventToEdit?.maxParticipants ? String(eventToEdit.maxParticipants) : ""
   );
@@ -161,6 +163,14 @@ export default function CreateDioceseEventModal({
         }
       }
 
+      const parseNumeric = (val: any): number | undefined => {
+        if (val === null || val === undefined) return undefined;
+        const str = String(val).trim().replace(',', '.').replace(/[^\d.]/g, '');
+        if (!str) return undefined;
+        const num = parseFloat(str);
+        return isNaN(num) || num < 0 ? undefined : num;
+      };
+
       const payload: Omit<Event, "id"> = {
         title: title.trim(),
         startDate,
@@ -170,8 +180,8 @@ export default function CreateDioceseEventModal({
         link: format !== "presencial" ? link.trim() : "",
         description: description.trim(),
         imageUrl: finalImageUrl,
-        hours: hours ? Number(hours) : undefined,
-        maxParticipants: maxParticipants ? Number(maxParticipants) : 0,
+        hours: parseNumeric(hours),
+        maxParticipants: parseNumeric(maxParticipants) ?? 0,
         speaker: speaker.trim() || undefined,
         registrationDeadline: registrationDeadline || undefined,
         status: eventToEdit?.status || "aberto",

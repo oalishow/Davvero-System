@@ -31,6 +31,7 @@ import {
   appId,
   createEvent,
   updateEventStatus,
+  reopenEvent,
   updateEvent,
   closeEvent,
   deleteEvent,
@@ -99,6 +100,8 @@ export default function EventManagement({
   const [price, setPrice] = useState("");
   const [googleFormsLink, setGoogleFormsLink] = useState("");
   const [hotmartLink, setHotmartLink] = useState("");
+  const [allowAllRegisteredCertificates, setAllowAllRegisteredCertificates] = useState(false);
+  const [autoSendCertificatesOnClose, setAutoSendCertificatesOnClose] = useState(true);
   const [presenceConfigEnabled, setPresenceConfigEnabled] = useState(false);
   const [presenceOpenMode, setPresenceOpenMode] = useState<"default_30min" | "custom">("default_30min");
   const [presenceCustomOpenTime, setPresenceCustomOpenTime] = useState("");
@@ -106,6 +109,12 @@ export default function EventManagement({
   const [presenceCustomCloseTime, setPresenceCustomCloseTime] = useState("");
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [selectedQrEvent, setSelectedQrEvent] = useState<Event | null>(null);
+  const [closingEventModal, setClosingEventModal] = useState<{
+    event: Event;
+    releaseToAll: boolean;
+    sendNotifications: boolean;
+    isSubmitting: boolean;
+  } | null>(null);
   const [eventSearchQuery, setEventSearchQuery] = useState("");
   const [feedbackModal, setFeedbackModal] = useState<{ type: "success" | "error", title: string, msg: string } | null>(null);
   const [statusMsg, setStatusMsg] = useState<{
@@ -119,7 +128,8 @@ export default function EventManagement({
       const evts = snap.docs.map((d) => d.data() as Event);
       const now = new Date().getTime();
       evts.forEach((e) => {
-        if (e.status === "aberto") {
+        // Se o evento foi reaberto manualmente pelo administrador, NÃO auto-encerrar destrutivamente
+        if (e.status === "aberto" && !e.manuallyReopened) {
           const checkDate = e.endDate ? new Date(e.endDate).getTime() : new Date(e.startDate).getTime();
           const GRACE_PERIOD = 24 * 60 * 60 * 1000; // 1 day
           if (checkDate + GRACE_PERIOD < now) {
@@ -157,6 +167,14 @@ export default function EventManagement({
     };
   }, []);
 
+  const parseNumericHours = (val: any): number | null => {
+    if (val === null || val === undefined) return null;
+    const str = String(val).trim().replace(',', '.').replace(/[^\d.]/g, '');
+    if (!str) return null;
+    const num = parseFloat(str);
+    return isNaN(num) || num < 0 ? null : num;
+  };
+
   const handleEditClick = (event: Event) => {
     setEditingEventId(event.id);
     setTitle(event.title);
@@ -167,9 +185,9 @@ export default function EventManagement({
     setLink(event.link || (event.format !== "presencial" ? event.locationOrLink || "" : ""));
     setDescription(event.description);
     setImageUrl(event.imageUrl || "");
-    setHours(event.hours ? event.hours.toString() : "");
-    setOrganizationHours(event.organizationHours ? event.organizationHours.toString() : "");
-    setMaxParticipants(event.maxParticipants.toString());
+    setHours(event.hours !== undefined && event.hours !== null ? String(event.hours) : "");
+    setOrganizationHours(event.organizationHours !== undefined && event.organizationHours !== null ? String(event.organizationHours) : "");
+    setMaxParticipants(event.maxParticipants ? event.maxParticipants.toString() : "");
     setSpeaker(event.speaker || "");
     setSchedulePdfUrl(event.schedulePdfUrl || "");
     setRegistrationDeadline(event.registrationDeadline || "");
@@ -182,6 +200,8 @@ export default function EventManagement({
     setPrice(event.price ? event.price.toString() : "");
     setGoogleFormsLink(event.googleFormsLink || "");
     setHotmartLink(event.hotmartLink || "");
+    setAllowAllRegisteredCertificates(Boolean(event.allowAllRegisteredCertificates || event.certificateReleaseMode === "all_registered"));
+    setAutoSendCertificatesOnClose(event.autoSendCertificatesOnClose !== false);
     if (event.presenceConfig) {
       setPresenceConfigEnabled(event.presenceConfig.enabled);
       setPresenceOpenMode(event.presenceConfig.openMode);
@@ -223,6 +243,8 @@ export default function EventManagement({
     setPrice("");
     setGoogleFormsLink("");
     setHotmartLink("");
+    setAllowAllRegisteredCertificates(false);
+    setAutoSendCertificatesOnClose(true);
     setPresenceConfigEnabled(false);
     setPresenceOpenMode("default_30min");
     setPresenceCustomOpenTime("");
@@ -271,6 +293,9 @@ export default function EventManagement({
         price: isPaid && price ? Number(price) : null,
         googleFormsLink: googleFormsLink || null,
         hotmartLink: isPaid && hotmartLink ? hotmartLink : null,
+        allowAllRegisteredCertificates: Boolean(allowAllRegisteredCertificates),
+        autoSendCertificatesOnClose: Boolean(autoSendCertificatesOnClose),
+        certificateReleaseMode: allowAllRegisteredCertificates ? "all_registered" : "attended_only",
         presenceConfig: {
           enabled: presenceConfigEnabled,
           openMode: presenceOpenMode,
@@ -286,16 +311,8 @@ export default function EventManagement({
         payload.creatorEmail = member?.email || "";
         payload.creatorRa = member?.ra || "";
       }
-      if (hours) {
-        payload.hours = Number(hours);
-      } else {
-        payload.hours = null;
-      }
-      if (organizationHours) {
-        payload.organizationHours = Number(organizationHours);
-      } else {
-        payload.organizationHours = null;
-      }
+      payload.hours = parseNumericHours(hours);
+      payload.organizationHours = parseNumericHours(organizationHours);
 
       if (editingEventId) {
         await updateEvent(editingEventId, payload);
@@ -765,9 +782,14 @@ export default function EventManagement({
           )}
         </div>
 
-        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <div>
-            <label className="flex items-center gap-3 cursor-pointer p-4 bg-amber-50 dark:bg-amber-900/10 border border-amber-200 dark:border-amber-800/50 rounded-xl h-full">
+        <div className="mt-4 grid grid-cols-1 sm:grid-cols-2 gap-4 items-start">
+          {/* Card Restrito ao Seminário */}
+          <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+            isSeminary
+              ? "bg-amber-50/90 dark:bg-amber-950/30 border-amber-300 dark:border-amber-700 shadow-sm"
+              : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-amber-200 dark:hover:border-amber-800/40"
+          }`}>
+            <label className="flex items-start gap-3 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={isSeminary}
@@ -775,23 +797,23 @@ export default function EventManagement({
                   setIsSeminary(e.target.checked);
                   if (e.target.checked) setIsDiocese(false);
                 }}
-                className="w-5 h-5 text-amber-600 focus:ring-amber-500 rounded border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 focus:ring-2"
+                className="w-5 h-5 mt-0.5 text-amber-600 focus:ring-amber-500 rounded border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-900 focus:ring-2 cursor-pointer"
               />
-              <div>
-                <p className="text-sm font-bold text-amber-900 dark:text-amber-500">Restrito ao Seminário</p>
-                <p className="text-[10px] text-amber-700/80 dark:text-amber-400/80 uppercase">Visível na aba Seminário para os seminaristas.</p>
+              <div className="flex-1">
+                <p className="text-sm font-bold text-amber-900 dark:text-amber-400">Restrito ao Seminário</p>
+                <p className="text-xs text-amber-700/80 dark:text-amber-400/80 mt-0.5 leading-relaxed">Visível na aba Seminário apenas para os seminaristas.</p>
               </div>
             </label>
             
             {isSeminary && (
-              <div className="mt-3 p-4 bg-amber-50/50 dark:bg-amber-900/5 border border-amber-200/50 dark:border-amber-800/30 rounded-xl">
-                 <label className="block text-[10px] sm:text-xs font-semibold text-amber-800 dark:text-amber-500 uppercase tracking-wider mb-2">
+              <div className="mt-3 pt-3 border-t border-amber-200/60 dark:border-amber-800/40">
+                 <label className="block text-[11px] font-bold text-amber-900 dark:text-amber-400 uppercase tracking-wider mb-1.5">
                    Selecione o Seminário (Opcional)
                  </label>
                  <select
                    value={seminaryId}
                    onChange={(e) => setSeminaryId(e.target.value)}
-                   className="w-full bg-white dark:bg-slate-800 border fill-amber-200 border-amber-200 dark:border-amber-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm outline-none focus:border-amber-500 dark:focus:border-amber-500"
+                   className="w-full bg-white dark:bg-slate-800 border border-amber-300 dark:border-amber-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500 font-medium"
                  >
                    <option value="">Todos os Seminários (Geral)</option>
                    {AVAILABLE_SEMINARIES.map(s => (
@@ -802,8 +824,13 @@ export default function EventManagement({
             )}
           </div>
 
-          <div>
-            <label className="flex items-center gap-3 cursor-pointer p-4 bg-purple-50 dark:bg-purple-900/10 border border-purple-200 dark:border-purple-800/50 rounded-xl h-full">
+          {/* Card Evento da Diocese */}
+          <div className={`p-4 rounded-2xl border transition-all flex flex-col justify-between ${
+            isDiocese
+              ? "bg-purple-50/90 dark:bg-purple-950/30 border-purple-300 dark:border-purple-700 shadow-sm"
+              : "bg-slate-50 dark:bg-slate-800/50 border-slate-200 dark:border-slate-700 hover:border-purple-200 dark:hover:border-purple-800/40"
+          }`}>
+            <label className="flex items-start gap-3 cursor-pointer select-none">
               <input
                 type="checkbox"
                 checked={isDiocese}
@@ -811,23 +838,23 @@ export default function EventManagement({
                   setIsDiocese(e.target.checked);
                   if (e.target.checked) setIsSeminary(false);
                 }}
-                className="w-5 h-5 text-purple-600 focus:ring-purple-500 rounded border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 focus:ring-2"
+                className="w-5 h-5 mt-0.5 text-purple-600 focus:ring-purple-500 rounded border-purple-300 dark:border-purple-700 bg-white dark:bg-slate-900 focus:ring-2 cursor-pointer"
               />
-              <div>
+              <div className="flex-1">
                 <p className="text-sm font-bold text-purple-900 dark:text-purple-400">Evento da Diocese</p>
-                <p className="text-[10px] text-purple-700/80 dark:text-purple-400/80 uppercase">Visível na aba Dioceses para a diocese correspondente.</p>
+                <p className="text-xs text-purple-700/80 dark:text-purple-400/80 mt-0.5 leading-relaxed">Visível na aba Dioceses para a diocese correspondente.</p>
               </div>
             </label>
             
             {isDiocese && (
-              <div className="mt-3 p-4 bg-purple-50/50 dark:bg-purple-900/5 border border-purple-200/50 dark:border-purple-800/30 rounded-xl">
-                 <label className="block text-[10px] sm:text-xs font-semibold text-purple-800 dark:text-purple-400 uppercase tracking-wider mb-2">
+              <div className="mt-3 pt-3 border-t border-purple-200/60 dark:border-purple-800/40">
+                 <label className="block text-[11px] font-bold text-purple-900 dark:text-purple-400 uppercase tracking-wider mb-1.5">
                    Selecione a Diocese
                  </label>
                  <select
                    value={dioceseId}
                    onChange={(e) => setDioceseId(e.target.value)}
-                   className="w-full bg-white dark:bg-slate-800 border border-purple-200 dark:border-purple-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm outline-none focus:border-purple-500 dark:focus:border-purple-500 font-semibold"
+                   className="w-full bg-white dark:bg-slate-800 border border-purple-300 dark:border-purple-700 rounded-xl px-3 py-2 text-xs text-slate-800 dark:text-slate-100 outline-none focus:border-purple-500 font-semibold"
                  >
                    {Array.from(new Set([...AVAILABLE_DIOCESES, ...(settings.customDioceses || [])])).map(d => (
                      <option key={d} value={d}>Diocese de {d}</option>
@@ -866,6 +893,52 @@ export default function EventManagement({
               </p>
             </div>
           </label>
+        </div>
+
+        {/* Configurações de Certificado e Notificações ao Término */}
+        <div className="mt-4 p-4 rounded-xl border border-sky-200 dark:border-sky-800/50 bg-sky-50/70 dark:bg-sky-950/20 space-y-3">
+          <div className="flex items-center gap-2">
+            <Award className="w-4 h-4 text-sky-600 dark:text-sky-400 shrink-0" />
+            <h4 className="text-xs font-bold text-sky-900 dark:text-sky-300 uppercase tracking-wider">
+              Certificados e Disparo Automático ao Término
+            </h4>
+          </div>
+
+          <div className="space-y-2.5 pt-1">
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={allowAllRegisteredCertificates}
+                onChange={(e) => setAllowAllRegisteredCertificates(e.target.checked)}
+                className="w-5 h-5 mt-0.5 text-sky-600 focus:ring-sky-500 rounded border-sky-300 dark:border-sky-700 bg-white dark:bg-slate-900 focus:ring-2 cursor-pointer"
+              />
+              <div>
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 block">
+                  Disponibilizar certificado para todos os alunos inscritos
+                </span>
+                <span className="text-xs text-slate-600 dark:text-slate-400 block mt-0.5 leading-relaxed">
+                  Ao encerrar o evento, todos os participantes com inscrição confirmada poderão emitir o certificado, mesmo que não tenham bipado presença.
+                </span>
+              </div>
+            </label>
+
+            <label className="flex items-start gap-3 cursor-pointer select-none">
+              <input
+                type="checkbox"
+                checked={autoSendCertificatesOnClose}
+                onChange={(e) => setAutoSendCertificatesOnClose(e.target.checked)}
+                className="w-5 h-5 mt-0.5 text-sky-600 focus:ring-sky-500 rounded border-sky-300 dark:border-sky-700 bg-white dark:bg-slate-900 focus:ring-2 cursor-pointer"
+              />
+              <div>
+                <span className="text-sm font-semibold text-slate-800 dark:text-slate-200 block">
+                  Envio automático de e-mails e notificações aos alunos ao encerrar
+                </span>
+                <span className="text-xs text-slate-600 dark:text-slate-400 block mt-0.5 leading-relaxed">
+                  Desmarque esta opção se preferir não enviar e-mails ou avisos automáticos aos participantes no encerramento (os certificados continuarão disponíveis no portal).
+                </span>
+              </div>
+            </label>
+          </div>
         </div>
 
         <div className="mt-4 flex flex-col sm:flex-row gap-3 w-full sm:w-auto">
@@ -1142,17 +1215,11 @@ export default function EventManagement({
                     {adminAccessLevel !== "LEITOR" && event.status === "aberto" && (
                       <button
                         onClick={() => {
-                          setConfirmModal({
-                            isOpen: true,
-                            title: "Encerrar Evento",
-                            message:
-                              "Encerrar evento? Os alunos presentes receberão certificados.",
-                            variant: "primary",
-                            onConfirm: () => {
-                              closeEvent(event.id).catch((e) =>
-                                showAlert(e.message, { type: 'error' }),
-                              );
-                            },
+                          setClosingEventModal({
+                            event,
+                            releaseToAll: Boolean(event.allowAllRegisteredCertificates || event.certificateReleaseMode === "all_registered"),
+                            sendNotifications: event.autoSendCertificatesOnClose !== false,
+                            isSubmitting: false,
                           });
                         }}
                         className="w-full sm:w-auto whitespace-nowrap px-3 py-1.5 bg-emerald-100 hover:bg-emerald-200 dark:bg-emerald-500/20 dark:hover:bg-emerald-500/30 text-emerald-700 dark:text-emerald-400 text-xs font-bold rounded-lg transition-colors border border-emerald-200 dark:border-emerald-500/30"
@@ -1168,12 +1235,15 @@ export default function EventManagement({
                             isOpen: true,
                             title: "Reabrir Evento",
                             message:
-                              "Deseja reabrir este evento? Ele voltará a aceitar inscrições.",
+                              `Deseja reabrir o evento "${event.title}"? O evento voltará ao status "Aberto", aceitará novas inscrições e não será encerrado automaticamente.`,
                             variant: "primary",
-                            onConfirm: () => {
-                              updateEventStatus(event.id, "aberto").catch((e) =>
-                                showAlert(e.message, { type: 'error' }),
-                              );
+                            onConfirm: async () => {
+                              try {
+                                await reopenEvent(event.id);
+                                showAlert("Evento reaberto com sucesso! O evento está ativo novamente.", { type: "success" });
+                              } catch (e: any) {
+                                showAlert(e.message || "Erro ao reabrir evento.", { type: "error" });
+                              }
                             },
                           });
                         }}
@@ -1207,6 +1277,109 @@ export default function EventManagement({
           event={selectedQrEvent}
           onClose={() => setSelectedQrEvent(null)}
         />
+      )}
+
+      {/* MODAL DE ENCERRAMENTO E LIBERAÇÃO DE CERTIFICADOS */}
+      {closingEventModal && (
+        <Modal
+          isOpen={true}
+          onClose={() => {
+            if (!closingEventModal.isSubmitting) {
+              setClosingEventModal(null);
+            }
+          }}
+          title="Encerrar Evento e Liberar Certificados"
+        >
+          <div className="space-y-4">
+            <div className="p-3 bg-slate-50 dark:bg-slate-800/80 rounded-xl border border-slate-200 dark:border-slate-700">
+              <p className="text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">
+                Evento
+              </p>
+              <p className="text-sm font-bold text-slate-900 dark:text-white mt-0.5">
+                {closingEventModal.event.title}
+              </p>
+            </div>
+
+            <div className="space-y-3">
+              <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-700 bg-white dark:bg-slate-900 cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  checked={closingEventModal.releaseToAll}
+                  onChange={(e) =>
+                    setClosingEventModal((prev) =>
+                      prev ? { ...prev, releaseToAll: e.target.checked } : null
+                    )
+                  }
+                  className="w-5 h-5 mt-0.5 text-sky-600 focus:ring-sky-500 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 cursor-pointer"
+                />
+                <div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    Disponibilizar certificado para todos os inscritos
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Se marcado, todos os participantes com inscrição confirmada receberão o certificado, mesmo que não tenham registro de presença.
+                  </p>
+                </div>
+              </label>
+
+              <label className="flex items-start gap-3 p-3 rounded-xl border border-slate-200 dark:border-slate-700 hover:border-sky-300 dark:hover:border-sky-700 bg-white dark:bg-slate-900 cursor-pointer transition-colors">
+                <input
+                  type="checkbox"
+                  checked={closingEventModal.sendNotifications}
+                  onChange={(e) =>
+                    setClosingEventModal((prev) =>
+                      prev ? { ...prev, sendNotifications: e.target.checked } : null
+                    )
+                  }
+                  className="w-5 h-5 mt-0.5 text-sky-600 focus:ring-sky-500 rounded border-slate-300 dark:border-slate-700 bg-white dark:bg-slate-900 focus:ring-2 cursor-pointer"
+                />
+                <div>
+                  <p className="text-sm font-bold text-slate-800 dark:text-slate-200">
+                    Enviar e-mails e notificações automáticas aos participantes
+                  </p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                    Desmarque para encerrar o evento e liberar os certificados no portal de forma silenciosa, sem enviar e-mails ou notificações em massa.
+                  </p>
+                </div>
+              </label>
+            </div>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                disabled={closingEventModal.isSubmitting}
+                onClick={() => setClosingEventModal(null)}
+                className="flex-1 py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition-colors disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                disabled={closingEventModal.isSubmitting}
+                onClick={async () => {
+                  if (!closingEventModal) return;
+                  setClosingEventModal((prev) => (prev ? { ...prev, isSubmitting: true } : null));
+                  try {
+                    await closeEvent(closingEventModal.event.id, {
+                      releaseToAllRegistered: closingEventModal.releaseToAll,
+                      sendNotifications: closingEventModal.sendNotifications,
+                    });
+                    setClosingEventModal(null);
+                    showAlert("Evento encerrado com sucesso! Os certificados foram processados.", { type: "success" });
+                  } catch (err: any) {
+                    setClosingEventModal((prev) => (prev ? { ...prev, isSubmitting: false } : null));
+                    showAlert(err.message || "Erro ao encerrar evento.", { type: "error" });
+                  }
+                }}
+                className="flex-1 py-2.5 px-4 bg-emerald-600 hover:bg-emerald-700 text-white text-xs font-bold rounded-xl transition-all shadow-md active:scale-95 disabled:opacity-50 flex items-center justify-center gap-1.5"
+              >
+                {closingEventModal.isSubmitting ? (
+                  <span>Processando...</span>
+                ) : (
+                  <span>Encerrar e Processar</span>
+                )}
+              </button>
+            </div>
+          </div>
+        </Modal>
       )}
 
       {/* FEEDBACK MODAL (Success/Error Animation) */}

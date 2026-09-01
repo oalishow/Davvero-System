@@ -23,6 +23,9 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     const fajopaName = !isDioceseEvent ? (template.fajopaDirectorName || settings.directorName) : undefined;
     const rectorName = !isDioceseEvent ? (template.seminarRectorName || settings.rectorName) : undefined;
 
+    const showFajopaDirector = !isDioceseEvent && (template.showFajopaDirectorSignature ?? true);
+    const showSeminarRector = !isDioceseEvent && (template.showSeminarRectorSignature ?? true);
+
     // Custom / Diocese Responsibles
     const sig1Name = template.signature1Name ?? template.signatureName;
     const sig1Role = template.signature1Role ?? template.signatureRole;
@@ -430,7 +433,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           }}
         >
           {/* Se NÃO for evento de Diocese e estiver ativado Diretor FAJOPA */}
-          {!isDioceseEvent && (template.showFajopaDirectorSignature ?? false) && (
+          {showFajopaDirector && (
             <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
               <div 
                 className="w-full flex items-end justify-center mb-1.5"
@@ -440,7 +443,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                   <img 
                     src={fajopaSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
-                    className="max-w-[220px] object-contain mix-blend-multiply" 
+                    className="max-w-[220px] object-contain" 
                     crossOrigin="anonymous" 
                     alt="Assinatura Diretor" 
                   />
@@ -459,7 +462,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           )}
           
           {/* Se NÃO for evento de Diocese e estiver ativado Reitor do Seminário */}
-          {!isDioceseEvent && (template.showSeminarRectorSignature ?? false) && (
+          {showSeminarRector && (
             <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
               <div 
                 className="w-full flex items-end justify-center mb-1.5"
@@ -469,7 +472,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                   <img 
                     src={rectorSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
-                    className="max-w-[220px] object-contain mix-blend-multiply" 
+                    className="max-w-[220px] object-contain" 
                     crossOrigin="anonymous" 
                     alt="Assinatura Reitor" 
                   />
@@ -488,7 +491,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           )}
 
           {/* Assinaturas dos Responsáveis da Diocese ou Personalizadas */}
-          {(isDioceseEvent || (!(template.showFajopaDirectorSignature ?? false) && !(template.showSeminarRectorSignature ?? false))) && (
+          {(isDioceseEvent || (!showFajopaDirector && !showSeminarRector) || Boolean(sig1Url || sig2Url || sig3Url)) && (
             <>
               {/* Responsável 1 */}
               {showSig1 && (
@@ -501,7 +504,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                       <img 
                         src={sig1Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain mix-blend-multiply" 
+                        className="max-w-[220px] object-contain" 
                         crossOrigin="anonymous" 
                         alt="Assinatura Responsável 1" 
                       />
@@ -530,7 +533,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                       <img 
                         src={sig2Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain mix-blend-multiply" 
+                        className="max-w-[220px] object-contain" 
                         crossOrigin="anonymous" 
                         alt="Assinatura Responsável 2" 
                       />
@@ -559,7 +562,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                       <img 
                         src={sig3Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain mix-blend-multiply" 
+                        className="max-w-[220px] object-contain" 
                         crossOrigin="anonymous" 
                         alt="Assinatura Responsável 3" 
                       />

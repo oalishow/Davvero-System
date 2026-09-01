@@ -26,7 +26,30 @@ export default function AdminRequestsModal({ onClose }: { onClose: () => void })
     try {
       const q = query(collection(db, `artifacts/${appId}/public/data/students`));
       const snapshot = await getDocs(q);
-      const members = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Member);
+      
+      // Identificar e limpar automaticamente documentos fantasmas/órfãos (sem nome e sem dados essenciais)
+      const ghostDocs = snapshot.docs.filter(
+        (doc) => !doc.id.startsWith('_') && (!doc.data()?.name || !String(doc.data()?.name).trim())
+      );
+      if (ghostDocs.length > 0) {
+        console.log(`[AdminRequestsModal] Removendo ${ghostDocs.length} cadastros fantasmas/incompletos...`);
+        ghostDocs.forEach(async (gd) => {
+          try {
+            await deleteDoc(doc(db, `artifacts/${appId}/public/data/students`, gd.id));
+          } catch (e) {
+            console.warn("Falha ao remover cadastro fantasma:", e);
+          }
+        });
+      }
+
+      // Filtrar estritamente documentos que são estudantes reais (ignorar metadados de sistema _* e registros sem nome)
+      const validStudentDocs = snapshot.docs.filter((doc) => {
+        if (doc.id.startsWith('_')) return false;
+        const data = doc.data();
+        return Boolean(data?.name && String(data.name).trim().length > 0);
+      });
+
+      const members = validStudentDocs.map((doc) => ({ id: doc.id, ...doc.data() }) as Member);
       
       // Filtrar Não-Aprovados E também aqueles que têm Sugestões de Correção Pendentes ou Pedidos de Exclusão.
       const pendingReqs = members.filter(

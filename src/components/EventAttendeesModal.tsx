@@ -166,7 +166,7 @@ export default function EventAttendeesModal({
             ra: org.member.ra || ''
           },
           settings,
-          buttonUrl: `${window.location.origin}/?view=events&eventId=${event.id}`
+          buttonUrl: `${window.location.origin}/?view=student&tab=certificates&eventId=${event.id}&certType=organizer`
         });
 
         await sendEmailNotification({

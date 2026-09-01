@@ -27,7 +27,9 @@ export default function RecycleBinModal({ onClose, initialTab = "members" }: { o
     setLoading(true);
     const qMembers = query(collection(db, `artifacts/${appId}/public/data/students`));
     const unsubMembers = onSnapshot(qMembers, async (snapshot) => {
-      const members = snapshot.docs.map((doc) => ({ id: doc.id, ...doc.data() }) as Member);
+      const members = snapshot.docs
+        .filter((d) => !d.id.startsWith('_'))
+        .map((doc) => ({ id: doc.id, ...doc.data() }) as Member);
       const now = new Date().getTime();
       const thirtyDaysMs = 30 * 24 * 60 * 60 * 1000;
       const filtered = members.filter(m => m.deletedAt);

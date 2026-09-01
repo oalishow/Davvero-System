@@ -8,6 +8,18 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v7.8b',
+      title: 'Acesso Direto a Certificados & Gerenciador de Inscrição de E-mails',
+      changes: [
+        'Acesso direto aos certificados: links recebidos por e-mail abrem imediatamente a aba de Certificados e o visualizador no painel Minha ID, sem exibir o modal inicial de boas-vindas.',
+        'Gerenciador de Notificações por E-mail: nova opção no perfil do usuário para ativar ou desativar o recebimento de e-mails do sistema.',
+        'Link de descadastramento (Unsubscribe) no rodapé de todos os e-mails enviados para cancelamento imediato em 1 clique.',
+        'Seleção de Modalidade no Primeiro Acesso (Cadastro Rápido vs. Cadastro Completo).',
+        'Cláusula regulatória de pagamentos e transações financeiras atualizada nos Termos de Uso.'
+      ],
+      current: true,
+    },
+    {
       version: 'v7.7b',
       title: 'Branding Davvero System & Notificações de Certificados e Carteirinhas',
       changes: [
@@ -18,7 +30,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Notificação por e-mail quando uma carteirinha for suspensa/desativada com justificativa acadêmica ou documental.',
         'Novo painel de pré-visualização e edição dos 8 modelos de e-mail do sistema com suporte a variáveis dinâmicas.'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v7.6b',

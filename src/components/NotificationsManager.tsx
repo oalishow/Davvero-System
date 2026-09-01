@@ -105,7 +105,9 @@ export default function NotificationsManager() {
       setLoadingMembers(true);
       try {
         const snap = await getDocs(collection(db, `artifacts/${appId}/public/data/students`));
-        const data = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Member));
+        const data = snap.docs
+          .filter((d) => !d.id.startsWith('_') && Boolean(d.data()?.name))
+          .map((d) => ({ id: d.id, ...d.data() }) as Member);
         setMembers(data);
       } catch (err) {
         console.error("Erro ao carregar membros:", err);

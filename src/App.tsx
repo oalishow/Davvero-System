@@ -50,7 +50,26 @@ export default function App() {
   const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      if (params.has("event") || params.has("cert") || params.has("verify") || params.has("diocese") || params.get("tab") === "diocese") {
+      const isDirectDeepLink =
+        params.has("event") || 
+        params.has("cert") || 
+        params.has("verify") || 
+        params.has("diocese") || 
+        params.get("tab") === "diocese" ||
+        params.get("tab") === "certificates" ||
+        params.get("tab") === "certificados" ||
+        params.get("view") === "certificates" ||
+        params.get("view") === "student" ||
+        params.has("certEvent") ||
+        params.has("eventId") ||
+        params.has("certType") ||
+        params.has("unsubscribeEmail") ||
+        params.has("unsubscribe");
+
+      if (isDirectDeepLink) {
+        try {
+          localStorage.setItem("has_seen_welcome", "true");
+        } catch {}
         return false;
       }
     }
@@ -62,6 +81,19 @@ export default function App() {
     // Only access window parameters on component mount
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
+      if (
+        params.get("view") === "certificates" ||
+        params.get("tab") === "certificates" ||
+        params.get("tab") === "certificados" ||
+        params.get("view") === "student" ||
+        params.has("certEvent") ||
+        params.has("eventId") ||
+        params.has("certType") ||
+        params.has("unsubscribeEmail") ||
+        params.has("unsubscribe")
+      ) {
+        return "student";
+      }
       if (params.has("event")) {
         return "events";
       }

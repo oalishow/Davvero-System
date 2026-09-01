@@ -6,11 +6,31 @@ import type { Notification } from '../types';
 
 const NOTIF_CACHE_PREFIX = "notif_cache_";
 
-export function useNotifications(recipientId: string | null) {
+export function useNotifications(recipientInput: string | string[] | null) {
   const [notifications, setNotifications] = useState<Notification[]>([]);
   const [unreadCount, setUnreadCount] = useState(0);
   const [isAuthenticated, setIsAuthenticated] = useState(false);
   const [isOnline, setIsOnline] = useState(typeof window !== 'undefined' ? navigator.onLine : true);
+
+  // Normalizar identificadores do destinatário
+  const recipientIds: string[] = (() => {
+    const list: string[] = [];
+    if (Array.isArray(recipientInput)) {
+      recipientInput.forEach(id => {
+        if (id && typeof id === 'string' && id.trim()) {
+          list.push(id.trim());
+        }
+      });
+    } else if (typeof recipientInput === 'string' && recipientInput.trim()) {
+      list.push(recipientInput.trim());
+    }
+    if (!list.includes("todos")) {
+      list.push("todos");
+    }
+    return Array.from(new Set(list));
+  })();
+
+  const recipientKey = recipientIds.sort().join("_");
 
   // Monitorar conexão para sincronização
   useEffect(() => {
@@ -37,7 +57,7 @@ export function useNotifications(recipientId: string | null) {
   }, []);
 
   useEffect(() => {
-    if (!recipientId || !isAuthenticated) {
+    if (!isAuthenticated) {
       setNotifications([]);
       setUnreadCount(0);
       if (typeof window !== 'undefined' && 'clearAppBadge' in navigator) {
@@ -46,7 +66,7 @@ export function useNotifications(recipientId: string | null) {
       return;
     }
 
-    const cacheKey = `${NOTIF_CACHE_PREFIX}${recipientId}`;
+    const cacheKey = `${NOTIF_CACHE_PREFIX}${recipientKey}`;
     
     // Extracted logic to process and set notifications so we can reuse it
     const processNotifications = (rawNotifs: Notification[]) => {
@@ -104,9 +124,11 @@ export function useNotifications(recipientId: string | null) {
       }
     }
 
+    // Consulta Firestore com suporte a múltiplos identificadores do usuário + broadcast 'todos'
+    const queryIds = recipientIds.slice(0, 10); // Firestore 'in' limitation
     const q = query(
       collection(db, `artifacts/${appId}/public/data/notifications`),
-      where("recipientId", "in", [recipientId, "todos"])
+      where("recipientId", "in", queryIds)
     );
 
     let lastSnapshotDocs: Notification[] = [];
@@ -187,7 +209,7 @@ export function useNotifications(recipientId: string | null) {
         window.removeEventListener('davveroId_notifs_local_update', handleLocalUpdate);
       }
     };
-  }, [recipientId, isAuthenticated]);
+  }, [recipientKey, isAuthenticated]);
 
   return { notifications, unreadCount, isOnline };
 }

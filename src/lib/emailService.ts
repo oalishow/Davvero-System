@@ -218,12 +218,17 @@ export function getCompiledEmail({
   const bodyHtml = interpolateVariables(rawBody, mergedVars);
   const buttonText = interpolateVariables(rawButtonText, mergedVars);
 
+  const recipientEmail = vars.email;
+  const originUrl = typeof window !== 'undefined' ? window.location.origin : 'https://davvero.netlify.app';
+  const unsubscribeUrl = recipientEmail ? `${originUrl}/?view=student&tab=account&unsubscribeEmail=true&email=${encodeURIComponent(recipientEmail)}` : undefined;
+
   const fullHtml = generateEmailTemplate({
     title,
     preheader: customPreheader ? interpolateVariables(customPreheader, mergedVars) : undefined,
     contentHtml: bodyHtml,
     buttonText: buttonUrl ? buttonText : undefined,
     buttonUrl,
+    unsubscribeUrl,
     headerName: headerName,
     institutionName: instName,
     institutionColor: instColor,
@@ -279,7 +284,8 @@ export function generateEmailTemplate({
   institutionColor = '#0ea5e9',
   logoMode = 'davvero',
   customLogoUrl,
-  institutionLogo
+  institutionLogo,
+  unsubscribeUrl
 }: {
   title: string;
   preheader?: string;
@@ -292,6 +298,7 @@ export function generateEmailTemplate({
   logoMode?: 'davvero' | 'institution' | 'custom' | 'none';
   customLogoUrl?: string;
   institutionLogo?: string;
+  unsubscribeUrl?: string;
 }): string {
   // Gera o HTML do Logotipo
   let logoHtml = '';
@@ -387,7 +394,16 @@ export function generateEmailTemplate({
     
     <div class="footer">
       <p style="margin:0 0 6px;">Esta é uma mensagem automática enviada pelo <strong>${effectiveHeader}</strong>.</p>
-      <p style="margin:0;">Por favor, não responda diretamente a este e-mail.</p>
+      <p style="margin:0 0 ${unsubscribeUrl ? '10px' : '0'};">Por favor, não responda diretamente a este e-mail.</p>
+      ${unsubscribeUrl ? `
+        <div style="margin-top: 12px; padding-top: 10px; border-top: 1px dashed #cbd5e1; font-size: 11px; color: #94a3b8; line-height: 1.5;">
+          Não deseja mais receber estas notificações automáticas? 
+          <br />
+          <a href="${unsubscribeUrl}" style="color: #64748b; font-weight: 700; text-decoration: underline;" target="_blank">
+            Clique aqui para cancelar sua inscrição / desativar e-mails
+          </a>
+        </div>
+      ` : ''}
     </div>
   </div>
 </body>

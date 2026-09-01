@@ -127,14 +127,56 @@ export default function CertificateEditor({
   // Zoom state
   const [zoom, setZoom] = useState(0.75);
 
-  // Check if hours are missing
-  const certHours = type === "organizer" && event.organizationHours ? event.organizationHours : event.hours;
+  // Quick Hours state
+  const [quickHours, setQuickHours] = useState("");
+  const [isSavingQuickHours, setIsSavingQuickHours] = useState(false);
+  const [currentEventHours, setCurrentEventHours] = useState<number | null>(
+    (type === "organizer" ? event.organizationHours : event.hours) ?? null
+  );
+
   const hasHours =
-    certHours &&
-    String(certHours).trim() !== "" &&
-    String(certHours).toLowerCase() !== "null" &&
-    String(certHours).toLowerCase() !== "undefined" &&
-    Number(certHours) !== 0;
+    currentEventHours !== null &&
+    currentEventHours !== undefined &&
+    String(currentEventHours).trim() !== "" &&
+    String(currentEventHours).toLowerCase() !== "null" &&
+    String(currentEventHours).toLowerCase() !== "undefined" &&
+    Number(currentEventHours) > 0;
+
+  const handleQuickSaveHours = async () => {
+    const cleanStr = quickHours.trim().replace(',', '.').replace(/[^\d.]/g, '');
+    const num = parseFloat(cleanStr);
+    if (isNaN(num) || num <= 0) {
+      alert("Por favor informe um número válido de horas (ex: 10 ou 4.5).");
+      return;
+    }
+    setIsSavingQuickHours(true);
+    try {
+      const updateData = type === "organizer" ? { organizationHours: num } : { hours: num };
+      await updateEvent(event.id, updateData);
+      if (type === "organizer") {
+        event.organizationHours = num;
+      } else {
+        event.hours = num;
+      }
+      setCurrentEventHours(num);
+      
+      // Se o texto atual estiver vazio ou padrão, podemos sugerir o texto com a carga horária
+      if (!template.bodyText || template.bodyText.includes("carga horária")) {
+        const startStr = new Date(event.startDate).toLocaleDateString("pt-BR");
+        const endStr = event.endDate ? new Date(event.endDate).toLocaleDateString("pt-BR") : startStr;
+        const defaultUpdatedText = `Certificamos que [NOME DO ALUNO] ${type === "organizer" ? "atuou na organização do evento" : "participou com êxito do evento"} "${event.title}", realizado de ${startStr} a ${endStr}, totalizando a carga horária de ${num} horas.`;
+        setTemplate((prev) => ({
+          ...prev,
+          bodyText: defaultUpdatedText
+        }));
+      }
+    } catch (e) {
+      console.error("Erro ao salvar carga horária:", e);
+      alert("Erro ao salvar carga horária no evento.");
+    } finally {
+      setIsSavingQuickHours(false);
+    }
+  };
 
   // Load custom assets if exists
   useEffect(() => {
@@ -185,7 +227,7 @@ export default function CertificateEditor({
     try {
       const themeLabel = TEMPLATE_STYLES.find((t) => t.bg === template.bgStyle)?.name || "Clássico Imperial";
       const certRole = type === "organizer" ? "Membro da Equipe de Organização" : "Participação";
-      const hoursDesc = hasHours ? `Carga horária: ${certHours} horas.` : "Carga horária: Não especificada (NÃO inclua a palavra 'null').";
+      const hoursDesc = hasHours ? `Carga horária: ${currentEventHours} horas.` : "Carga horária: Não especificada (NÃO inclua a palavra 'null').";
 
       const prompt = `Você é um redator acadêmico e institucional sênior.
 Escreva O CORPO do texto de um Certificado de ${certRole} para o evento "${event.title}".
@@ -200,7 +242,7 @@ Instruções RIGOROSAS:
 1. Inicie diretamente com o texto do certificado (ex: "Certificamos que [NOME DO ALUNO]..."). Sem saudações ou títulos.
 2. Use a variável "[NOME DO ALUNO]" no lugar do nome do participante.
 3. Se desejar citar registro acadêmico, use "[RA DO ALUNO]".
-4. Se a carga horária foi informada (${hasHours ? certHours : 'não informada'}), cite ${hasHours ? `a carga horária de ${certHours} horas` : 'a participação com êxito sem citar horas'}. NUNCA escreva 'null' ou 'undefined'.
+4. Se a carga horária foi informada (${hasHours ? currentEventHours : 'não informada'}), cite ${hasHours ? `a carga horária de ${currentEventHours} horas` : 'a participação com êxito sem citar horas'}. NUNCA escreva 'null' ou 'undefined'.
 5. Não inclua assinaturas ou cabeçalhos. Apenas o parágrafo formal central.`;
 
       const res = await fetch("/api/gemini/generate", {
@@ -343,7 +385,7 @@ Instruções RIGOROSAS:
             ra: student.ra || ''
           },
           settings,
-          buttonUrl: `${originUrl}/?view=events&eventId=${event.id}`
+          buttonUrl: `${originUrl}/?view=student&tab=certificates&eventId=${event.id}&certType=${isOrganizerCert ? 'organizer' : 'participant'}`
         });
 
         await sendEmailNotification({
@@ -533,12 +575,41 @@ Instruções RIGOROSAS:
         </div>
 
         {/* ALERTA DE CARGA HORÁRIA SE NÃO INFORMADA */}
-        {!hasHours && (
-          <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900/50 px-4 sm:px-6 py-2.5 flex items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-300">
-            <div className="flex items-center gap-2">
+        {!hasHours ? (
+          <div className="bg-amber-50 dark:bg-amber-950/40 border-b border-amber-200 dark:border-amber-900/50 px-4 sm:px-6 py-2.5 flex flex-wrap items-center justify-between gap-3 text-xs text-amber-800 dark:text-amber-300">
+            <div className="flex items-center gap-2 max-w-xl">
               <AlertTriangle className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
               <span>
-                <strong>Aviso de Carga Horária:</strong> Este evento não possui carga horária registrada. O certificado será emitido sem o campo de horas (sem exibir &quot;null&quot;). Lembre-se que a definição de horas é fundamental para a validação acadêmica e aproveitamento de créditos pelos alunos.
+                <strong>Aviso de Carga Horária:</strong> Este evento não possui carga horária registrada. Você pode definir as horas agora:
+              </span>
+            </div>
+            <div className="flex items-center gap-2">
+              <input
+                type="number"
+                step="any"
+                min="0.5"
+                placeholder="Horas (Ex: 10)"
+                value={quickHours}
+                onChange={(e) => setQuickHours(e.target.value)}
+                className="w-28 px-3 py-1.5 text-xs rounded-xl border border-amber-300 dark:border-amber-700 bg-white dark:bg-slate-800 text-slate-800 dark:text-slate-100 outline-none focus:border-amber-500 font-bold"
+              />
+              <button
+                type="button"
+                disabled={isSavingQuickHours || !quickHours}
+                onClick={handleQuickSaveHours}
+                className="px-3.5 py-1.5 bg-amber-600 hover:bg-amber-700 disabled:opacity-50 text-white rounded-xl font-bold text-xs shadow-sm active:scale-95 transition-all flex items-center gap-1.5"
+              >
+                {isSavingQuickHours ? "Salvando..." : "Definir Horas"}
+              </button>
+            </div>
+          </div>
+        ) : (
+          <div className="bg-emerald-50 dark:bg-emerald-950/30 border-b border-emerald-200 dark:border-emerald-900/40 px-4 sm:px-6 py-2 flex items-center justify-between gap-3 text-xs text-emerald-800 dark:text-emerald-300">
+            <div className="flex items-center gap-2">
+              <CheckCircle className="w-4 h-4 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <span className="font-semibold">Carga Horária Registrada:</span>
+              <span className="font-black px-2 py-0.5 rounded-full bg-emerald-100 dark:bg-emerald-900/50 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700">
+                {currentEventHours} horas
               </span>
             </div>
           </div>

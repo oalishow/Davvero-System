@@ -183,12 +183,27 @@ export const testConnection = async () => {
   }
 };
 
-export const updateEventStatus = async (eventId: string, status: string) => {
+export const updateEventStatus = async (eventId: string, status: string, extraFields: Record<string, any> = {}) => {
   try {
     const eventRef = doc(db, `artifacts/${appId}/public/data/events`, eventId);
-    await updateDoc(eventRef, { status });
+    await updateDoc(eventRef, { status, ...extraFields });
   } catch (e) {
     console.error("Error updating event status: ", e);
+    throw e;
+  }
+};
+
+export const reopenEvent = async (eventId: string) => {
+  try {
+    const eventRef = doc(db, `artifacts/${appId}/public/data/events`, eventId);
+    await updateDoc(eventRef, {
+      status: "aberto",
+      manuallyReopened: true,
+      reopenedAt: new Date().toISOString()
+    });
+    console.log(`Event ${eventId} manually reopened.`);
+  } catch (e) {
+    console.error("Error reopening event: ", e);
     throw e;
   }
 };
@@ -242,28 +257,59 @@ export const permanentDeleteEvent = async (eventId: string) => {
   }
 };
 
-export const closeEvent = async (eventId: string) => {
-  try {
-    const { getDocs, query, where, collection, writeBatch } = await import("firebase/firestore");
-    await updateEventStatus(eventId, "encerrado");
+export interface CloseEventOptions {
+  releaseToAllRegistered?: boolean;
+  sendNotifications?: boolean;
+}
 
-    const qAttendances = query(
-      collection(db, `artifacts/${appId}/public/data/attendances`),
-      where("eventId", "==", eventId),
-      where("status", "==", "presente")
-    );
+export const closeEvent = async (eventId: string, options: CloseEventOptions = { releaseToAllRegistered: false, sendNotifications: true }) => {
+  try {
+    const { getDoc, getDocs, query, where, collection, writeBatch } = await import("firebase/firestore");
+    const eventRef = doc(db, `artifacts/${appId}/public/data/events`, eventId);
+    
+    // Obter dados do evento
+    const eventSnap = await getDoc(eventRef).catch(() => null);
+    const eventData = eventSnap?.data() as Event | undefined;
+
+    const shouldReleaseToAll = options.releaseToAllRegistered ?? Boolean(eventData?.allowAllRegisteredCertificates || eventData?.certificateReleaseMode === "all_registered");
+    const shouldNotify = options.sendNotifications ?? (eventData?.autoSendCertificatesOnClose !== false);
+
+    await updateDoc(eventRef, {
+      status: "encerrado",
+      manuallyReopened: false,
+      ...(options.releaseToAllRegistered !== undefined ? { allowAllRegisteredCertificates: options.releaseToAllRegistered } : {})
+    });
+
+    let qAttendances;
+    if (shouldReleaseToAll) {
+      qAttendances = query(
+        collection(db, `artifacts/${appId}/public/data/attendances`),
+        where("eventId", "==", eventId)
+      );
+    } else {
+      qAttendances = query(
+        collection(db, `artifacts/${appId}/public/data/attendances`),
+        where("eventId", "==", eventId),
+        where("status", "==", "presente")
+      );
+    }
+
     const docSnap = await getDocs(qAttendances).catch(() => null);
     if (docSnap && !docSnap.empty) {
       const batch = writeBatch(db);
       docSnap.docs.forEach((d) => {
-        batch.update(d.ref, { status: "apto_para_certificado" });
         const a: any = d.data();
-        createNotification({
-          recipientId: a.studentId,
-          title: "Certificado Disponível",
-          message: `Seu certificado está pronto para download.`,
-          type: "certificado",
-        }).catch(console.error);
+        if (a.status !== "cancelado") {
+          batch.update(d.ref, { status: "apto_para_certificado" });
+          if (shouldNotify) {
+            createNotification({
+              recipientId: a.studentId,
+              title: "Certificado Disponível",
+              message: `Seu certificado do evento "${eventData?.title || 'Acadêmico'}" está pronto para download.`,
+              type: "certificado",
+            }).catch(console.error);
+          }
+        }
       });
       await batch.commit();
     }

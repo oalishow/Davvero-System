@@ -21,7 +21,11 @@ import {
   Library,
   Bell,
   BellRing,
-  Eye
+  Eye,
+  Award,
+  Mail,
+  MailCheck,
+  MailX
 } from "lucide-react";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { motion, AnimatePresence } from "motion/react";
@@ -80,16 +84,6 @@ const AsyncCertificateRenderer = memo(
       const initialTemplate = isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate;
       if (!initialTemplate) return;
 
-      const needsAssets =
-        initialTemplate.hasCustomBg ||
-        initialTemplate.hasCustomLogo ||
-        initialTemplate.hasFajopaSignature ||
-        initialTemplate.hasRectorSignature ||
-        initialTemplate.hasSignature1 ||
-        initialTemplate.hasSignature2 ||
-        initialTemplate.hasSignature3;
-      if (!needsAssets) return;
-
       const fetchAssets = async () => {
         try {
           const assetDocId = isOrganizer
@@ -100,7 +94,7 @@ const AsyncCertificateRenderer = memo(
           );
           if (!isMounted) return;
 
-          if (snap.exists() && snap.data().data) {
+          if (snap.exists() && snap.data()?.data) {
             const assets = snap.data().data;
             setTemplate((prev) =>
               prev
@@ -132,13 +126,13 @@ const AsyncCertificateRenderer = memo(
                   }
                 : prev,
             );
-          } else if ((initialTemplate as any).hasCustomBg && !isOrganizer) {
+          } else if ((initialTemplate as any)?.hasCustomBg && !isOrganizer) {
             // Fallback to old bg doc
             const oldBgSnap = await getDoc(
               doc(db, ASSETS_DOC_PATH(appId, `cert_bg_${event.id}`)),
             );
             if (!isMounted) return;
-            if (oldBgSnap.exists() && oldBgSnap.data().data) {
+            if (oldBgSnap.exists() && oldBgSnap.data()?.data) {
               setTemplate((prev) =>
                 prev
                   ? { ...prev, backgroundImageUrl: oldBgSnap.data().data }
@@ -238,8 +232,52 @@ export default function StudentPortal({
   const [alphaCode, setAlphaCode] = useState("");
   const [isPrePinAnimation, setIsPrePinAnimation] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [pendingCertTarget, setPendingCertTarget] = useState<{
+    eventId: string;
+    type: "participant" | "organizer";
+  } | null>(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      const eventId = params.get("eventId") || params.get("certEvent");
+      const isCertAction =
+        params.get("tab") === "certificates" ||
+        params.get("tab") === "certificados" ||
+        params.get("view") === "certificates" ||
+        params.has("certType") ||
+        params.has("certEvent");
+      const certType =
+        params.get("certType") === "organizer" || params.get("type") === "organizer"
+          ? "organizer"
+          : "participant";
+      if (eventId && (isCertAction || params.has("certType") || params.has("eventId"))) {
+        const target = { eventId, type: certType as "participant" | "organizer" };
+        try {
+          sessionStorage.setItem("pending_cert_action", JSON.stringify(target));
+        } catch {}
+        return target;
+      }
+      const saved = sessionStorage.getItem("pending_cert_action");
+      if (saved) {
+        try {
+          return JSON.parse(saved);
+        } catch {}
+      }
+    }
+    return null;
+  });
+
   const [activeTab, setActiveTab] = useState<"id" | "events" | "certificates" | "academic" | "appointments" | "seminary_events" | "liturgy" | "account" | "biblioteca">(() => {
     if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (
+        params.get("tab") === "certificates" ||
+        params.get("tab") === "certificados" ||
+        params.get("view") === "certificates" ||
+        params.has("certEvent") ||
+        (params.has("eventId") && params.has("certType"))
+      ) {
+        return "certificates";
+      }
       const saved = sessionStorage.getItem("student_target_tab");
       if (saved) {
         sessionStorage.removeItem("student_target_tab");
@@ -427,6 +465,149 @@ export default function StudentPortal({
     }
   }, [member]);
 
+  useEffect(() => {
+    if (member && pendingCertTarget) {
+      let isMounted = true;
+      const triggerPreview = (targetEv: Event) => {
+        if (!isMounted) return;
+        setActiveTab("certificates");
+        setPreviewCertEvent({
+          event: targetEv,
+          type: pendingCertTarget.type
+        });
+        setPendingCertTarget(null);
+        if (typeof window !== "undefined") {
+          sessionStorage.removeItem("pending_cert_action");
+          try {
+            const url = new URL(window.location.href);
+            url.searchParams.delete("eventId");
+            url.searchParams.delete("certEvent");
+            url.searchParams.delete("certType");
+            window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ""));
+          } catch {}
+        }
+      };
+
+      if (allEvents.length > 0) {
+        const found = allEvents.find(e => e.id === pendingCertTarget.eventId);
+        if (found) {
+          triggerPreview(found);
+          return;
+        }
+      }
+
+      // If not yet in allEvents list, fetch directly from Firestore
+      const fetchDirectEvent = async () => {
+        try {
+          const evRef = doc(db, `artifacts/${appId}/public/data/events`, pendingCertTarget.eventId);
+          const evSnap = await getDoc(evRef);
+          if (evSnap.exists()) {
+            const evData = { ...evSnap.data(), id: evSnap.id } as Event;
+            triggerPreview(evData);
+          }
+        } catch (err) {
+          console.warn("Direct event lookup failed for pending certificate", err);
+        }
+      };
+      fetchDirectEvent();
+
+      return () => {
+        isMounted = false;
+      };
+    }
+  }, [member, pendingCertTarget, allEvents]);
+
+  const [isUpdatingEmailPref, setIsUpdatingEmailPref] = useState(false);
+
+  useEffect(() => {
+    if (typeof window !== "undefined") {
+      const params = new URLSearchParams(window.location.search);
+      if (params.get("unsubscribeEmail") === "true" || params.get("unsubscribe") === "email") {
+        const targetEmail = params.get("email");
+        
+        // Clean URL params
+        try {
+          const url = new URL(window.location.href);
+          url.searchParams.delete("unsubscribeEmail");
+          url.searchParams.delete("unsubscribe");
+          url.searchParams.delete("email");
+          window.history.replaceState({}, document.title, url.pathname + (url.search ? url.search : ""));
+        } catch {}
+
+        if (targetEmail) {
+          const processUnsub = async () => {
+            try {
+              const q = query(
+                collection(db, `artifacts/${appId}/public/data/students`),
+                where("email", "==", targetEmail.trim())
+              );
+              const snap = await getDocs(q);
+              if (!snap.empty) {
+                for (const docSnap of snap.docs) {
+                  await updateDoc(docSnap.ref, {
+                    emailNotificationsEnabled: false,
+                    emailUnsubscribedAt: new Date().toISOString()
+                  });
+                }
+              }
+              if (member && member.email?.toLowerCase().trim() === targetEmail.toLowerCase().trim()) {
+                const updated = { ...member, emailNotificationsEnabled: false, emailUnsubscribedAt: new Date().toISOString() };
+                setMember(updated);
+                try {
+                  localStorage.setItem("davvero_cached_member", JSON.stringify(updated));
+                } catch {}
+              }
+              playSound("pop");
+              showAlert(
+                `Inscrição cancelada com sucesso! O e-mail (${targetEmail}) foi desativado e não receberá mais notificações automáticas de certificados e comunicados. Você pode reativá-las a qualquer momento na aba Minha Conta.`,
+                { type: "info" }
+              );
+            } catch (e) {
+              console.warn("Falha ao cancelar inscrição:", e);
+            }
+          };
+          processUnsub();
+        }
+      }
+    }
+  }, [member]);
+
+  const handleToggleEmailNotifications = async () => {
+    if (!member) return;
+    setIsUpdatingEmailPref(true);
+    try {
+      const currentVal = member.emailNotificationsEnabled !== false; // default true
+      const newVal = !currentVal;
+      const docRef = doc(db, `artifacts/${appId}/public/data/students`, member.id);
+      await updateDoc(docRef, {
+        emailNotificationsEnabled: newVal,
+        ...(newVal ? {} : { emailUnsubscribedAt: new Date().toISOString() })
+      });
+      const updatedMember = {
+        ...member,
+        emailNotificationsEnabled: newVal,
+        ...(newVal ? {} : { emailUnsubscribedAt: new Date().toISOString() })
+      };
+      setMember(updatedMember);
+      try {
+        localStorage.setItem("davvero_cached_member", JSON.stringify(updatedMember));
+      } catch {}
+      playSound("success");
+      showAlert(
+        newVal
+          ? "Notificações por e-mail ativadas com sucesso! Você receberá avisos sobre certificados liberados e avisos acadêmicos."
+          : "Notificações por e-mail desativadas. Você não receberá mais comunicados automáticos por e-mail.",
+        { type: "success" }
+      );
+    } catch (err) {
+      console.error(err);
+      playSound("error");
+      showAlert("Erro ao atualizar preferência de e-mail.", { type: "error" });
+    } finally {
+      setIsUpdatingEmailPref(false);
+    }
+  };
+
   const formatDateTime = (dateStr: string | undefined) => {
     if (!dateStr) return "---";
     try {
@@ -485,8 +666,31 @@ export default function StudentPortal({
         throw new Error("Certificado não encontrado ou ainda em carregamento. Tente novamente.");
       }
 
-      // Small tick to ensure styles and fonts are painted
-      await new Promise((resolve) => setTimeout(resolve, 80));
+      // Ensure all images (logos, signatures, backgrounds) inside the certificate node are fully loaded and decoded
+      const imgElements = Array.from(node.querySelectorAll("img"));
+      await Promise.all(
+        imgElements.map((img) => {
+          if (img.complete && img.naturalWidth !== 0) {
+            return (img.decode ? img.decode() : Promise.resolve()).catch(() => Promise.resolve());
+          }
+          return new Promise<void>((resolve) => {
+            const onFinish = () => {
+              img.removeEventListener("load", onFinish);
+              img.removeEventListener("error", onFinish);
+              resolve();
+            };
+            img.addEventListener("load", onFinish);
+            img.addEventListener("error", onFinish);
+            setTimeout(onFinish, 1200); // 1.2s timeout fallback
+          });
+        })
+      );
+
+      // Ensure fonts and paint cycle
+      if (document.fonts && document.fonts.ready) {
+        await document.fonts.ready;
+      }
+      await new Promise((resolve) => setTimeout(resolve, 150));
 
       let canvas: HTMLCanvasElement;
       try {
@@ -502,6 +706,7 @@ export default function StudentPortal({
           useCORS: true,
           allowTaint: true,
           backgroundColor: null,
+          logging: false,
         });
       }
 
@@ -875,6 +1080,8 @@ export default function StudentPortal({
         setIsPrePinAnimation(false);
 
         localStorage.setItem(STUDENT_BOND_KEY, idToStore);
+        if (foundMember.id) localStorage.setItem("davveroId_student_doc_id", foundMember.id);
+        if (foundMember.ra) localStorage.setItem(STUDENT_TRACK_KEY, foundMember.ra);
       } else {
         setError("Identificação não encontrada. Verifique se o Código de Segurança, CPF ou RA estão corretos.");
       }
@@ -1126,6 +1333,8 @@ export default function StudentPortal({
     if (isOverrideMode) return;
     playSound('logout');
     localStorage.removeItem(STUDENT_BOND_KEY);
+    localStorage.removeItem(STUDENT_TRACK_KEY);
+    localStorage.removeItem("davveroId_student_doc_id");
     localStorage.removeItem(STUDENT_FALLBACK_PIN);
     localStorage.removeItem("student_biometric_credential_id");
     localStorage.removeItem("davveroId_student_identity"); // clear the specific key requested if its different
@@ -1474,7 +1683,7 @@ export default function StudentPortal({
             return (
               <div key={e.id} className="contents">
                 {hasPart && (
-                  <div id={`cert-node-part-${e.id}`} className="bg-white">
+                  <div className="bg-white">
                     <AsyncCertificateRenderer
                       event={{
                         ...e,
@@ -1485,7 +1694,7 @@ export default function StudentPortal({
                   </div>
                 )}
                 {hasOrg && (
-                  <div id={`cert-node-org-${e.id}`} className="bg-white">
+                  <div className="bg-white">
                     <AsyncCertificateRenderer
                       event={{
                         ...e,
@@ -2364,9 +2573,74 @@ export default function StudentPortal({
                      </div>
                   </div>
 
+                   <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700/50">
+                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-4 flex items-center gap-2">
+                       <Mail className="w-4 h-4 text-sky-500" /> Notificações por E-mail
+                    </h4>
+                    
+                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/50">
+                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
+                        <div className="text-center sm:text-left">
+                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
+                            E-mail Cadastrado: <span className="font-mono text-sky-600 dark:text-sky-400">{member?.email || 'Nenhum e-mail vinculado'}</span>
+                          </p>
+                          <div className="flex items-center justify-center sm:justify-start gap-2 mt-1.5">
+                            {member?.emailNotificationsEnabled === false ? (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">
+                                <MailX className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> E-mails Desativados (Opt-out)
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
+                                <MailCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Ativo para Receber Notificações
+                              </span>
+                            )}
+                          </div>
+                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
+                            {member?.emailNotificationsEnabled === false
+                              ? "Você optou por não receber e-mails automáticos. Novos certificados liberados e avisos do sistema não serão enviados para sua caixa de entrada."
+                              : "Você receberá avisos quando novos certificados forem liberados, atualizações de carteirinha e comunicados acadêmicos."}
+                          </p>
+                        </div>
+
+                        <div className="flex-shrink-0 w-full sm:w-auto">
+                          <button
+                            type="button"
+                            disabled={isUpdatingEmailPref || !member?.email}
+                            onClick={() => {
+                              playSound('pop');
+                              handleToggleEmailNotifications();
+                            }}
+                            className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition active:scale-95 whitespace-nowrap flex items-center justify-center gap-2 ${
+                              member?.emailNotificationsEnabled === false
+                                ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20"
+                                : "bg-slate-200 hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-700 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 text-slate-700 dark:text-slate-300"
+                            }`}
+                          >
+                            {isUpdatingEmailPref ? (
+                              <>
+                                <Loader2 className="w-4 h-4 animate-spin" />
+                                <span>Atualizando...</span>
+                              </>
+                            ) : member?.emailNotificationsEnabled === false ? (
+                              <>
+                                <MailCheck className="w-4 h-4" />
+                                <span>Ativar E-mails</span>
+                              </>
+                            ) : (
+                              <>
+                                <MailX className="w-4 h-4" />
+                                <span>Desativar E-mails</span>
+                              </>
+                            )}
+                          </button>
+                        </div>
+                      </div>
+                    </div>
+                  </div>
+
                   <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700/50">
                     <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-4 flex items-center gap-2">
-                       <BellRing className="w-4 h-4 text-sky-500" /> Serviço de Notificações
+                       <BellRing className="w-4 h-4 text-sky-500" /> Serviço de Notificações Push
                     </h4>
                     
                     <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/50">
@@ -2625,7 +2899,7 @@ export default function StudentPortal({
             return (
               <React.Fragment key={ev.id}>
                 {hasPart && (
-                  <div id={`cert-node-part-${ev.id}`}>
+                  <div>
                     <AsyncCertificateRenderer
                       event={ev}
                       member={member}
@@ -2634,7 +2908,7 @@ export default function StudentPortal({
                   </div>
                 )}
                 {hasOrg && (
-                  <div id={`cert-node-org-${ev.id}`}>
+                  <div>
                     <AsyncCertificateRenderer
                       event={ev}
                       member={member}
@@ -2665,8 +2939,22 @@ export default function StudentPortal({
         seu código único recebido da secretaria ou leia o seu QR code validado.
       </Modal>
 
+      {pendingCertTarget && (
+        <div className="w-full max-w-[320px] sm:max-w-sm mx-auto p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border-2 border-amber-300 dark:border-amber-700/60 shadow-md flex items-start gap-3">
+          <Award className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+          <div className="text-left">
+            <h4 className="font-black text-xs sm:text-sm text-amber-900 dark:text-amber-200">
+              Certificado Pronto para Download 📜
+            </h4>
+            <p className="text-[11px] text-amber-800/90 dark:text-amber-300/80 mt-1 leading-relaxed">
+              Faça login com seu CPF ou Código (ou use o <strong>Primeiro Acesso</strong>) para visualizar e baixar seu certificado automaticamente.
+            </p>
+          </div>
+        </div>
+      )}
+
       {!linkMode ? (
-        <div className="flex flex-col items-center w-full max-w-[320px] sm:max-w-sm mx-auto space-y-4 pt-10">
+        <div className="flex flex-col items-center w-full max-w-[320px] sm:max-w-sm mx-auto space-y-4 pt-4 sm:pt-6">
           <div className="w-24 h-24 bg-indigo-50 dark:bg-indigo-500/10 rounded-full flex justify-center items-center mb-4">
             <User className="w-12 h-12 text-indigo-500" />
           </div>
@@ -2678,7 +2966,7 @@ export default function StudentPortal({
             próprio celular.
           </p>
 
-          <div className="pt-8 w-full flex flex-col gap-3">
+          <div className="pt-6 w-full flex flex-col gap-3">
             <button
               onClick={() => {
                 playSound('click');
@@ -2701,10 +2989,13 @@ export default function StudentPortal({
               <span className="relative z-10 group-hover:text-slate-900 dark:group-hover:text-white transition-colors">Acompanhar Pedido</span>
             </button>
             <button
-              onClick={() => setShowRegisterTypeSelection(true)}
+              onClick={() => {
+                playSound('pop');
+                setShowPublicReq(true);
+              }}
               className="w-full btn-modern py-4 rounded-xl border-2 border-sky-300 dark:border-sky-500/30 text-sky-700 dark:text-sky-300 bg-sky-50 dark:bg-sky-500/10 hover:bg-sky-100 dark:hover:bg-sky-500/20 font-bold transition-all flex items-center justify-center gap-2"
             >
-              Criar Conta / Solicitar Nova ID
+              Primeiro Acesso? / Solicitar Nova ID
             </button>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 font-medium text-center leading-relaxed px-2 mt-4">
               Para solicitar o seu <strong className="text-slate-700 dark:text-slate-200">Primeiro Acesso</strong>, clique no botão acima e preencha os seus dados.
@@ -2842,7 +3133,7 @@ export default function StudentPortal({
                   </p>
                   {(error.includes("não encontrada") || error.includes("não encontrado")) && (
                     <button
-                      onClick={() => setShowRegisterTypeSelection(true)}
+                      onClick={() => setShowPublicReq(true)}
                       className="w-full py-2.5 px-4 bg-sky-100 hover:bg-sky-500 hover:text-white text-sky-700 text-xs font-bold rounded-xl border border-sky-200 transition-colors uppercase tracking-wider shadow-sm"
                     >
                       Deseja fazer o primeiro acesso?
@@ -2956,10 +3247,23 @@ export default function StudentPortal({
       {showPublicReq && (
         <PublicRequestModal
           onClose={() => setShowPublicReq(false)}
-          onSubmitSuccess={() => {
+          onSubmitSuccess={(createdMember) => {
             setShowPublicReq(false);
-            setShowRegistrationSuccessModal(true);
-            setAlphaCode(alphaCode); // Keep the input intact optionally
+            if (createdMember) {
+              if (createdMember.alphaCode) {
+                setAlphaCode(createdMember.alphaCode);
+              }
+              if (createdMember.isApproved || createdMember.status === "VALID") {
+                setMember(createdMember);
+                try {
+                  localStorage.setItem("davvero_cached_member", JSON.stringify(createdMember));
+                } catch {}
+              } else {
+                setShowRegistrationSuccessModal(true);
+              }
+            } else {
+              setShowRegistrationSuccessModal(true);
+            }
           }}
         />
       )}

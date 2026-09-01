@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { db, auth } from "../lib/firebase";
+import { db, auth, appId } from "../lib/firebase";
 import { doc, setDoc, deleteDoc } from "firebase/firestore";
 import {
   runAndLogNotificationDiagnostics,
@@ -251,8 +251,11 @@ export function usePushNotifications() {
           updatedAt: new Date().toISOString(),
         };
 
-        // Save in push_subscriptions
+        // Save in push_subscriptions and scoped app directory
         await setDoc(doc(db, "push_subscriptions", subId), record, { merge: true });
+        try {
+          await setDoc(doc(db, `artifacts/${appId}/public/data/push_subscriptions`, subId), record, { merge: true });
+        } catch (_) {}
         // Also sync in fcm_tokens for backward compatibility
         await setDoc(
           doc(db, "fcm_tokens", subId),

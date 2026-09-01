@@ -51,6 +51,7 @@ export default function AppointmentsPanel({ member }: AppointmentsPanelProps) {
         const studMap: Record<string, Member> = {};
         const allStudentsList: Member[] = [];
         studentSnap.forEach(doc => { 
+          if (doc.id.startsWith('_')) return;
           const mem = { ...doc.data(), id: doc.id } as Member;
           studMap[doc.id] = mem; 
           allStudentsList.push(mem);

@@ -326,9 +326,9 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     const q = query(collection(db, `artifacts/${appId}/public/data/students`));
     const unsub = onSnapshot(q, (snapshot) => {
-      const members = snapshot.docs.map(
-        (d) => ({ id: d.id, ...d.data() }) as Member,
-      );
+      const members = snapshot.docs
+        .filter((d) => !d.id.startsWith('_') && Boolean(d.data()?.name && String(d.data()?.name).trim()))
+        .map((d) => ({ id: d.id, ...d.data() }) as Member);
       setAllMembers(members);
       loadDashboardStats(members);
     });

@@ -20,6 +20,7 @@ import { QRCodeCanvas } from "qrcode.react";
 import { useSettings } from "../context/SettingsContext";
 import { useDialog } from "../context/DialogContext";
 import { DEFAULT_PUBLIC_URL } from "../lib/constants";
+import DavveroLogo from "./DavveroLogo";
 import type { Event } from "../types";
 
 interface EventQrCodeModalProps {
@@ -272,13 +273,17 @@ export default function EventQrCodeModal({
 
             {/* App / Event Header */}
             <div className="flex flex-col items-center justify-center pt-2 mb-2 w-full text-center">
-              <img
-                src={settings.instLogo || "/icon.svg"}
-                alt="DAVVERO System"
-                className="h-12 sm:h-14 object-contain mb-1.5 print:h-11 rounded-xl mx-auto block"
-              />
+              <div className="h-12 sm:h-14 w-auto flex items-center justify-center mb-1.5 print:h-11 mx-auto">
+                <DavveroLogo
+                  src={settings.instLogo}
+                  alt={settings.instName || "DAVVERO System"}
+                  className="h-12 sm:h-14 object-contain print:h-11 rounded-xl mx-auto block"
+                  iconClassName="w-12 h-12 text-sky-600"
+                  color={settings.instColor || "#0284c7"}
+                />
+              </div>
               <p className="text-xs font-black tracking-widest uppercase text-slate-800 text-center">
-                DAVVERO System
+                {settings.instName || "DAVVERO System"}
               </p>
               <div className="flex items-center justify-center gap-1.5 mt-0.5">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-sky-100 text-sky-700 print:border print:border-sky-200">
@@ -424,7 +429,7 @@ export default function EventQrCodeModal({
 
             {/* Footer Notice */}
             <div className="mt-2 pt-2 border-t border-slate-200 text-[10px] text-slate-500 font-medium w-full flex flex-col sm:flex-row justify-between items-center gap-1 text-center">
-              <span>DAVVERO System • Credenciamento Acadêmico</span>
+              <span>{settings.instName || "DAVVERO System"} • Credenciamento Acadêmico</span>
               <span>Acesso Rápido via QR Code</span>
             </div>
           </div>
