@@ -93,7 +93,7 @@ registerRoute(
 self.addEventListener("push", (event: any) => {
   if (!event.data) return;
 
-  let data = { title: "DAVVERO System", body: "Você recebeu uma nova notificação.", url: "/" };
+  let data: any = { title: "DAVVERO System", body: "Você recebeu uma nova notificação.", url: "/" };
   
   try {
     const parsedData = event.data.json();

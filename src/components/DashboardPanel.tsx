@@ -11,7 +11,7 @@ import {
 import { 
   Users, Calendar, Activity, Loader2, TrendingUp, UserCheck, Shield, Printer,
   QrCode, Eye, Database, Radio, RefreshCw, Smartphone, Laptop, CheckCircle2,
-  Clock, Award, MessageSquare, Car, Server, ArrowUpRight, Sparkles
+  Clock, Award, Bell, Car, Server, ArrowUpRight, Sparkles, BookOpen
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -31,42 +31,118 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
   const [stats, setStats] = useState<{
     totalMembers: number;
     activeMembers: number;
-    totalAppointments: number;
     totalEvents: number;
+    activeEvents: number;
     totalAttendances: number;
-    totalMuralPosts: number;
+    totalCertificates: number;
+    totalAcademicHours: number;
+    totalPushDevices: number;
+    totalNotifications: number;
     totalDobloLogs: number;
     peakUsageDate: string;
     peakUsageCount: number;
     rolesDistribution: { name: string; value: number }[];
     seminaryDistribution: { name: string; value: number }[];
-    recentActivity: { date: string; membersAdded: number; events: number; appointments: number }[];
+    recentActivity: { date: string; membersAdded: number; events: number; attendances: number }[];
   } | null>(null);
 
   const fetchDashboardData = useCallback(async (isManual = false) => {
     try {
       if (isManual) setRefreshing(true);
       
-      // 1. Fetch appointments
-      const appointmentsQuery = query(collection(db, `artifacts/${appId}/public/data/appointments`));
-      const appointmentsSnapshot = await getDocs(appointmentsQuery);
-
-      // 2. Fetch events
+      // 1. Fetch events
       const eventsQuery = query(collection(db, `artifacts/${appId}/public/data/events`));
       const eventsSnapshot = await getDocs(eventsQuery);
+      let totalEvts = 0;
+      let activeEvts = 0;
+      const eventHoursMap: Record<string, number> = {};
 
-      // 3. Fetch attendances count
+      eventsSnapshot.forEach((doc) => {
+        totalEvts++;
+        const data = doc.data();
+        if (data.status !== "closed" && data.status !== "cancelled") {
+          activeEvts++;
+        }
+        const hours = Number(data.workloadHours || data.workload || data.hours || 0);
+        if (hours > 0) {
+          eventHoursMap[doc.id] = hours;
+        }
+      });
+
+      // 2. Fetch attendances count & compute certificates and academic hours
       let attendancesCount = 0;
+      let validCertificatesCount = 0;
+      let totalAccumulatedHours = 0;
+      const dateCounts: Record<string, { members: number; events: number; attendances: number }> = {};
+
+      const trackDate = (dateStr: string, type: 'members' | 'events' | 'attendances') => {
+        if (dateStr === 'Desconhecido') return;
+        if (!dateCounts[dateStr]) {
+          dateCounts[dateStr] = { members: 0, events: 0, attendances: 0 };
+        }
+        dateCounts[dateStr][type]++;
+      };
+
       try {
         const attSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/attendances`));
         attendancesCount = attSnap.size;
+        attSnap.forEach((doc) => {
+          const data = doc.data();
+          if (data.status === "present" || data.status === "confirmed" || !data.status) {
+            validCertificatesCount++;
+            if (data.eventId && eventHoursMap[data.eventId]) {
+              totalAccumulatedHours += eventHoursMap[data.eventId];
+            } else if (data.hours) {
+              totalAccumulatedHours += Number(data.hours);
+            }
+          }
+
+          let d = 'Desconhecido';
+          if (data.createdAt || data.checkInTime || data.timestamp) {
+            const rawDate = data.createdAt || data.checkInTime || data.timestamp;
+            try {
+              if (rawDate?.toDate && typeof rawDate.toDate === 'function') {
+                d = rawDate.toDate().toISOString().split('T')[0];
+              } else if (rawDate?.seconds) {
+                d = new Date(rawDate.seconds * 1000).toISOString().split('T')[0];
+              } else if (typeof rawDate === 'string' || typeof rawDate === 'number') {
+                d = new Date(rawDate).toISOString().split('T')[0];
+              }
+            } catch (err) {}
+          }
+          trackDate(d, 'attendances');
+        });
       } catch (e) {}
 
-      // 4. Fetch mural posts count
-      let muralCount = 0;
+      // 3. Fetch push subscriptions (connected devices)
+      let pushDevicesCount = 0;
       try {
-        const muralSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/mural_posts`));
-        muralCount = muralSnap.size;
+        const [pushSnap, fcmSnap] = await Promise.all([
+          getDocs(collection(db, "push_subscriptions")).catch(() => null),
+          getDocs(collection(db, "fcm_tokens")).catch(() => null),
+        ]);
+        const endpoints = new Set<string>();
+        if (pushSnap) {
+          pushSnap.docs.forEach(d => {
+            const data = d.data();
+            if (data.endpoint) endpoints.add(data.endpoint);
+          });
+        }
+        if (fcmSnap) {
+          fcmSnap.docs.forEach(d => {
+            const data = d.data();
+            if (data.endpoint) endpoints.add(data.endpoint);
+            else if (data.token) endpoints.add(data.token);
+          });
+        }
+        pushDevicesCount = Math.max(endpoints.size, pushSnap?.size || 0);
+      } catch (e) {}
+
+      // 4. Fetch notifications count
+      let notificationsCount = 0;
+      try {
+        const notifSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/notifications`));
+        notificationsCount = notifSnap.size;
       } catch (e) {}
 
       // 5. Fetch doblo logs count
@@ -80,15 +156,6 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
       let active = 0;
       const roleCounts: Record<string, number> = {};
       const seminaryCounts: Record<string, number> = {};
-      const dateCounts: Record<string, { members: number; events: number; appointments: number }> = {};
-
-      const trackDate = (dateStr: string, type: 'members' | 'events' | 'appointments') => {
-        if (dateStr === 'Desconhecido') return;
-        if (!dateCounts[dateStr]) {
-          dateCounts[dateStr] = { members: 0, events: 0, appointments: 0 };
-        }
-        dateCounts[dateStr][type]++;
-      };
 
       allMembers.forEach((data) => {
         if (data.isTrash) return;
@@ -121,28 +188,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         trackDate(dateAdded, 'members');
       });
 
-      let totalAppts = 0;
-      appointmentsSnapshot.forEach((doc) => {
-        totalAppts++;
-        const data = doc.data();
-        let d = 'Desconhecido';
-        if (data.createdAt) {
-          try {
-            if (data.createdAt?.toDate && typeof data.createdAt.toDate === 'function') {
-              d = data.createdAt.toDate().toISOString().split('T')[0];
-            } else if (data.createdAt?.seconds) {
-              d = new Date(data.createdAt.seconds * 1000).toISOString().split('T')[0];
-            } else if (typeof data.createdAt === 'string' || typeof data.createdAt === 'number') {
-              d = new Date(data.createdAt).toISOString().split('T')[0];
-            }
-          } catch (err) {}
-        }
-        trackDate(d, 'appointments');
-      });
-
-      let totalEvts = 0;
       eventsSnapshot.forEach((doc) => {
-        totalEvts++;
         const data = doc.data();
         let d = 'Desconhecido';
         if (data.createdAt) {
@@ -168,13 +214,13 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         .sort((a, b) => b.value - a.value);
 
       const recentActivity = Object.entries(dateCounts)
-        .map(([date, counts]) => ({ date, membersAdded: counts.members, events: counts.events, appointments: counts.appointments }))
+        .map(([date, counts]) => ({ date, membersAdded: counts.members, events: counts.events, attendances: counts.attendances }))
         .sort((a, b) => a.date.localeCompare(b.date));
 
       let peakDate = 'N/A';
       let peakVal = 0;
       recentActivity.forEach(day => {
-        const sum = day.appointments + day.events + day.membersAdded;
+        const sum = day.attendances + day.events + day.membersAdded;
         if (sum > peakVal) {
           peakVal = sum;
           peakDate = day.date;
@@ -184,10 +230,13 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
       setStats({
         totalMembers: total,
         activeMembers: active,
-        totalAppointments: totalAppts,
         totalEvents: totalEvts,
+        activeEvents: activeEvts,
         totalAttendances: attendancesCount,
-        totalMuralPosts: muralCount,
+        totalCertificates: validCertificatesCount,
+        totalAcademicHours: totalAccumulatedHours,
+        totalPushDevices: pushDevicesCount,
+        totalNotifications: notificationsCount,
         totalDobloLogs: dobloCount,
         peakUsageDate: peakDate,
         peakUsageCount: peakVal,
@@ -197,7 +246,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
       });
 
       // 6. Fetch Telemetry Stats
-      const teleData = await getFullTelemetryData(total, totalEvts, totalAppts);
+      const teleData = await getFullTelemetryData(total, totalEvts, validCertificatesCount);
       setTelemetry(teleData);
       setLastRefreshedAt(new Date());
 
@@ -500,7 +549,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         </motion.div>
       </div>
 
-      {/* --- CARDS DE OPERAÇÃO GERAL (Membros, Eventos, Presenças, Agendamentos, etc.) --- */}
+      {/* --- CARDS DE OPERAÇÃO GERAL (Membros, Eventos, Presenças, Certificados, Push, Doblò) --- */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-6 gap-3 sm:gap-4">
         {/* Total Cadastros */}
         <div className="bg-white dark:bg-slate-800/40 rounded-2xl p-4 ring-1 ring-slate-100 dark:ring-slate-700/50 shadow-sm flex flex-col justify-between">
@@ -525,7 +574,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           <div className="mt-2">
             <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalEvents}</p>
             <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              Atividades cadastradas
+              {stats.activeEvents} em andamento / ativos
             </p>
           </div>
         </div>
@@ -544,30 +593,30 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           </div>
         </div>
 
-        {/* Agendamentos */}
+        {/* Certificados & Horas Acadêmicas */}
         <div className="bg-white dark:bg-slate-800/40 rounded-2xl p-4 ring-1 ring-slate-100 dark:ring-slate-700/50 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase text-slate-400">Atendimentos</span>
-            <Clock className="w-4 h-4 text-amber-500" />
+            <span className="text-[10px] font-black uppercase text-slate-400">Certificados</span>
+            <Award className="w-4 h-4 text-amber-500" />
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalAppointments}</p>
-            <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              Slots e horários
+            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalCertificates}</p>
+            <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
+              {stats.totalAcademicHours}h complementares
             </p>
           </div>
         </div>
 
-        {/* Mural & Comunidade */}
+        {/* Dispositivos Push & Notificações */}
         <div className="bg-white dark:bg-slate-800/40 rounded-2xl p-4 ring-1 ring-slate-100 dark:ring-slate-700/50 shadow-sm flex flex-col justify-between">
           <div className="flex items-center justify-between">
-            <span className="text-[10px] font-black uppercase text-slate-400">Mural</span>
-            <MessageSquare className="w-4 h-4 text-violet-500" />
+            <span className="text-[10px] font-black uppercase text-slate-400">Push & Alertas</span>
+            <Bell className="w-4 h-4 text-violet-500" />
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalMuralPosts}</p>
+            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalPushDevices}</p>
             <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              Posts da comunidade
+              {stats.totalNotifications > 0 ? `${stats.totalNotifications} disparos efetuados` : 'Aparelhos conectados'}
             </p>
           </div>
         </div>

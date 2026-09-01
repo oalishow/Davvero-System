@@ -229,7 +229,7 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
 export const getFullTelemetryData = async (
   totalMembers: number = 0,
   totalEvents: number = 0,
-  totalAppointments: number = 0
+  totalCertificates: number = 0
 ): Promise<TelemetryStats> => {
   const statsDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
   const today = getTodayKey();
@@ -353,7 +353,7 @@ export const getFullTelemetryData = async (
   } catch (err) {}
 
   // Calculate realistic aggregate Reads & Writes
-  const estimatedStoredDocs = totalMembers + totalEvents + totalAppointments + totalAttendancesCount + 15;
+  const estimatedStoredDocs = totalMembers + totalEvents + totalCertificates + totalAttendancesCount + 15;
   const recordedReads = (globalData.totalAppAccesses || 1) * 8 + sessionReads;
   const recordedWrites = (totalMembers * 2) + (totalEvents * 2) + totalAttendancesCount + (globalData.totalQrScans || 0) + sessionWrites;
 
