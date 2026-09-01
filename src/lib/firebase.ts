@@ -260,6 +260,7 @@ export const permanentDeleteEvent = async (eventId: string) => {
 export interface CloseEventOptions {
   releaseToAllRegistered?: boolean;
   sendNotifications?: boolean;
+  settings?: any;
 }
 
 export const closeEvent = async (eventId: string, options: CloseEventOptions = { releaseToAllRegistered: false, sendNotifications: true }) => {
@@ -297,10 +298,15 @@ export const closeEvent = async (eventId: string, options: CloseEventOptions = {
     const docSnap = await getDocs(qAttendances).catch(() => null);
     if (docSnap && !docSnap.empty) {
       const batch = writeBatch(db);
+      const eligibleStudentIds: string[] = [];
+
       docSnap.docs.forEach((d) => {
         const a: any = d.data();
         if (a.status !== "cancelado") {
           batch.update(d.ref, { status: "apto_para_certificado" });
+          if (a.studentId) {
+            eligibleStudentIds.push(a.studentId);
+          }
           if (shouldNotify) {
             createNotification({
               recipientId: a.studentId,
@@ -312,6 +318,100 @@ export const closeEvent = async (eventId: string, options: CloseEventOptions = {
         }
       });
       await batch.commit();
+
+      // Disparar notificações Push e E-mails em massa se habilitado
+      if (shouldNotify && eligibleStudentIds.length > 0) {
+        (async () => {
+          try {
+            // 1. WebPush Notifications
+            const targetSubscriptions: any[] = [];
+            try {
+              const subsSnap = await getDocs(collection(db, "push_subscriptions")).catch(() => null);
+              if (subsSnap && !subsSnap.empty) {
+                subsSnap.docs.forEach((d) => {
+                  const data = d.data();
+                  if (data?.subscription?.endpoint && eligibleStudentIds.includes(data.userId)) {
+                    targetSubscriptions.push(data.subscription);
+                  }
+                });
+              }
+
+              const fcmSnap = await getDocs(collection(db, "fcm_tokens")).catch(() => null);
+              if (fcmSnap && !fcmSnap.empty) {
+                fcmSnap.docs.forEach((d) => {
+                  const data = d.data();
+                  if (data?.subscription?.endpoint && eligibleStudentIds.includes(data.userId)) {
+                    if (!targetSubscriptions.some((s) => s.endpoint === data.subscription.endpoint)) {
+                      targetSubscriptions.push(data.subscription);
+                    }
+                  }
+                });
+              }
+            } catch (pErr) {
+              console.warn("[closeEvent] Erro ao carregar subscrições de push:", pErr);
+            }
+
+            if (targetSubscriptions.length > 0) {
+              fetch("/api/push/broadcast", {
+                method: "POST",
+                headers: { "Content-Type": "application/json" },
+                body: JSON.stringify({
+                  title: "Certificado Disponível 📜",
+                  message: `Seu certificado do evento "${eventData?.title || 'Acadêmico'}" já está liberado para emissão no sistema!`,
+                  url: "/?view=student&tab=certificates",
+                  subscriptions: targetSubscriptions,
+                }),
+              }).catch((e) => console.warn("[closeEvent] Falha ao enviar WebPush:", e));
+            }
+
+            // 2. Disparo de E-mails aos participantes
+            const { getCompiledEmail, sendEmailNotification } = await import("./emailService");
+            const studentsSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/students`)).catch(() => null);
+            if (studentsSnap && !studentsSnap.empty) {
+              const studentsMap = new Map<string, any>();
+              studentsSnap.docs.forEach((doc) => {
+                if (!doc.id.startsWith("_")) {
+                  studentsMap.set(doc.id, doc.data());
+                }
+              });
+
+              const originUrl = typeof window !== "undefined" ? window.location.origin : "https://davvero.netlify.app";
+              const certHours = eventData?.hours ? `${eventData.hours}h` : "conforme regulamento";
+
+              for (const studentId of eligibleStudentIds) {
+                const student = studentsMap.get(studentId);
+                if (student?.email && student.email.includes("@")) {
+                  const compiled = getCompiledEmail({
+                    templateKey: "certificateAvailableAttendee",
+                    customTemplates: options.settings?.emailTemplates,
+                    vars: {
+                      name: student.name || "Participante",
+                      eventTitle: eventData?.title || "Evento Acadêmico",
+                      eventDate: eventData?.startDate ? new Date(eventData.startDate + "T12:00:00").toLocaleDateString("pt-BR") : "Data do Evento",
+                      hours: certHours,
+                      email: student.email,
+                      ra: student.ra || "",
+                    },
+                    settings: options.settings,
+                    buttonUrl: `${originUrl}/?view=student&tab=certificates&eventId=${eventId}`,
+                  });
+
+                  await sendEmailNotification(
+                    {
+                      to: student.email,
+                      subject: compiled.subject,
+                      html: compiled.fullHtml,
+                    },
+                    options.settings?.smtpConfig
+                  ).catch((emailErr) => console.warn(`[closeEvent] Falha ao enviar email para ${student.email}:`, emailErr));
+                }
+              }
+            }
+          } catch (notifErr) {
+            console.error("[closeEvent] Erro no processamento de notificações de encerramento:", notifErr);
+          }
+        })();
+      }
     }
   } catch (e) {
     console.error("Error closing event: ", e);

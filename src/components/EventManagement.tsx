@@ -1361,6 +1361,7 @@ export default function EventManagement({
                     await closeEvent(closingEventModal.event.id, {
                       releaseToAllRegistered: closingEventModal.releaseToAll,
                       sendNotifications: closingEventModal.sendNotifications,
+                      settings: settings,
                     });
                     setClosingEventModal(null);
                     showAlert("Evento encerrado com sucesso! Os certificados foram processados.", { type: "success" });

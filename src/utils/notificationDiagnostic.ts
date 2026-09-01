@@ -197,7 +197,7 @@ export async function ensureActiveServiceWorker(): Promise<ServiceWorkerRegistra
 
   if (!reg) {
     try {
-      reg = await navigator.serviceWorker.register("/firebase-messaging-sw.js", { scope: "/" });
+      reg = await navigator.serviceWorker.register("/service-worker.js", { scope: "/" });
     } catch (e) {
       console.warn("[ensureActiveServiceWorker] Tentativa de registro:", e);
     }

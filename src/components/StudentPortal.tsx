@@ -106,6 +106,9 @@ const AsyncCertificateRenderer = memo(
                     ...(assets.logoUrl && {
                       logoUrl: assets.logoUrl,
                     }),
+                    ...(assets.logo2Url && {
+                      logo2Url: assets.logo2Url,
+                    }),
                     ...(assets.fajopaDirectorSignatureUrl && {
                       fajopaDirectorSignatureUrl:
                         assets.fajopaDirectorSignatureUrl,

@@ -83,6 +83,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     // Signatures configuration
     const sigHeight = template.signatureSize || 65;
     const sigOffsetY = template.signatureOffsetY || 0;
+    const sigLineGap = template.signatureLineGap ?? -4;
     const sigDistributionClass = 
       template.signaturePosition === 'center' ? 'justify-center gap-16' :
       template.signaturePosition === 'left' ? 'justify-start gap-12' :
@@ -97,7 +98,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
 
     // Event Logo 2 configuration (Secondary Logo)
     const logo2Source = template.logo2Url;
-    const showLogo2 = template.showLogo2 && Boolean(logo2Source);
+    const showLogo2 = (template.showLogo2 ?? true) && Boolean(logo2Source);
     const logo2Height = template.logo2Size || 60;
     const logo2Pos = template.logo2Position || "top-right";
 
@@ -105,9 +106,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     const bgOpacity = typeof template.backgroundOpacity === 'number' ? template.backgroundOpacity / 100 : 1;
 
     // Institution Address & Contact
-    const instAddress = template.institutionAddress ?? (template.showInstitutionFooter !== false ? settings.instAddress : undefined);
-    const instEmail = template.institutionEmail ?? (template.showInstitutionFooter !== false ? settings.instEmail : undefined);
+    const instAddress = template.institutionAddress !== undefined ? template.institutionAddress : (template.showInstitutionFooter !== false ? settings.instAddress : undefined);
+    const instEmail = template.institutionEmail !== undefined ? template.institutionEmail : (template.showInstitutionFooter !== false ? settings.instEmail : undefined);
     const showInstFooter = template.showInstitutionFooter ?? Boolean(instAddress || instEmail);
+    const instFooterOffsetY = template.institutionFooterOffsetY || 0;
 
     // Design Themes Library
     const themes: Record<string, { bg: string; border: React.ReactNode; titleColor: string; subtitleColor: string; defaultTextStyle: string; signatureLineColor: string; nameColor: string; roleColor: string; watermarkColor: string }> = {
@@ -488,14 +490,17 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           {showFajopaDirector && (
             <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
               <div 
-                className="w-full flex items-end justify-center mb-1.5"
-                style={{ height: `${sigHeight}px` }}
+                className="w-full flex items-end justify-center"
+                style={{ 
+                  height: `${sigHeight}px`,
+                  marginBottom: `${sigLineGap}px`
+                }}
               >
                 {fajopaSigUrl ? (
                   <img 
                     src={fajopaSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
-                    className="max-w-[220px] object-contain" 
+                    className="max-w-[220px] object-contain transition-all" 
                     crossOrigin="anonymous" 
                     alt="Assinatura Diretor" 
                   />
@@ -517,14 +522,17 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           {showSeminarRector && (
             <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
               <div 
-                className="w-full flex items-end justify-center mb-1.5"
-                style={{ height: `${sigHeight}px` }}
+                className="w-full flex items-end justify-center"
+                style={{ 
+                  height: `${sigHeight}px`,
+                  marginBottom: `${sigLineGap}px`
+                }}
               >
                 {rectorSigUrl ? (
                   <img 
                     src={rectorSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
-                    className="max-w-[220px] object-contain" 
+                    className="max-w-[220px] object-contain transition-all" 
                     crossOrigin="anonymous" 
                     alt="Assinatura Reitor" 
                   />
@@ -549,14 +557,17 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
               {showSig1 && (
                 <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
                   <div 
-                    className="w-full flex items-end justify-center mb-1.5"
-                    style={{ height: `${sigHeight}px` }}
+                    className="w-full flex items-end justify-center"
+                    style={{ 
+                      height: `${sigHeight}px`,
+                      marginBottom: `${sigLineGap}px`
+                    }}
                   >
                     {sig1Url ? (
                       <img 
                         src={sig1Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain" 
+                        className="max-w-[220px] object-contain transition-all" 
                         crossOrigin="anonymous" 
                         alt="Assinatura Responsável 1" 
                       />
@@ -578,14 +589,17 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
               {showSig2 && (
                 <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
                   <div 
-                    className="w-full flex items-end justify-center mb-1.5"
-                    style={{ height: `${sigHeight}px` }}
+                    className="w-full flex items-end justify-center"
+                    style={{ 
+                      height: `${sigHeight}px`,
+                      marginBottom: `${sigLineGap}px`
+                    }}
                   >
                     {sig2Url ? (
                       <img 
                         src={sig2Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain" 
+                        className="max-w-[220px] object-contain transition-all" 
                         crossOrigin="anonymous" 
                         alt="Assinatura Responsável 2" 
                       />
@@ -607,14 +621,17 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
               {showSig3 && (
                 <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
                   <div 
-                    className="w-full flex items-end justify-center mb-1.5"
-                    style={{ height: `${sigHeight}px` }}
+                    className="w-full flex items-end justify-center"
+                    style={{ 
+                      height: `${sigHeight}px`,
+                      marginBottom: `${sigLineGap}px`
+                    }}
                   >
                     {sig3Url ? (
                       <img 
                         src={sig3Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain" 
+                        className="max-w-[220px] object-contain transition-all" 
                         crossOrigin="anonymous" 
                         alt="Assinatura Responsável 3" 
                       />
@@ -651,9 +668,12 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           </div>
         </div>
 
-        {/* Center-Bottom: Institution Address & Contact (Clean, discreet & official) */}
+        {/* Center-Bottom: Institution Address & Contact (Clean, discreet & official with adjustable vertical offset) */}
         {showInstFooter && (instAddress || instEmail) && (
-          <div className="absolute bottom-4 inset-x-0 mx-auto max-w-[620px] text-center z-20 pointer-events-none px-4">
+          <div 
+            className="absolute inset-x-0 mx-auto max-w-[640px] text-center z-20 pointer-events-none px-4 transition-all"
+            style={{ bottom: `${16 + instFooterOffsetY}px` }}
+          >
             <p className={`text-[10px] leading-tight font-medium tracking-normal ${template.bgStyle === 'theme-solemn' ? 'text-slate-400/90' : 'text-slate-600/90'}`}>
               {instAddress && <span>{instAddress}</span>}
               {instAddress && instEmail && <span className="mx-1.5 opacity-60">•</span>}

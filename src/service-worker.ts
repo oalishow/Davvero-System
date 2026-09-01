@@ -78,10 +78,22 @@ registerRoute(
 );
 
 self.addEventListener("push", (event: any) => {
-  const data = event.data ? event.data.json() : { title: "Nova Notificação", body: "Você recebeu uma mensagem." };
+  if (!event.data) return;
+
+  let data = { title: "DAVVERO System", body: "Você recebeu uma nova notificação.", url: "/" };
+  
+  try {
+    const parsedData = event.data.json();
+    data = { ...data, ...parsedData };
+  } catch (err) {
+    const textData = event.data.text();
+    if (textData) {
+      data.body = textData;
+    }
+  }
 
   const options = {
-    body: data.body,
+    body: data.body || data.message || "Nova notificação recebida",
     icon: "/icon-192.png",
     badge: "/icon-192.png",
     vibrate: [100, 50, 100],
@@ -91,7 +103,7 @@ self.addEventListener("push", (event: any) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title, options)
+    self.registration.showNotification(data.title || "DAVVERO System", options)
   );
 });
 

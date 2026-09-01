@@ -117,6 +117,7 @@ export interface CertificateTemplate {
   institutionAddress?: string; // ex: "Av. Tiradentes, 998 - Centro"
   institutionEmail?: string; // ex: "contato@fajopa.edu.br"
   showInstitutionFooter?: boolean;
+  institutionFooterOffsetY?: number; // -15px to 45px (subir ou descer o rodapé)
   
   fontSize?: number; // 20 to 42px
   isBold?: boolean;
@@ -126,9 +127,10 @@ export interface CertificateTemplate {
   subtitleText?: string;
   
   // Signatures custom positioning & sizing
-  signatureSize?: number; // 40 to 140px
+  signatureSize?: number; // 30 to 160px
   signaturePosition?: "center" | "space-between" | "space-around" | "left" | "right";
   signatureOffsetY?: number; // -40 to 40px
+  signatureLineGap?: number; // -30 to 30px (aproximar/afastar da linha de assinatura)
   signatureGap?: number; // 10 to 60px
 }
 

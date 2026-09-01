@@ -276,14 +276,14 @@ export default function EventQrCodeModal({
               <div className="h-12 sm:h-14 w-auto flex items-center justify-center mb-1.5 print:h-11 mx-auto">
                 <DavveroLogo
                   src={settings.instLogo}
-                  alt={settings.instName || "DAVVERO System"}
+                  alt="DAVVERO System"
                   className="h-12 sm:h-14 object-contain print:h-11 rounded-xl mx-auto block"
                   iconClassName="w-12 h-12 text-sky-600"
                   color={settings.instColor || "#0284c7"}
                 />
               </div>
               <p className="text-xs font-black tracking-widest uppercase text-slate-800 text-center">
-                {settings.instName || "DAVVERO System"}
+                DAVVERO SYSTEM
               </p>
               <div className="flex items-center justify-center gap-1.5 mt-0.5">
                 <span className="px-2.5 py-0.5 rounded-full text-[10px] font-extrabold uppercase tracking-wider bg-sky-100 text-sky-700 print:border print:border-sky-200">

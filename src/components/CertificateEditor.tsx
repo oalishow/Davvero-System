@@ -87,49 +87,69 @@ export default function CertificateEditor({
 
   const existingTemplate = (type === "organizer" ? event.organizationCertificateTemplate : event.certificateTemplate);
 
+  const defaultTemplate: CertificateTemplate = {
+    bodyText: "",
+    fontFamily: "serif",
+    bgStyle: "theme-classic",
+    isApproved: false,
+    showFajopaDirectorSignature: !isDioceseEvent,
+    fajopaDirectorName: "",
+    showSeminarRectorSignature: !isDioceseEvent,
+    seminarRectorName: "",
+    // Diocese / Custom signatures
+    showSignature1: isDioceseEvent ? true : false,
+    signature1Name: "",
+    signature1Role: isDioceseEvent ? "Coordenador(a) Diocesano(a)" : "",
+    signatureName: "",
+    signatureRole: "",
+    showSignature2: isDioceseEvent ? true : false,
+    signature2Name: "",
+    signature2Role: isDioceseEvent ? "Bispo Diocesano / Assessor Eclesial" : "",
+    showSignature3: false,
+    signature3Name: "",
+    signature3Role: "",
+    fontSize: 26,
+    isBold: false,
+    textAlign: "justify",
+    textBoxWidth: "normal",
+    titleText: "CERTIFICADO",
+    subtitleText: type === "organizer" ? "DE ORGANIZAÇÃO" : "DE PARTICIPAÇÃO",
+    showLogo: true,
+    logoSize: 70,
+    logoPosition: "top-center",
+    showLogo2: true,
+    logo2Size: 60,
+    logo2Position: "top-right",
+    backgroundOpacity: 100,
+    keepFrameWithCustomBg: false,
+    institutionAddress: settings.instAddress || "",
+    institutionEmail: settings.instEmail || "",
+    showInstitutionFooter: true,
+    institutionFooterOffsetY: 0,
+    signatureSize: 65,
+    signaturePosition: "space-around",
+    signatureOffsetY: 0,
+    signatureLineGap: -4,
+  };
+
   const [template, setTemplate] = useState<CertificateTemplate>(
-    existingTemplate || {
-      bodyText: "",
-      fontFamily: "serif",
-      bgStyle: "theme-classic",
-      isApproved: false,
-      showFajopaDirectorSignature: !isDioceseEvent,
-      fajopaDirectorName: "",
-      showSeminarRectorSignature: !isDioceseEvent,
-      seminarRectorName: "",
-      // Diocese / Custom signatures
-      showSignature1: isDioceseEvent ? true : false,
-      signature1Name: "",
-      signature1Role: isDioceseEvent ? "Coordenador(a) Diocesano(a)" : "",
-      signatureName: "",
-      signatureRole: "",
-      showSignature2: isDioceseEvent ? true : false,
-      signature2Name: "",
-      signature2Role: isDioceseEvent ? "Bispo Diocesano / Assessor Eclesial" : "",
-      showSignature3: false,
-      signature3Name: "",
-      signature3Role: "",
-      fontSize: 26,
-      isBold: false,
-      textAlign: "justify",
-      textBoxWidth: "normal",
-      titleText: "CERTIFICADO",
-      subtitleText: type === "organizer" ? "DE ORGANIZAÇÃO" : "DE PARTICIPAÇÃO",
-      showLogo: true,
-      logoSize: 70,
-      logoPosition: "top-center",
-      showLogo2: false,
-      logo2Size: 60,
-      logo2Position: "top-right",
-      backgroundOpacity: 100,
-      keepFrameWithCustomBg: false,
-      institutionAddress: settings.instAddress || "",
-      institutionEmail: settings.instEmail || "",
-      showInstitutionFooter: true,
-      signatureSize: 65,
-      signaturePosition: "space-around",
-      signatureOffsetY: 0,
-    }
+    existingTemplate
+      ? {
+          ...defaultTemplate,
+          ...existingTemplate,
+          showLogo2: existingTemplate.showLogo2 ?? true,
+          signatureLineGap: existingTemplate.signatureLineGap ?? -4,
+          institutionFooterOffsetY: existingTemplate.institutionFooterOffsetY ?? 0,
+          institutionAddress:
+            existingTemplate.institutionAddress !== undefined
+              ? existingTemplate.institutionAddress
+              : (settings.instAddress || ""),
+          institutionEmail:
+            existingTemplate.institutionEmail !== undefined
+              ? existingTemplate.institutionEmail
+              : (settings.instEmail || ""),
+        }
+      : defaultTemplate
   );
 
   const [isGenerating, setIsGenerating] = useState(false);
@@ -145,7 +165,7 @@ export default function CertificateEditor({
   useEffect(() => {
     const loadPresets = async () => {
       try {
-        const snap = await getDoc(doc(db, `artifacts/${appId}/public/data/cert_presets`));
+        const snap = await getDoc(doc(db, ASSETS_DOC_PATH(appId, "cert_presets")));
         if (snap.exists() && snap.data()?.presets) {
           setSavedPresets(snap.data().presets);
         }
@@ -197,6 +217,8 @@ export default function CertificateEditor({
         signatureSize: template.signatureSize,
         signaturePosition: template.signaturePosition,
         signatureOffsetY: template.signatureOffsetY,
+        signatureLineGap: template.signatureLineGap,
+        institutionFooterOffsetY: template.institutionFooterOffsetY,
       };
 
       const newPreset = {
@@ -207,7 +229,7 @@ export default function CertificateEditor({
       };
 
       const updated = [newPreset, ...savedPresets.slice(0, 19)];
-      await setDoc(doc(db, `artifacts/${appId}/public/data/cert_presets`), { presets: updated }, { merge: true });
+      await setDoc(doc(db, ASSETS_DOC_PATH(appId, "cert_presets")), { presets: updated }, { merge: true });
       setSavedPresets(updated);
       setPresetNameInput("");
       showAlert(`Modelo "${name}" salvo com sucesso para reutilizar em qualquer certificado!`, { type: "success" });
@@ -234,7 +256,7 @@ export default function CertificateEditor({
   const handleDeletePreset = async (presetId: string, name: string) => {
     if (await showConfirm(`Deseja excluir o modelo salvo "${name}"?`, { type: "warning" })) {
       const filtered = savedPresets.filter(p => p.id !== presetId);
-      await setDoc(doc(db, `artifacts/${appId}/public/data/cert_presets`), { presets: filtered }, { merge: true });
+      await setDoc(doc(db, ASSETS_DOC_PATH(appId, "cert_presets")), { presets: filtered }, { merge: true });
       setSavedPresets(filtered);
       showAlert("Modelo excluído.", { type: "info" });
     }
@@ -412,14 +434,19 @@ Instruções RIGOROSAS:
     try {
       const isBg = fieldName === "backgroundImageUrl";
       const maxSize = isBg ? 2000 : 800;
-      const isLogoOrSignature = fieldName === "logoUrl" || fieldName.includes("Signature") || fieldName.includes("signature");
+      const isLogoOrSignature = fieldName === "logoUrl" || fieldName === "logo2Url" || fieldName.includes("Signature") || fieldName.includes("signature");
       
       const base64 = await resizeAndConvertToBase64(file, maxSize, {
         preserveAlpha: true,
         removeWhiteBg: isLogoOrSignature,
         mimeType: isBg ? "image/jpeg" : "image/png",
       });
-      setTemplate({ ...template, [fieldName]: base64 });
+      setTemplate((prev) => ({
+        ...prev,
+        [fieldName]: base64,
+        ...(fieldName === "logo2Url" ? { showLogo2: true } : {}),
+        ...(fieldName === "logoUrl" ? { showLogo: true } : {}),
+      }));
     } catch (err) {
       console.error(err);
       showAlert("Erro ao carregar imagem.", { type: "error" });
@@ -1037,11 +1064,26 @@ Instruções RIGOROSAS:
                       </label>
                     </div>
 
-                    <div className="space-y-2">
+                    <div className="space-y-2.5">
                       <div>
-                        <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
-                          Endereço da Faculdade / Campus:
-                        </label>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase">
+                            Endereço da Faculdade / Campus:
+                          </label>
+                          {(settings.instAddress || settings.instEmail) && (
+                            <button
+                              type="button"
+                              onClick={() => setTemplate({
+                                ...template,
+                                institutionAddress: settings.instAddress || "",
+                                institutionEmail: settings.instEmail || "",
+                              })}
+                              className="text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:underline"
+                            >
+                              Restaurar Padrão Geral
+                            </button>
+                          )}
+                        </div>
                         <input
                           type="text"
                           placeholder="Ex: Rodovia SP-330, Km 300 - Campus Universitário, CEP 14000-000"
@@ -1062,6 +1104,31 @@ Instruções RIGOROSAS:
                           onChange={(e) => setTemplate({ ...template, institutionEmail: e.target.value })}
                           className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500 shadow-xs"
                         />
+                      </div>
+
+                      {/* Controle de Posição Vertical do Rodapé (Subir / Descer) */}
+                      <div className="pt-2 border-t border-slate-100 dark:border-slate-800 space-y-1.5">
+                        <div className="flex justify-between items-center text-xs">
+                          <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1">
+                            <MoveVertical className="w-3.5 h-3.5 text-sky-500" />
+                            Posição Vertical do Rodapé (Subir / Descer):
+                          </span>
+                          <span className="font-bold text-sky-600">{template.institutionFooterOffsetY || 0}px</span>
+                        </div>
+                        <input
+                          type="range"
+                          min="-15"
+                          max="45"
+                          step="2"
+                          value={template.institutionFooterOffsetY || 0}
+                          onChange={(e) => setTemplate({ ...template, institutionFooterOffsetY: Number(e.target.value) })}
+                          className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+                        />
+                        <div className="flex justify-between text-[10px] text-slate-400">
+                          <span>Mais Baixo (-15px)</span>
+                          <span>Padrão (0px)</span>
+                          <span>Mais Alto (+45px)</span>
+                        </div>
                       </div>
                     </div>
                   </div>
@@ -1443,23 +1510,84 @@ Instruções RIGOROSAS:
 
                     {/* Tamanho da Assinatura */}
                     <div className="space-y-1.5">
-                      <div className="flex justify-between text-xs">
-                        <span className="text-slate-600 dark:text-slate-400">Tamanho / Altura:</span>
+                      <div className="flex justify-between text-xs items-center">
+                        <span className="text-slate-600 dark:text-slate-400 font-medium">Tamanho / Altura da Assinatura:</span>
                         <span className="font-bold text-sky-600">{template.signatureSize || 65}px</span>
                       </div>
                       <input
                         type="range"
-                        min="40"
-                        max="120"
+                        min="30"
+                        max="160"
                         step="5"
                         value={template.signatureSize || 65}
                         onChange={(e) => setTemplate({ ...template, signatureSize: Number(e.target.value) })}
                         className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
                       />
+                      <div className="grid grid-cols-4 gap-1 pt-1">
+                        {[
+                          { size: 45, label: "Pequena (45px)" },
+                          { size: 65, label: "Média (65px)" },
+                          { size: 95, label: "Grande (95px)" },
+                          { size: 130, label: "Extra (130px)" },
+                        ].map((s) => (
+                          <button
+                            key={s.size}
+                            type="button"
+                            onClick={() => setTemplate({ ...template, signatureSize: s.size })}
+                            className={`py-1 px-1 rounded-lg text-[10px] font-bold border transition-all ${
+                              (template.signatureSize || 65) === s.size
+                                ? "border-sky-500 bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                                : "border-slate-200 dark:border-slate-700 text-slate-500"
+                            }`}
+                          >
+                            {s.label}
+                          </button>
+                        ))}
+                      </div>
+                    </div>
+
+                    {/* Aproximação / Afastamento com a Linha de Assinatura */}
+                    <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
+                      <div className="flex justify-between text-xs items-center">
+                        <span className="text-slate-600 dark:text-slate-400 font-medium flex items-center gap-1">
+                          <Sliders className="w-3.5 h-3.5 text-sky-500" />
+                          Distância até a Linha (Aproximar / Afastar):
+                        </span>
+                        <span className="font-bold text-sky-600">{template.signatureLineGap ?? -4}px</span>
+                      </div>
+                      <input
+                        type="range"
+                        min="-30"
+                        max="25"
+                        step="1"
+                        value={template.signatureLineGap ?? -4}
+                        onChange={(e) => setTemplate({ ...template, signatureLineGap: Number(e.target.value) })}
+                        className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
+                      />
                       <div className="flex justify-between text-[10px] text-slate-400">
-                        <span>Pequena (40px)</span>
-                        <span>Média (65px)</span>
-                        <span>Grande (120px)</span>
+                        <span>Sobreposta (-30px)</span>
+                        <span>Natural (-4px)</span>
+                        <span>Afastada (+25px)</span>
+                      </div>
+                      <div className="grid grid-cols-3 gap-1 pt-1">
+                        {[
+                          { gap: -12, label: "Colada (-12px)" },
+                          { gap: -4, label: "Padrão (-4px)" },
+                          { gap: 8, label: "Afastada (+8px)" },
+                        ].map((g) => (
+                          <button
+                            key={g.gap}
+                            type="button"
+                            onClick={() => setTemplate({ ...template, signatureLineGap: g.gap })}
+                            className={`py-1 px-1 rounded-lg text-[10px] font-bold border transition-all ${
+                              (template.signatureLineGap ?? -4) === g.gap
+                                ? "border-sky-500 bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400"
+                                : "border-slate-200 dark:border-slate-700 text-slate-500"
+                            }`}
+                          >
+                            {g.label}
+                          </button>
+                        ))}
                       </div>
                     </div>
 
@@ -1467,23 +1595,23 @@ Instruções RIGOROSAS:
                     <div className="space-y-1.5 pt-2 border-t border-slate-100 dark:border-slate-800">
                       <div className="flex justify-between text-xs">
                         <span className="text-slate-600 dark:text-slate-400 flex items-center gap-1">
-                          <MoveVertical className="w-3.5 h-3.5" /> Mover Posição Vertical:
+                          <MoveVertical className="w-3.5 h-3.5 text-sky-500" /> Mover Bloco de Assinaturas (Cima / Baixo):
                         </span>
                         <span className="font-bold text-sky-600">{template.signatureOffsetY || 0}px</span>
                       </div>
                       <input
                         type="range"
-                        min="-30"
-                        max="30"
+                        min="-40"
+                        max="40"
                         step="2"
                         value={template.signatureOffsetY || 0}
                         onChange={(e) => setTemplate({ ...template, signatureOffsetY: Number(e.target.value) })}
                         className="w-full h-2 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
                       />
                       <div className="flex justify-between text-[10px] text-slate-400">
-                        <span>Mais Alto (-30px)</span>
+                        <span>Mais Alto (-40px)</span>
                         <span>Neutro (0)</span>
-                        <span>Mais Baixo (+30px)</span>
+                        <span>Mais Baixo (+40px)</span>
                       </div>
                     </div>
 
