@@ -25,6 +25,8 @@ import { createNotification, db, appId } from "../lib/firebase";
 import { collection, getDocs } from "firebase/firestore";
 import { useDialog } from "../context/DialogContext";
 import { usePushNotifications } from "../hooks/usePushNotifications";
+import { useSettings } from "../context/SettingsContext";
+import { sendEmailNotification, getCompiledEmail } from "../lib/emailService";
 import type { Member } from "../types";
 
 const NOTIFICATION_TEMPLATES = [
@@ -85,6 +87,7 @@ export default function NotificationsManager() {
   const [loadingMembers, setLoadingMembers] = useState(false);
 
   const { showAlert } = useDialog();
+  const { settings } = useSettings();
   const {
     isSupported,
     permission,
@@ -254,6 +257,56 @@ export default function NotificationsManager() {
           }
         } catch (pushErr: any) {
           console.warn("Erro ao despachar push broadcast pelo servidor:", pushErr);
+        }
+      }
+
+      // 5. Send Emails for critical notifications
+      if (type === "evento" || type === "certificado" || type === "sistema" || type === "inscricao") {
+        try {
+          let targetEmails: string[] = [];
+          if (audienceMode === "todos") {
+            targetEmails = members.map((m) => m.email || "").filter((e) => e && e.includes("@"));
+          } else {
+            targetEmails = members
+              .filter((m) => targetMemberIds.includes(m.id))
+              .map((m) => m.email || "")
+              .filter((e) => e && e.includes("@"));
+          }
+
+          // Remove duplicates
+          targetEmails = [...new Set(targetEmails)];
+
+          if (targetEmails.length > 0) {
+            const chunkSize = 50;
+            for (let i = 0; i < targetEmails.length; i += chunkSize) {
+              const emailChunk = targetEmails.slice(i, i + chunkSize);
+              
+              const emailHtml = `
+                <div style="font-family: sans-serif; max-w: 600px; margin: 0 auto; border: 1px solid #e2e8f0; border-radius: 12px; overflow: hidden;">
+                  <div style="background-color: #0284c7; padding: 20px; text-align: center;">
+                    <h2 style="color: white; margin: 0;">${title}</h2>
+                  </div>
+                  <div style="padding: 24px; color: #334155; line-height: 1.6;">
+                    <p style="white-space: pre-wrap; margin: 0;">${message.replace(/\n/g, '<br/>')}</p>
+                    <div style="margin-top: 30px; text-align: center;">
+                      <a href="https://davvero.netlify.app" style="background-color: #0284c7; color: white; padding: 12px 24px; text-decoration: none; border-radius: 8px; font-weight: bold; display: inline-block;">Acessar o Sistema</a>
+                    </div>
+                  </div>
+                  <div style="background-color: #f8fafc; padding: 16px; text-align: center; font-size: 12px; color: #64748b;">
+                    Este é um e-mail automático do DAVVERO System.
+                  </div>
+                </div>
+              `;
+
+              await sendEmailNotification({
+                to: emailChunk,
+                subject: title,
+                html: emailHtml,
+              }, settings?.smtpConfig);
+            }
+          }
+        } catch (emailErr) {
+          console.warn("Erro ao enviar emails de notificação em massa:", emailErr);
         }
       }
 

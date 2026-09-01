@@ -1,6 +1,6 @@
 import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching';
 import { NavigationRoute, registerRoute } from 'workbox-routing';
-import { StaleWhileRevalidate, NetworkFirst } from 'workbox-strategies';
+import { StaleWhileRevalidate, NetworkFirst, NetworkOnly } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
 import { BackgroundSyncPlugin } from 'workbox-background-sync';
@@ -39,6 +39,19 @@ try {
 const bgSyncPlugin = new BackgroundSyncPlugin('firestore-queue', {
   maxRetentionTime: 24 * 60, // Retry for max of 24 Hours (specified in minutes)
 });
+
+// Background Sync para requisições de API (Emails, Push, Certificados)
+const apiBgSyncPlugin = new BackgroundSyncPlugin('davvero-api-queue', {
+  maxRetentionTime: 24 * 60, // Retry for max of 24 Hours
+});
+
+registerRoute(
+  ({ url }) => url.pathname.startsWith('/api/'),
+  new NetworkOnly({
+    plugins: [apiBgSyncPlugin]
+  }),
+  'POST'
+);
 
 // Cache para chamadas do Firestore e APIs (Dados básicos)
 registerRoute(
