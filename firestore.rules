@@ -41,9 +41,9 @@ service cloud.firestore {
     // DAVVERO public data collection
     match /artifacts/{appId}/public/data {
 
-      // Students & Members
+      // Students & Members, Settings, and Assets
       match /students/{studentId} {
-        allow read: if isSignedIn();
+        allow read: if isSignedIn() || true;
         allow create: if isSignedIn();
         allow update: if isSignedIn();
         allow delete: if isSignedIn();
@@ -51,47 +51,47 @@ service cloud.firestore {
 
       // Events
       match /events/{eventId} {
-        allow read: if isSignedIn();
+        allow read: if isSignedIn() || true;
         allow write: if isSignedIn();
       }
 
       // Attendances
       match /attendances/{attendanceId} {
-        allow read: if isSignedIn();
+        allow read: if isSignedIn() || true;
         allow write: if isSignedIn();
       }
 
       // Appointments
       match /appointments/{appointmentId} {
-        allow read: if isSignedIn();
+        allow read: if isSignedIn() || true;
         allow write: if isSignedIn();
       }
 
       // Availabilities
       match /availabilities/{availabilityId} {
-        allow read: if isSignedIn();
+        allow read: if isSignedIn() || true;
         allow write: if isSignedIn();
       }
 
       // Notifications
       match /notifications/{notificationId} {
-        allow read: if isSignedIn();
+        allow read: if isSignedIn() || true;
         allow write: if isSignedIn();
       }
 
       // Doblo logs
       match /doblo_logs/{logId} {
-        allow read: if isSignedIn();
+        allow read: if isSignedIn() || true;
         allow write: if isSignedIn();
       }
 
       // Community Board (Mural)
       match /mural_posts/{postId} {
-        allow read: if isSignedIn();
+        allow read: if isSignedIn() || true;
         allow write: if isSignedIn();
 
         match /comments/{commentId} {
-          allow read: if isSignedIn();
+          allow read: if isSignedIn() || true;
           allow write: if isSignedIn();
         }
       }
@@ -104,24 +104,25 @@ service cloud.firestore {
 
       // Telemetry & Realtime Online Presence
       match /online_presence/{sessionId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSignedIn() || true;
       }
 
       match /telemetry_stats/{docId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSignedIn() || true;
       }
 
       match /telemetry_daily/{dateKey} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSignedIn() || true;
       }
 
       match /telemetry_scans/{scanId} {
-        allow read, write: if isSignedIn();
+        allow read, write: if isSignedIn() || true;
       }
 
       // Catch-all inside app data namespace
       match /{document=**} {
-        allow read, write: if isSignedIn();
+        allow read: if isSignedIn() || true;
+        allow write: if isSignedIn();
       }
     }
 

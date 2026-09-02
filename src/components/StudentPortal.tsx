@@ -66,10 +66,12 @@ const AsyncCertificateRenderer = memo(
     event,
     member,
     isOrganizer,
+    id,
   }: {
     event: Event;
     member: Member;
     isOrganizer?: boolean;
+    id?: string;
   }) => {
     const [template, setTemplate] = useState<CertificateTemplate | undefined>(
       isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate
@@ -84,79 +86,78 @@ const AsyncCertificateRenderer = memo(
       const initialTemplate = isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate;
       if (!initialTemplate) return;
 
-      const fetchAssets = async () => {
-        try {
-          const assetDocId = isOrganizer
-            ? `cert_assets_org_${event.id}`
-            : `cert_assets_${event.id}`;
-          const snap = await getDoc(
-            doc(db, ASSETS_DOC_PATH(appId, assetDocId)),
-          );
-          if (!isMounted) return;
+      const assetDocId = isOrganizer
+        ? `cert_assets_org_${event.id}`
+        : `cert_assets_${event.id}`;
+      const docRef = doc(db, ASSETS_DOC_PATH(appId, assetDocId));
 
-          if (snap.exists() && snap.data()?.data) {
-            const assets = snap.data().data;
-            setTemplate((prev) =>
-              prev
-                ? {
-                    ...prev,
-                    ...(assets.backgroundImageUrl && {
-                      backgroundImageUrl: assets.backgroundImageUrl,
-                    }),
-                    ...(assets.logoUrl && {
-                      logoUrl: assets.logoUrl,
-                    }),
-                    ...(assets.logo2Url && {
-                      logo2Url: assets.logo2Url,
-                    }),
-                    ...(assets.fajopaDirectorSignatureUrl && {
-                      fajopaDirectorSignatureUrl:
-                        assets.fajopaDirectorSignatureUrl,
-                    }),
-                    ...(assets.seminarRectorSignatureUrl && {
-                      seminarRectorSignatureUrl:
-                        assets.seminarRectorSignatureUrl,
-                    }),
-                    ...(assets.signature1Url && {
-                      signature1Url: assets.signature1Url,
-                    }),
-                    ...(assets.signature2Url && {
-                      signature2Url: assets.signature2Url,
-                    }),
-                    ...(assets.signature3Url && {
-                      signature3Url: assets.signature3Url,
-                    }),
-                  }
-                : prev,
-            );
-          } else if ((initialTemplate as any)?.hasCustomBg && !isOrganizer) {
-            // Fallback to old bg doc
-            const oldBgSnap = await getDoc(
-              doc(db, ASSETS_DOC_PATH(appId, `cert_bg_${event.id}`)),
-            );
-            if (!isMounted) return;
-            if (oldBgSnap.exists() && oldBgSnap.data()?.data) {
-              setTemplate((prev) =>
-                prev
-                  ? { ...prev, backgroundImageUrl: oldBgSnap.data().data }
-                  : prev,
-              );
-            }
-          }
-        } catch (err) {
-          console.error("Failed to load cert assets for portal", err);
-        }
+      const applyAssets = (assets: any) => {
+        if (!assets || !isMounted) return;
+        setTemplate((prev) =>
+          prev
+            ? {
+                ...prev,
+                ...(assets.backgroundImageUrl && {
+                  backgroundImageUrl: assets.backgroundImageUrl,
+                }),
+                ...(assets.logoUrl && {
+                  logoUrl: assets.logoUrl,
+                }),
+                ...(assets.logo2Url && {
+                  logo2Url: assets.logo2Url,
+                }),
+                ...(assets.fajopaDirectorSignatureUrl && {
+                  fajopaDirectorSignatureUrl:
+                    assets.fajopaDirectorSignatureUrl,
+                }),
+                ...(assets.seminarRectorSignatureUrl && {
+                  seminarRectorSignatureUrl:
+                    assets.seminarRectorSignatureUrl,
+                }),
+                ...(assets.signature1Url && {
+                  signature1Url: assets.signature1Url,
+                }),
+                ...(assets.signature2Url && {
+                  signature2Url: assets.signature2Url,
+                }),
+                ...(assets.signature3Url && {
+                  signature3Url: assets.signature3Url,
+                }),
+              }
+            : prev,
+        );
       };
-      fetchAssets();
+
+      // 1. Immediate direct fetch for instantaneous rendering
+      getDoc(docRef).then((snap) => {
+        if (snap.exists()) {
+          const snapData = snap.data();
+          const assets = snapData?.data !== undefined ? snapData.data : snapData;
+          applyAssets(assets);
+        }
+      }).catch((err) => console.warn("Notice loading cert assets directly", err));
+
+      // 2. Realtime listener for live sync
+      const unsub = onSnapshot(docRef, (snap) => {
+        if (snap.exists()) {
+          const snapData = snap.data();
+          const assets = snapData?.data !== undefined ? snapData.data : snapData;
+          applyAssets(assets);
+        }
+      }, (err) => {
+        console.warn("Notice in cert assets snapshot", err);
+      });
+
       return () => {
         isMounted = false;
+        unsub();
       };
     }, [event.id, isOrganizer, event.organizationCertificateTemplate, event.certificateTemplate]);
 
     if (!template) return null;
     return (
       <CertificateRenderer
-        id={`cert-node-${isOrganizer ? "org" : "part"}-${event.id}`}
+        id={id || `cert-node-${isOrganizer ? "org" : "part"}-${event.id}`}
         event={event}
         template={template}
         member={member}
@@ -663,8 +664,14 @@ export default function StudentPortal({
 
     try {
       // Find the node
-      const nodeId = `cert-node-${type === "participant" ? "part" : "org"}-${event.id}`;
-      const node = document.getElementById(nodeId);
+      const defaultNodeId = `cert-node-${type === "participant" ? "part" : "org"}-${event.id}`;
+      let node = document.getElementById(defaultNodeId);
+      if (!node && previewCertEvent && previewCertEvent.event.id === event.id && previewCertEvent.type === type) {
+        node = document.getElementById("preview-cert-modal-node");
+      }
+      if (!node) {
+        node = document.getElementById("preview-cert-modal-node");
+      }
       if (!node) {
         throw new Error("Certificado não encontrado ou ainda em carregamento. Tente novamente.");
       }
@@ -1673,45 +1680,6 @@ export default function StudentPortal({
           Deseja desvincular sua carteirinha deste dispositivo? Esta ação
           encerrará sua sessão segura.
         </Modal>
-
-        {/* Hidden nodes for Certificate rendering - using visibility hidden instead of massive offset if possible, 
-            but absolute off-screen is safer for capture tools */}
-        <div
-          className="absolute top-[-10000px] left-[-10000px] pointer-events-none"
-          aria-hidden="true"
-        >
-          {allEvents.map((e) => {
-            const hasPart = Boolean(e.certificateTemplate);
-            const hasOrg = Boolean(e.organizationCertificateTemplate);
-            return (
-              <div key={e.id} className="contents">
-                {hasPart && (
-                  <div className="bg-white">
-                    <AsyncCertificateRenderer
-                      event={{
-                        ...e,
-                        certificateTemplate: e.certificateTemplate,
-                      }}
-                      member={member}
-                    />
-                  </div>
-                )}
-                {hasOrg && (
-                  <div className="bg-white">
-                    <AsyncCertificateRenderer
-                      event={{
-                        ...e,
-                        certificateTemplate: e.organizationCertificateTemplate,
-                      }}
-                      member={member}
-                      isOrganizer={true}
-                    />
-                  </div>
-                )}
-              </div>
-            );
-          })}
-        </div>
 
         <div ref={portalContainerRef} className="w-full flex flex-col items-center animate-fade-in mt-6 max-w-sm sm:max-w-[600px] mx-auto">
           {isSupported && !subscription && !isOverrideMode && (
@@ -2849,6 +2817,7 @@ export default function StudentPortal({
                 <div className="w-full max-w-full overflow-x-auto flex justify-center py-2">
                   <div style={{ transform: "scale(0.55)", transformOrigin: "top center", height: "460px", width: "1122px" }}>
                     <AsyncCertificateRenderer
+                      id="preview-cert-modal-node"
                       event={previewCertEvent.event}
                       member={member}
                       isOrganizer={previewCertEvent.type === "organizer"}

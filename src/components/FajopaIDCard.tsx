@@ -36,7 +36,7 @@ interface FajopaIDCardProps {
 
 export default function FajopaIDCard({ member, exportMode = false, settings: propSettings }: FajopaIDCardProps) {
   const { settings: cloudSettings } = useSettings();
-  const settings = propSettings || cloudSettings;
+  const settings = propSettings ? { ...cloudSettings, ...propSettings } : cloudSettings;
 
   const [flipped, setFlipped] = useState(false);
   
@@ -64,8 +64,8 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
     backLogoConfig,
     cardBackImage,
     cardDescription,
-    signatureScale,
-    rectorSignatureScale,
+    signatureScale = 100,
+    rectorSignatureScale = 100,
     secondaryBackLogoScale = 100,
     instSignature,
     rectorSignature,
@@ -82,19 +82,35 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
   const isSeminarista = member.roles?.some(r => r.trim().toUpperCase() === 'SEMINARISTA');
   const validDiocese = ['ASSIS', 'PRESIDENTE PRUDENTE', 'OURINHOS', 'ARAÇATUBA', 'ARACATUBA', 'LINS'].includes(normalizedDiocese);
   
-  const seminaryOptions = (member.seminary && seminariesConfig?.[member.seminary]) || null;
+  // Case-insensitive / whitespace-tolerant lookup for seminary configuration
+  const findSeminaryOptions = () => {
+    if (!member.seminary || !seminariesConfig) return null;
+    const target = member.seminary.trim().toLowerCase();
+    for (const [key, val] of Object.entries(seminariesConfig)) {
+      if (key.trim().toLowerCase() === target) return val;
+    }
+    return seminariesConfig[member.seminary] || null;
+  };
+
+  const seminaryOptions = findSeminaryOptions();
   const hasSeminaryOptions = !!seminaryOptions;
   
-  const showRector = (isSeminarista && validDiocese) || hasSeminaryOptions;
+  // Multi-tier signature retrieval from state and storage
+  const localDirectorSig = typeof window !== "undefined" ? (localStorage.getItem("davveroId_director_signature") || sessionStorage.getItem("davveroId_director_signature")) : null;
+  const localRectorSig = typeof window !== "undefined" ? (localStorage.getItem("davveroId_rector_signature") || sessionStorage.getItem("davveroId_rector_signature")) : null;
+
+  const displayInstSignature = instSignature || cloudSettings.instSignature || localDirectorSig || null;
+  const displayRectorSignature = seminaryOptions?.signature || rectorSignature || cloudSettings.rectorSignature || localRectorSig || null;
+
+  const showRector = (isSeminarista && validDiocese) || hasSeminaryOptions || Boolean(displayRectorSignature) || Boolean(rectorSignature);
   const showSecondaryLogo = validDiocese || (hasSeminaryOptions && seminaryOptions?.logo);
   
   const directorNameText = directorName?.trim() || 'DIRETOR GERAL';
   const rectorNameText = seminaryOptions?.rectorName?.trim() || rectorName?.trim() || 'REITOR';
   const displaySecondaryBackLogo = seminaryOptions?.logo || cardSecondaryBackLogo;
-  const displayRectorSignature = seminaryOptions?.signature || rectorSignature;
   
-  const displayLogoFront = cardLogo || instLogo;
-  const displayLogoBack = cardBackLogo || cardLogo || instLogo;
+  const displayLogoFront = cardLogo || instLogo || cloudSettings.cardLogo || cloudSettings.instLogo;
+  const displayLogoBack = cardBackLogo || cardLogo || instLogo || cloudSettings.cardBackLogo || cloudSettings.cardLogo || cloudSettings.instLogo;
   
   const displayInstNameForCard = (isSeminarista && !validDiocese && instName === 'FAJOPA e SPSCJ' && !member.seminary) ? 'FAJOPA' : instName;
 
@@ -354,16 +370,19 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
 
       <div className="absolute top-[28%] w-full flex flex-col items-center z-10">
         <div className="w-full flex justify-center gap-10 px-4">
-          {/* Signature 1: Director */}
+           {/* Signature 1: Director */}
           {(visibleFields?.signature !== false || visibleFields?.director !== false) && (
             <div className="flex flex-col items-center min-w-[140px] max-w-[180px]">
                {visibleFields?.signature !== false && (
                 <div className="w-full h-[45px] border-b-[2px] border-slate-800 flex items-center justify-center pb-1">
-                   {instSignature && (
+                   {displayInstSignature && (
                      <img 
-                       src={instSignature} 
+                       src={displayInstSignature} 
                        alt="Assinatura Diretor" 
-                       className="w-auto object-contain" 
+                       className="w-auto object-contain pointer-events-none select-none" 
+                       crossOrigin={displayInstSignature.startsWith('data:') ? undefined : "anonymous"}
+                       loading="eager"
+                       decoding="sync"
                        style={{ 
                          height: `${(signatureScale / 100) * 110}%`,
                          marginBottom: `-${(signatureScale / 100) * 6}%` 
@@ -391,7 +410,10 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
                      <img 
                        src={displayRectorSignature} 
                        alt="Assinatura Reitor" 
-                       className="w-auto object-contain" 
+                       className="w-auto object-contain pointer-events-none select-none" 
+                       crossOrigin={displayRectorSignature.startsWith('data:') ? undefined : "anonymous"}
+                       loading="eager"
+                       decoding="sync"
                        style={{ 
                          height: `${((rectorSignatureScale || 100) / 100) * 110}%`,
                          marginBottom: `-${((rectorSignatureScale || 100) / 100) * 6}%` 

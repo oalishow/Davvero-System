@@ -322,24 +322,27 @@ export default function CertificateEditor({
       try {
         const assetDocId = type === "organizer" ? `cert_assets_org_${event.id}` : `cert_assets_${event.id}`;
         const assetsSnap = await getDoc(doc(db, ASSETS_DOC_PATH(appId, assetDocId)));
-        if (assetsSnap.exists() && assetsSnap.data().data) {
-          const assetsData = assetsSnap.data().data;
-          setTemplate((prev) => ({
-            ...prev,
-            ...(assetsData.backgroundImageUrl && { backgroundImageUrl: assetsData.backgroundImageUrl }),
-            ...(assetsData.logoUrl && { logoUrl: assetsData.logoUrl }),
-            ...(assetsData.logo2Url && { logo2Url: assetsData.logo2Url }),
-            ...(assetsData.fajopaDirectorSignatureUrl && {
-              fajopaDirectorSignatureUrl: assetsData.fajopaDirectorSignatureUrl,
-            }),
-            ...(assetsData.seminarRectorSignatureUrl && {
-              seminarRectorSignatureUrl: assetsData.seminarRectorSignatureUrl,
-            }),
-            ...(assetsData.signature1Url && { signature1Url: assetsData.signature1Url }),
-            ...(assetsData.signature2Url && { signature2Url: assetsData.signature2Url }),
-            ...(assetsData.signature3Url && { signature3Url: assetsData.signature3Url }),
-          }));
-          return;
+        if (assetsSnap.exists()) {
+          const snapData = assetsSnap.data();
+          const assetsData = snapData?.data !== undefined ? snapData.data : snapData;
+          if (assetsData) {
+            setTemplate((prev) => ({
+              ...prev,
+              ...(assetsData.backgroundImageUrl && { backgroundImageUrl: assetsData.backgroundImageUrl }),
+              ...(assetsData.logoUrl && { logoUrl: assetsData.logoUrl }),
+              ...(assetsData.logo2Url && { logo2Url: assetsData.logo2Url }),
+              ...(assetsData.fajopaDirectorSignatureUrl && {
+                fajopaDirectorSignatureUrl: assetsData.fajopaDirectorSignatureUrl,
+              }),
+              ...(assetsData.seminarRectorSignatureUrl && {
+                seminarRectorSignatureUrl: assetsData.seminarRectorSignatureUrl,
+              }),
+              ...(assetsData.signature1Url && { signature1Url: assetsData.signature1Url }),
+              ...(assetsData.signature2Url && { signature2Url: assetsData.signature2Url }),
+              ...(assetsData.signature3Url && { signature3Url: assetsData.signature3Url }),
+            }));
+            return;
+          }
         }
       } catch (err) {
         console.error("Failed to load cert assets", err);
@@ -349,8 +352,12 @@ export default function CertificateEditor({
       if ((event.certificateTemplate as any)?.hasCustomBg) {
         try {
           const bgSnap = await getDoc(doc(db, ASSETS_DOC_PATH(appId, `cert_bg_${event.id}`)));
-          if (bgSnap.exists() && bgSnap.data().data) {
-            setTemplate((prev) => ({ ...prev, backgroundImageUrl: bgSnap.data().data }));
+          if (bgSnap.exists()) {
+            const bgData = bgSnap.data();
+            const bgUrl = bgData?.data !== undefined ? bgData.data : bgData;
+            if (bgUrl) {
+              setTemplate((prev) => ({ ...prev, backgroundImageUrl: bgUrl }));
+            }
           }
         } catch (err) {
           console.error("Failed to load old cert bg", err);

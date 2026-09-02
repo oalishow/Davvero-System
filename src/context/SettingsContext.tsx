@@ -1,6 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
-import { doc, onSnapshot, setDoc } from 'firebase/firestore';
-import { db, appId } from '../lib/firebase';
+import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
+import { onAuthStateChanged } from 'firebase/auth';
+import { db, auth, appId, loginAnon } from '../lib/firebase';
 import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION } from '../lib/constants';
 import type { DioceseInfo } from '../data/diocesesData';
 import { AVAILABLE_DIOCESES, AVAILABLE_SEMINARIES } from '../types';
@@ -252,12 +253,13 @@ const SettingsContext = createContext<SettingsContextType | undefined>(undefined
 
 export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const [settings, setSettings] = useState<AppSettings>(() => {
+    let base = { ...DEFAULT_SETTINGS };
     if (typeof window !== "undefined") {
       try {
         const cached = localStorage.getItem('fajopa_settings');
         if (cached) {
           const parsed = JSON.parse(cached);
-          return {
+          base = {
             ...DEFAULT_SETTINGS,
             ...parsed,
             visibleFields: {
@@ -267,8 +269,28 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           };
         }
       } catch (e) {}
+
+      // Fallback from individual localStorage/sessionStorage keys for instant signature & logo availability
+      try {
+        const localDirectorSig = localStorage.getItem('davveroId_director_signature') || sessionStorage.getItem('davveroId_director_signature');
+        if (localDirectorSig && !base.instSignature) {
+          base.instSignature = localDirectorSig;
+        }
+        const localRectorSig = localStorage.getItem('davveroId_rector_signature') || sessionStorage.getItem('davveroId_rector_signature');
+        if (localRectorSig && !base.rectorSignature) {
+          base.rectorSignature = localRectorSig;
+        }
+        const localInstLogo = localStorage.getItem('davveroId_institution_logo') || sessionStorage.getItem('davveroId_institution_logo');
+        if (localInstLogo && !base.instLogo) {
+          base.instLogo = localInstLogo;
+        }
+        const localCardLogo = localStorage.getItem('davveroId_card_logo') || sessionStorage.getItem('davveroId_card_logo');
+        if (localCardLogo && !base.cardLogo) {
+          base.cardLogo = localCardLogo;
+        }
+      } catch (e) {}
     }
-    return DEFAULT_SETTINGS;
+    return base;
   });
   const [loading, setLoading] = useState(true);
   
@@ -277,8 +299,65 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   const activeSeminaryListeners = useRef<Map<string, () => void>>(new Map());
 
   useEffect(() => {
+    // Eagerly initiate anonymous auth if needed
+    loginAnon().catch(() => {});
+
     const docRef = doc(db, SETTINGS_DOC_PATH(appId));
     const unsubscribes: (() => void)[] = [];
+
+    // Direct fetch helper for critical signatures and assets to eliminate race conditions
+    const performDirectFetch = async () => {
+      try {
+        const [mainSnap, dirSigSnap, recSigSnap] = await Promise.all([
+          getDoc(docRef).catch(() => null),
+          getDoc(doc(db, ASSETS_DOC_PATH(appId, 'instSignature'))).catch(() => null),
+          getDoc(doc(db, ASSETS_DOC_PATH(appId, 'rectorSignature'))).catch(() => null),
+        ]);
+
+        if (mainSnap && mainSnap.exists()) {
+          const mainData = mainSnap.data();
+          if (mainData) {
+            setSettings(prev => ({ ...prev, ...mainData }));
+          }
+        }
+
+        if (dirSigSnap && dirSigSnap.exists()) {
+          const snapData = dirSigSnap.data();
+          const val = snapData?.data !== undefined ? snapData.data : snapData;
+          if (val) {
+            setSettings(prev => ({ ...prev, instSignature: val }));
+            try {
+              localStorage.setItem('davveroId_director_signature', val);
+              sessionStorage.setItem('davveroId_director_signature', val);
+            } catch {}
+          }
+        }
+
+        if (recSigSnap && recSigSnap.exists()) {
+          const snapData = recSigSnap.data();
+          const val = snapData?.data !== undefined ? snapData.data : snapData;
+          if (val) {
+            setSettings(prev => ({ ...prev, rectorSignature: val }));
+            try {
+              localStorage.setItem('davveroId_rector_signature', val);
+              sessionStorage.setItem('davveroId_rector_signature', val);
+            } catch {}
+          }
+        }
+      } catch (err) {
+        console.warn("[SettingsContext] Direct fetch non-critical notice:", err);
+      }
+    };
+
+    performDirectFetch();
+
+    // Listen to Auth State to retry direct fetch when user state is initialized
+    const unsubAuth = onAuthStateChanged(auth, (user) => {
+      if (user) {
+        performDirectFetch();
+      }
+    });
+    unsubscribes.push(unsubAuth);
     
     // 1. Listener principal de configurações
     const unsubMain = onSnapshot(docRef, (snapshot) => {
@@ -320,7 +399,26 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         if (snapshot.exists()) {
           const snapData = snapshot.data();
           const val = snapData?.data !== undefined ? snapData.data : snapData;
-          setSettings(prev => ({ ...prev, [field]: val }));
+          if (val !== undefined) {
+            setSettings(prev => ({ ...prev, [field]: val }));
+            if (typeof window !== "undefined") {
+              try {
+                if (field === 'instSignature' && val) {
+                  localStorage.setItem('davveroId_director_signature', val);
+                  sessionStorage.setItem('davveroId_director_signature', val);
+                } else if (field === 'rectorSignature' && val) {
+                  localStorage.setItem('davveroId_rector_signature', val);
+                  sessionStorage.setItem('davveroId_rector_signature', val);
+                } else if (field === 'instLogo' && val) {
+                  localStorage.setItem('davveroId_institution_logo', val);
+                  sessionStorage.setItem('davveroId_institution_logo', val);
+                } else if (field === 'cardLogo' && val) {
+                  localStorage.setItem('davveroId_card_logo', val);
+                  sessionStorage.setItem('davveroId_card_logo', val);
+                }
+              } catch {}
+            }
+          }
         }
       }, (err) => {
         console.warn(`Aviso ao carregar asset ${field}:`, err?.message || err);
@@ -514,17 +612,21 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if (settings) {
       try {
         const safeSettings = { ...settings };
-        // Exclude heavy base64 assets from localStorage cache to prevent quota exceeded errors
-        delete (safeSettings as any).instLogo;
-        delete (safeSettings as any).cardLogo;
-        delete (safeSettings as any).cardBackLogo;
-        delete (safeSettings as any).cardSecondaryBackLogo;
+        // Exclude ultra-heavy assets and partitioned structures from main localStorage cache
         delete (safeSettings as any).cardBackImage;
-        delete (safeSettings as any).instSignature;
-        delete (safeSettings as any).rectorSignature;
         delete (safeSettings as any).diocesesConfig;
-        delete (safeSettings as any).seminariesConfig;
-        localStorage.setItem('fajopa_settings', JSON.stringify(safeSettings));
+        
+        try {
+          localStorage.setItem('fajopa_settings', JSON.stringify(safeSettings));
+        } catch (storageErr) {
+          // If browser storage quota exceeded, strip further heavy assets and retry
+          delete (safeSettings as any).instLogo;
+          delete (safeSettings as any).cardLogo;
+          delete (safeSettings as any).cardBackLogo;
+          delete (safeSettings as any).cardSecondaryBackLogo;
+          delete (safeSettings as any).seminariesConfig;
+          localStorage.setItem('fajopa_settings', JSON.stringify(safeSettings));
+        }
       } catch (err) {
         console.warn("[SettingsContext] Não foi possível salvar em cache local:", err);
       }

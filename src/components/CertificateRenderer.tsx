@@ -18,18 +18,27 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     // Signatures URLs and names fallback
     const isDioceseEvent = Boolean(event.isDiocese || event.dioceseId);
 
-    const fajopaSigUrl = !isDioceseEvent ? (template.fajopaDirectorSignatureUrl || settings.instSignature) : undefined;
-    const rectorSigUrl = !isDioceseEvent ? (template.seminarRectorSignatureUrl || settings.rectorSignature) : undefined;
+    const localDirectorSig = typeof window !== "undefined" ? (localStorage.getItem("davveroId_director_signature") || sessionStorage.getItem("davveroId_director_signature")) : null;
+    const localRectorSig = typeof window !== "undefined" ? (localStorage.getItem("davveroId_rector_signature") || sessionStorage.getItem("davveroId_rector_signature")) : null;
+
+    const fajopaSigUrl = !isDioceseEvent ? (template.fajopaDirectorSignatureUrl || settings.instSignature || localDirectorSig || undefined) : undefined;
+    const rectorSigUrl = !isDioceseEvent ? (template.seminarRectorSignatureUrl || settings.rectorSignature || localRectorSig || undefined) : undefined;
     const fajopaName = !isDioceseEvent ? (template.fajopaDirectorName || settings.directorName) : undefined;
     const rectorName = !isDioceseEvent ? (template.seminarRectorName || settings.rectorName) : undefined;
 
     const showFajopaDirector = !isDioceseEvent && (template.showFajopaDirectorSignature ?? true);
     const showSeminarRector = !isDioceseEvent && (template.showSeminarRectorSignature ?? true);
 
-    // Custom / Diocese Responsibles
-    const sig1Name = template.signature1Name ?? template.signatureName;
-    const sig1Role = template.signature1Role ?? template.signatureRole;
-    const sig1Url = template.signature1Url;
+    // Custom / Diocese Responsibles with Diocese Config Fallbacks
+    const dioceseConfig = isDioceseEvent ? (
+      (event.dioceseId && settings.diocesesConfig?.[event.dioceseId]) ||
+      (event.diocese && settings.diocesesConfig?.[event.diocese.toUpperCase().trim()]) ||
+      (settings.diocesesConfig ? (Object.values(settings.diocesesConfig) as any[]).find(d => d?.name?.toUpperCase() === event.diocese?.toUpperCase()) : undefined)
+    ) : undefined;
+
+    const sig1Name = template.signature1Name ?? template.signatureName ?? (isDioceseEvent ? (dioceseConfig as any)?.bishopName || (dioceseConfig as any)?.responsibleName : undefined);
+    const sig1Role = template.signature1Role ?? template.signatureRole ?? (isDioceseEvent ? (dioceseConfig as any)?.bishopTitle || (dioceseConfig as any)?.responsibleRole || "Bispo Diocesano" : undefined);
+    const sig1Url = template.signature1Url || (isDioceseEvent ? (dioceseConfig as any)?.bishopSignatureUrl || (dioceseConfig as any)?.signatureUrl || (dioceseConfig as any)?.signature : undefined);
     const showSig1 = template.showSignature1 ?? (isDioceseEvent || Boolean(sig1Name || sig1Role || sig1Url));
 
     const sig2Name = template.signature2Name;
@@ -375,7 +384,9 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
             className="absolute inset-0 w-full h-full object-cover z-0 mix-blend-multiply transition-opacity pointer-events-none" 
             style={{ opacity: bgOpacity }}
             alt="Background" 
-            crossOrigin="anonymous" 
+            crossOrigin={template.backgroundImageUrl.startsWith('data:') ? undefined : "anonymous"}
+            loading="eager"
+            decoding="sync"
           />
         )}
         
@@ -391,8 +402,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                 src={logoSource} 
                 alt="Event Logo 1" 
                 style={{ height: `${logoHeight}px` }} 
-                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
-                crossOrigin="anonymous" 
+                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent pointer-events-none select-none" 
+                crossOrigin={logoSource.startsWith('data:') ? undefined : "anonymous"}
+                loading="eager"
+                decoding="sync"
               />
             </div>
           )}
@@ -403,8 +416,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                 src={logoSource} 
                 alt="Event Logo 1" 
                 style={{ height: `${logoHeight}px` }} 
-                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
-                crossOrigin="anonymous" 
+                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent pointer-events-none select-none" 
+                crossOrigin={logoSource.startsWith('data:') ? undefined : "anonymous"}
+                loading="eager"
+                decoding="sync"
               />
             </div>
           )}
@@ -416,8 +431,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                 src={logo2Source} 
                 alt="Logo Secundária" 
                 style={{ height: `${logo2Height}px` }} 
-                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
-                crossOrigin="anonymous" 
+                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent pointer-events-none select-none" 
+                crossOrigin={logo2Source.startsWith('data:') ? undefined : "anonymous"}
+                loading="eager"
+                decoding="sync"
               />
             </div>
           )}
@@ -428,8 +445,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                 src={logo2Source} 
                 alt="Logo Secundária" 
                 style={{ height: `${logo2Height}px` }} 
-                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent" 
-                crossOrigin="anonymous" 
+                className="object-contain max-w-[180px] drop-shadow-sm bg-transparent pointer-events-none select-none" 
+                crossOrigin={logo2Source.startsWith('data:') ? undefined : "anonymous"}
+                loading="eager"
+                decoding="sync"
               />
             </div>
           )}
@@ -442,8 +461,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                   src={logoSource} 
                   alt="Event Logo 1" 
                   style={{ height: `${logoHeight}px` }} 
-                  className="object-contain max-w-[200px] drop-shadow-sm bg-transparent" 
-                  crossOrigin="anonymous" 
+                  className="object-contain max-w-[200px] drop-shadow-sm bg-transparent pointer-events-none select-none" 
+                  crossOrigin={logoSource.startsWith('data:') ? undefined : "anonymous"}
+                  loading="eager"
+                  decoding="sync"
                 />
               )}
               {showLogo2 && logo2Source && logo2Pos === "top-center" && (
@@ -451,8 +472,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                   src={logo2Source} 
                   alt="Logo Secundária" 
                   style={{ height: `${logo2Height}px` }} 
-                  className="object-contain max-w-[200px] drop-shadow-sm bg-transparent" 
-                  crossOrigin="anonymous" 
+                  className="object-contain max-w-[200px] drop-shadow-sm bg-transparent pointer-events-none select-none" 
+                  crossOrigin={logo2Source.startsWith('data:') ? undefined : "anonymous"}
+                  loading="eager"
+                  decoding="sync"
                 />
               )}
             </div>
@@ -500,8 +523,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                   <img 
                     src={fajopaSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
-                    className="max-w-[220px] object-contain transition-all" 
-                    crossOrigin="anonymous" 
+                    className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                    crossOrigin={fajopaSigUrl.startsWith('data:') ? undefined : "anonymous"}
+                    loading="eager"
+                    decoding="sync"
                     alt="Assinatura Diretor" 
                   />
                 ) : (
@@ -532,8 +557,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                   <img 
                     src={rectorSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
-                    className="max-w-[220px] object-contain transition-all" 
-                    crossOrigin="anonymous" 
+                    className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                    crossOrigin={rectorSigUrl.startsWith('data:') ? undefined : "anonymous"}
+                    loading="eager"
+                    decoding="sync"
                     alt="Assinatura Reitor" 
                   />
                 ) : (
@@ -567,8 +594,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                       <img 
                         src={sig1Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain transition-all" 
-                        crossOrigin="anonymous" 
+                        className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                        crossOrigin={sig1Url.startsWith('data:') ? undefined : "anonymous"}
+                        loading="eager"
+                        decoding="sync"
                         alt="Assinatura Responsável 1" 
                       />
                     ) : (
@@ -599,8 +628,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                       <img 
                         src={sig2Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain transition-all" 
-                        crossOrigin="anonymous" 
+                        className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                        crossOrigin={sig2Url.startsWith('data:') ? undefined : "anonymous"}
+                        loading="eager"
+                        decoding="sync"
                         alt="Assinatura Responsável 2" 
                       />
                     ) : (
@@ -631,8 +662,10 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                       <img 
                         src={sig3Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain transition-all" 
-                        crossOrigin="anonymous" 
+                        className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                        crossOrigin={sig3Url.startsWith('data:') ? undefined : "anonymous"}
+                        loading="eager"
+                        decoding="sync"
                         alt="Assinatura Responsável 3" 
                       />
                     ) : (

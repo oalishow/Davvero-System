@@ -433,6 +433,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         localStorage.setItem(CARD_BACK_IMAGE_KEY, cardBackImage);
       if (instSignature)
         localStorage.setItem(DIRECTOR_SIGNATURE_KEY, instSignature);
+      if (rectorSignature)
+        localStorage.setItem("davveroId_rector_signature", rectorSignature);
 
       showStatus("Configurações aplicadas globalmente!", "success");
     } catch (e: any) {
