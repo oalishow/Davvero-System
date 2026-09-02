@@ -40,7 +40,6 @@ import Verifier from "./components/Verifier";
 const Admin = lazyWithRetry(() => import("./components/Admin"));
 const StudentPortal = lazyWithRetry(() => import("./components/StudentPortal"));
 const EventsPage = lazyWithRetry(() => import("./components/EventsPage"));
-const MuralPage = lazyWithRetry(() => import("./components/MuralPage"));
 const PublicAppointmentsList = lazyWithRetry(() => import("./components/PublicAppointmentsList"));
 const DioceseHub = lazyWithRetry(() => import("./components/DioceseHub"));
 const WelcomeModal = lazyWithRetry(() => import("./components/WelcomeModal"));
@@ -77,7 +76,7 @@ export default function App() {
     return localStorage.getItem("has_seen_welcome") !== "true";
   });
   const [activeTab, setActiveTab] = useState<
-    "verifier" | "admin" | "student" | "events" | "diocese" | "mural" | "appointments"
+    "verifier" | "admin" | "student" | "events" | "diocese" | "appointments"
   >(() => {
     // Only access window parameters on component mount
     if (typeof window !== "undefined") {
@@ -137,6 +136,20 @@ export default function App() {
     status: "searching",
     message: "Buscando atualizações no servidor...",
   });
+
+  const handleForceReloadAndSync = async (targetVer?: string) => {
+    playSound('pop');
+    setUpdateCheckModal(prev => ({ ...prev, isOpen: false }));
+    setIsUpdating(true);
+    setTargetVersionText(targetVer || APP_VERSION);
+    setUpdateProgress(25);
+    await clearAppCaches();
+    setUpdateProgress(70);
+    setTimeout(async () => {
+      setUpdateProgress(100);
+      await safeReloadApp(targetVer || APP_VERSION);
+    }, 300);
+  };
 
   const handleInteractiveUpdateCheck = async () => {
     playSound('pop');
@@ -486,6 +499,13 @@ export default function App() {
                     </div>
                     <div className="pt-2 space-y-2">
                       <button
+                        onClick={() => handleForceReloadAndSync(updateCheckModal.serverVersion)}
+                        className="w-full py-2.5 bg-sky-600 hover:bg-sky-500 text-white text-xs font-bold rounded-xl shadow-md transition-all flex items-center justify-center gap-1.5 cursor-pointer active:scale-98"
+                      >
+                        <RefreshCw className="w-3.5 h-3.5" />
+                        Forçar Sincronização & Recarregar
+                      </button>
+                      <button
                         onClick={() => {
                           setUpdateCheckModal(prev => ({ ...prev, isOpen: false }));
                           setShowUpdateModal(true);
@@ -497,7 +517,7 @@ export default function App() {
                       </button>
                       <button
                         onClick={() => setUpdateCheckModal(prev => ({ ...prev, isOpen: false }))}
-                        className="w-full py-2.5 bg-slate-900 dark:bg-white text-white dark:text-slate-900 text-xs font-bold rounded-xl shadow-lg transition-all hover:opacity-90 active:scale-98 cursor-pointer"
+                        className="w-full py-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 text-xs font-bold rounded-xl transition-all hover:bg-slate-200 dark:hover:bg-slate-700 active:scale-98 cursor-pointer"
                       >
                         Fechar
                       </button>
@@ -734,7 +754,7 @@ export default function App() {
 
             <div 
               className="grid bg-slate-200/50 dark:bg-slate-900/60 rounded-xl p-1 shadow-inner border border-slate-200/50 dark:border-slate-700/50 no-print print:hidden gap-1"
-              style={{ gridTemplateColumns: `repeat(${3 + (settings.eventsEnabled !== false ? 1 : 0) + (settings.muralEnabled === true ? 1 : 0) + (settings.appointmentsEnabled !== false ? 1 : 0)}, minmax(0, 1fr))` }}
+              style={{ gridTemplateColumns: `repeat(${3 + (settings.eventsEnabled !== false ? 1 : 0) + (settings.appointmentsEnabled !== false ? 1 : 0)}, minmax(0, 1fr))` }}
             >
               <button
                 onClick={() => setActiveTab("student")}
@@ -775,15 +795,6 @@ export default function App() {
                 <Landmark className="w-4 h-4 mb-0.5" />
                 Minha Diocese
               </button>
-              {settings.muralEnabled === true && (
-                <button
-                  onClick={() => setActiveTab("mural")}
-                  className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "mural" ? "bg-white dark:bg-amber-600 text-amber-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
-                >
-                  <Sparkles className="w-4 h-4 mb-0.5" />
-                  Mural
-                </button>
-              )}
             </div>
 
           <AnimatePresence mode="wait">
@@ -832,7 +843,6 @@ export default function App() {
                       onNavigateToEvents={() => setActiveTab("events")}
                     />
                   )}
-                  {activeTab === "mural" && <MuralPage />}
                   {activeTab === "student" && (
                     <StudentPortal
                       overrideCode={adminForceViewCode}

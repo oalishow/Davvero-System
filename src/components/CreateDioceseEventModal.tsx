@@ -210,7 +210,7 @@ export default function CreateDioceseEventModal({
         createNotification({
           recipientId: "todos",
           title: `Novo Evento: Diocese de ${selectedDiocese}`,
-          message: `${title} foi publicado na aba Dioceses${isPublic ? " e no mural geral" : ""}. Participe e confira os detalhes!`,
+          message: `${title} foi publicado na aba Dioceses${isPublic ? " e no catálogo público" : ""}. Participe e confira os detalhes!`,
           type: "evento"
         }).catch(console.error);
       }
@@ -334,7 +334,7 @@ export default function CreateDioceseEventModal({
                 </div>
                 <p className="text-[11px] text-slate-600 dark:text-slate-300 mt-1 leading-relaxed">
                   {isPublic
-                    ? "✨ Este evento ficará visível tanto no mural geral da faculdade/seminário para todos os alunos e visitantes, quanto na aba da Diocese."
+                    ? "✨ Este evento ficará visível tanto no catálogo público de eventos para todos os alunos e visitantes, quanto na aba da Diocese."
                     : "🔒 Este evento ficará visível prioritariamente na aba Dioceses, sob a Diocese de " + selectedDiocese + "."}
                 </p>
               </div>

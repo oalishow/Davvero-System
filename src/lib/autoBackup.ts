@@ -44,20 +44,12 @@ export const fetchFullBackup = async () => {
     'attendances',
     'appointments',
     'availabilities',
-    'notifications',
-    'mural_posts'
+    'notifications'
   ];
 
   for (const c of cols) {
     const snap = await getDocs(query(collection(db, `artifacts/${appId}/public/data/${c}`)));
     backup.firebase[c] = snap.docs.map(d => ({ id: d.id, ...d.data() }));
-
-    if (c === 'mural_posts') {
-      for (const post of backup.firebase[c]) {
-        const commentsSnap = await getDocs(query(collection(db, `artifacts/${appId}/public/data/mural_posts/${post.id}/comments`)));
-        post.comments_backup = commentsSnap.docs.map(d => ({ id: d.id, ...d.data() }));
-      }
-    }
   }
 
   return backup;

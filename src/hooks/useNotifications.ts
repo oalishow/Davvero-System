@@ -95,7 +95,59 @@ export function useNotifications(recipientInput: string | string[] | null) {
       });
       
       setNotifications(processed);
-      localStorage.setItem(cacheKey, JSON.stringify(processed));
+      
+      // Safely persist cache without throwing QuotaExceededError
+      try {
+        if (typeof window !== "undefined") {
+          // 1. Clean up stale/old notification cache keys to free storage quota
+          for (let i = localStorage.length - 1; i >= 0; i--) {
+            const k = localStorage.key(i);
+            if (k && k.startsWith(NOTIF_CACHE_PREFIX) && k !== cacheKey) {
+              try {
+                localStorage.removeItem(k);
+              } catch {}
+            }
+          }
+
+          // 2. Cache a clean, lightweight slice of the latest notifications
+          const lightweightList = processed.slice(0, 30).map(n => ({
+            id: n.id,
+            recipientId: n.recipientId,
+            title: n.title,
+            message: n.message,
+            type: n.type,
+            read: n.read,
+            createdAt: n.createdAt,
+            actionUrl: n.actionUrl,
+          }));
+
+          localStorage.setItem(cacheKey, JSON.stringify(lightweightList));
+        }
+      } catch (storageErr) {
+        // Fallback if quota is still exceeded: purge all notif caches and try minimal subset
+        try {
+          if (typeof window !== "undefined") {
+            for (let i = localStorage.length - 1; i >= 0; i--) {
+              const k = localStorage.key(i);
+              if (k && k.startsWith(NOTIF_CACHE_PREFIX)) {
+                localStorage.removeItem(k);
+              }
+            }
+            const minimalList = processed.slice(0, 10).map(n => ({
+              id: n.id,
+              recipientId: n.recipientId,
+              title: n.title,
+              message: n.message,
+              type: n.type,
+              read: n.read,
+              createdAt: n.createdAt,
+            }));
+            localStorage.setItem(cacheKey, JSON.stringify(minimalList));
+          }
+        } catch {
+          // If storage is fully exhausted, ignore cache save gracefully so the app keeps functioning in memory
+        }
+      }
       
       const unread = processed.filter(n => !n.read).length;
       setUnreadCount(unread);

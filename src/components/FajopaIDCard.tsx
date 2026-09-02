@@ -3,6 +3,7 @@ import type { Member } from '../types';
 import { QRCodeSVG } from 'qrcode.react';
 import { useSettings } from '../context/SettingsContext';
 import { playSound } from '../lib/sounds';
+import { extractAssetString } from '../lib/constants';
 import DavveroLogo from './DavveroLogo';
 
 interface FajopaIDCardProps {
@@ -96,11 +97,18 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
   const hasSeminaryOptions = !!seminaryOptions;
   
   // Multi-tier signature retrieval from state and storage
-  const localDirectorSig = typeof window !== "undefined" ? (localStorage.getItem("davveroId_director_signature") || sessionStorage.getItem("davveroId_director_signature")) : null;
-  const localRectorSig = typeof window !== "undefined" ? (localStorage.getItem("davveroId_rector_signature") || sessionStorage.getItem("davveroId_rector_signature")) : null;
+  const localDirectorSig = typeof window !== "undefined" ? extractAssetString(localStorage.getItem("davveroId_director_signature") || sessionStorage.getItem("davveroId_director_signature")) : null;
+  const localRectorSig = typeof window !== "undefined" ? extractAssetString(localStorage.getItem("davveroId_rector_signature") || sessionStorage.getItem("davveroId_rector_signature")) : null;
 
-  const displayInstSignature = instSignature || cloudSettings.instSignature || localDirectorSig || null;
-  const displayRectorSignature = seminaryOptions?.signature || rectorSignature || cloudSettings.rectorSignature || localRectorSig || null;
+  const displayInstSignature = extractAssetString(instSignature || cloudSettings.instSignature || localDirectorSig);
+  const displayRectorSignature = extractAssetString(
+    seminaryOptions?.signature || 
+    seminaryOptions?.rectorSignature || 
+    seminaryOptions?.signatureUrl || 
+    rectorSignature || 
+    cloudSettings.rectorSignature || 
+    localRectorSig
+  );
 
   const showRector = (isSeminarista && validDiocese) || hasSeminaryOptions || Boolean(displayRectorSignature) || Boolean(rectorSignature);
   const showSecondaryLogo = validDiocese || (hasSeminaryOptions && seminaryOptions?.logo);
@@ -266,9 +274,11 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
            {displayLogoFront ? (
               <img 
                 src={displayLogoFront} 
-                crossOrigin="anonymous"
                 alt="Logo Inst" 
                 className="w-[85%] h-[85%] object-contain" 
+                referrerPolicy="no-referrer"
+                loading="eager"
+                decoding="sync"
                 style={{ filter: 'drop-shadow(0 0 2px white) drop-shadow(0 0 1px white)' }}
               />
            ) : (
@@ -311,7 +321,14 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
       <div className="absolute top-[20%] right-[3%] w-[28%] h-[72%] flex flex-col items-center justify-start pt-[2%] z-10">
         {visibleFields.photo && (
           <div className="w-[100%] bg-white rounded-[5%] border-[3px] border-slate-800 overflow-hidden shadow-md" style={{ aspectRatio: '3/3.5' }}>
-            <img src={avatarUrl} crossOrigin="anonymous" alt="Fotografia" className="w-full h-full object-cover" />
+            <img 
+              src={avatarUrl} 
+              alt="Fotografia" 
+              className="w-full h-full object-cover" 
+              referrerPolicy="no-referrer"
+              loading="eager"
+              decoding="sync"
+            />
           </div>
         )}
         
@@ -379,8 +396,8 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
                      <img 
                        src={displayInstSignature} 
                        alt="Assinatura Diretor" 
-                       className="w-auto object-contain pointer-events-none select-none" 
-                       crossOrigin={displayInstSignature.startsWith('data:') ? undefined : "anonymous"}
+                       className="w-auto object-contain pointer-events-none select-none max-h-full" 
+                       referrerPolicy="no-referrer"
                        loading="eager"
                        decoding="sync"
                        style={{ 
@@ -410,8 +427,8 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
                      <img 
                        src={displayRectorSignature} 
                        alt="Assinatura Reitor" 
-                       className="w-auto object-contain pointer-events-none select-none" 
-                       crossOrigin={displayRectorSignature.startsWith('data:') ? undefined : "anonymous"}
+                       className="w-auto object-contain pointer-events-none select-none max-h-full" 
+                       referrerPolicy="no-referrer"
                        loading="eager"
                        decoding="sync"
                        style={{ 
@@ -444,9 +461,11 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
                 {displayLogoBack ? (
                    <img 
                       src={displayLogoBack} 
-                      crossOrigin="anonymous"
                       alt="Logo" 
                       className="w-full h-full object-contain" 
+                      referrerPolicy="no-referrer"
+                      loading="eager"
+                      decoding="sync"
                       style={{ filter: 'drop-shadow(0 0 2px white) drop-shadow(0 0 1px white)' }}
                    />
                 ) : (
@@ -504,9 +523,11 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
                >
                  <img 
                     src={cardSecondaryBackLogo} 
-                    crossOrigin="anonymous"
                     alt="Logo Secundária" 
                     className="w-full h-full object-contain" 
+                    referrerPolicy="no-referrer"
+                    loading="eager"
+                    decoding="sync"
                     style={{ filter: 'drop-shadow(0 0 2px white) drop-shadow(0 0 1px white)' }}
                  />
                </div>

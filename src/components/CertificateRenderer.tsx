@@ -2,6 +2,7 @@ import React, { forwardRef } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Event, CertificateTemplate, Member } from '../types';
 import { useSettings } from '../context/SettingsContext';
+import { extractAssetString } from '../lib/constants';
 
 interface CertificateRendererProps {
   event: Event;
@@ -18,16 +19,21 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     // Signatures URLs and names fallback
     const isDioceseEvent = Boolean(event.isDiocese || event.dioceseId);
 
-    const localDirectorSig = typeof window !== "undefined" ? (localStorage.getItem("davveroId_director_signature") || sessionStorage.getItem("davveroId_director_signature")) : null;
-    const localRectorSig = typeof window !== "undefined" ? (localStorage.getItem("davveroId_rector_signature") || sessionStorage.getItem("davveroId_rector_signature")) : null;
+    const localDirectorSig = typeof window !== "undefined" ? extractAssetString(localStorage.getItem("davveroId_director_signature") || sessionStorage.getItem("davveroId_director_signature")) : null;
+    const localRectorSig = typeof window !== "undefined" ? extractAssetString(localStorage.getItem("davveroId_rector_signature") || sessionStorage.getItem("davveroId_rector_signature")) : null;
 
-    const fajopaSigUrl = !isDioceseEvent ? (template.fajopaDirectorSignatureUrl || settings.instSignature || localDirectorSig || undefined) : undefined;
-    const rectorSigUrl = !isDioceseEvent ? (template.seminarRectorSignatureUrl || settings.rectorSignature || localRectorSig || undefined) : undefined;
-    const fajopaName = !isDioceseEvent ? (template.fajopaDirectorName || settings.directorName) : undefined;
-    const rectorName = !isDioceseEvent ? (template.seminarRectorName || settings.rectorName) : undefined;
+    const showFajopaDirector = template.showFajopaDirectorSignature !== undefined 
+      ? template.showFajopaDirectorSignature 
+      : (!isDioceseEvent || Boolean(template.fajopaDirectorSignatureUrl || template.fajopaDirectorName));
 
-    const showFajopaDirector = !isDioceseEvent && (template.showFajopaDirectorSignature ?? true);
-    const showSeminarRector = !isDioceseEvent && (template.showSeminarRectorSignature ?? true);
+    const showSeminarRector = template.showSeminarRectorSignature !== undefined 
+      ? template.showSeminarRectorSignature 
+      : (!isDioceseEvent || Boolean(template.seminarRectorSignatureUrl || template.seminarRectorName));
+
+    const fajopaSigUrl = extractAssetString(template.fajopaDirectorSignatureUrl || (showFajopaDirector ? (settings.instSignature || localDirectorSig) : undefined));
+    const rectorSigUrl = extractAssetString(template.seminarRectorSignatureUrl || (showSeminarRector ? (settings.rectorSignature || localRectorSig) : undefined));
+    const fajopaName = template.fajopaDirectorName || settings.directorName || "Diretor FAJOPA";
+    const rectorName = template.seminarRectorName || settings.rectorName || "Reitor";
 
     // Custom / Diocese Responsibles with Diocese Config Fallbacks
     const dioceseConfig = isDioceseEvent ? (
@@ -38,18 +44,24 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
 
     const sig1Name = template.signature1Name ?? template.signatureName ?? (isDioceseEvent ? (dioceseConfig as any)?.bishopName || (dioceseConfig as any)?.responsibleName : undefined);
     const sig1Role = template.signature1Role ?? template.signatureRole ?? (isDioceseEvent ? (dioceseConfig as any)?.bishopTitle || (dioceseConfig as any)?.responsibleRole || "Bispo Diocesano" : undefined);
-    const sig1Url = template.signature1Url || (isDioceseEvent ? (dioceseConfig as any)?.bishopSignatureUrl || (dioceseConfig as any)?.signatureUrl || (dioceseConfig as any)?.signature : undefined);
-    const showSig1 = template.showSignature1 ?? (isDioceseEvent || Boolean(sig1Name || sig1Role || sig1Url));
+    const sig1Url = extractAssetString(template.signature1Url || template.signatureUrl || (isDioceseEvent ? ((dioceseConfig as any)?.bishopSignatureUrl || (dioceseConfig as any)?.signatureUrl || (dioceseConfig as any)?.signature || (dioceseConfig as any)?.bishopSignature || (dioceseConfig as any)?.responsibleSignature) : undefined));
+    const showSig1 = template.showSignature1 !== undefined 
+      ? template.showSignature1 
+      : (isDioceseEvent || Boolean(sig1Name || sig1Role || sig1Url));
 
     const sig2Name = template.signature2Name;
     const sig2Role = template.signature2Role;
-    const sig2Url = template.signature2Url;
-    const showSig2 = template.showSignature2 ?? (isDioceseEvent && Boolean(sig2Name || sig2Role || sig2Url));
+    const sig2Url = extractAssetString(template.signature2Url);
+    const showSig2 = template.showSignature2 !== undefined 
+      ? template.showSignature2 
+      : Boolean(sig2Name || sig2Role || sig2Url);
 
     const sig3Name = template.signature3Name;
     const sig3Role = template.signature3Role;
-    const sig3Url = template.signature3Url;
-    const showSig3 = template.showSignature3 ?? Boolean(sig3Name || sig3Role || sig3Url);
+    const sig3Url = extractAssetString(template.signature3Url);
+    const showSig3 = template.showSignature3 !== undefined 
+      ? template.showSignature3 
+      : Boolean(sig3Name || sig3Role || sig3Url);
 
     // Font Family resolution
     const fontClass = 
@@ -524,7 +536,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                     src={fajopaSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
                     className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
-                    crossOrigin={fajopaSigUrl.startsWith('data:') ? undefined : "anonymous"}
+                    referrerPolicy="no-referrer"
                     loading="eager"
                     decoding="sync"
                     alt="Assinatura Diretor" 
@@ -558,7 +570,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                     src={rectorSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
                     className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
-                    crossOrigin={rectorSigUrl.startsWith('data:') ? undefined : "anonymous"}
+                    referrerPolicy="no-referrer"
                     loading="eager"
                     decoding="sync"
                     alt="Assinatura Reitor" 
@@ -578,7 +590,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           )}
 
           {/* Assinaturas dos Responsáveis da Diocese ou Personalizadas */}
-          {(isDioceseEvent || (!showFajopaDirector && !showSeminarRector) || Boolean(sig1Url || sig2Url || sig3Url)) && (
+          {(isDioceseEvent || (!showFajopaDirector && !showSeminarRector) || showSig1 || showSig2 || showSig3) && (
             <>
               {/* Responsável 1 */}
               {showSig1 && (
@@ -595,7 +607,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                         src={sig1Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
                         className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
-                        crossOrigin={sig1Url.startsWith('data:') ? undefined : "anonymous"}
+                        referrerPolicy="no-referrer"
                         loading="eager"
                         decoding="sync"
                         alt="Assinatura Responsável 1" 
@@ -629,7 +641,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                         src={sig2Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
                         className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
-                        crossOrigin={sig2Url.startsWith('data:') ? undefined : "anonymous"}
+                        referrerPolicy="no-referrer"
                         loading="eager"
                         decoding="sync"
                         alt="Assinatura Responsável 2" 
@@ -663,7 +675,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                         src={sig3Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
                         className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
-                        crossOrigin={sig3Url.startsWith('data:') ? undefined : "anonymous"}
+                        referrerPolicy="no-referrer"
                         loading="eager"
                         decoding="sync"
                         alt="Assinatura Responsável 3" 

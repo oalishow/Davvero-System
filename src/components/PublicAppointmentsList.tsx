@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
 import { Member } from "../types";
 import { HeartHandshake, ShieldCheck, Instagram, Facebook, Users, Car, ExternalLink, Calendar as CalendarIcon, MessageCircle, BookHeart } from "lucide-react";
-import MuralPage from "./MuralPage";
 import DobloControl from "./DobloControl";
 import LiturgyPanel from "./LiturgyPanel";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
@@ -212,8 +211,11 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
               Siga no Facebook
             </a>
           </div>
-          <div className="bg-slate-50 dark:bg-slate-900 rounded-3xl p-1 shadow-inner border border-slate-200/50 dark:border-slate-800/50">
-            <MuralPage forcedTab="seminario" hideTabs={true} />
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 text-center space-y-2">
+            <h4 className="text-sm font-bold text-slate-800 dark:text-white">Canais de Comunicação do Seminário</h4>
+            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
+              Acompanhe as publicações, avisos pastorais, fotos de celebrações e informações oficiais através dos canais institucionais.
+            </p>
           </div>
         </div>
       )}

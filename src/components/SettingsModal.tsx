@@ -48,7 +48,6 @@ import {
 } from "lucide-react";
 import FajopaIDCard from "./FajopaIDCard";
 import BackupModal from "./BackupModal";
-import WhatsappMuralView from "./WhatsappMuralView";
 import DioceseManager from "./DioceseManager";
 import OpenBetaModal from "./OpenBetaModal";
 import { useSettings } from "../context/SettingsContext";
@@ -76,6 +75,7 @@ import {
   CARD_DESCRIPTION_KEY,
   CARD_SIGNATURE_CONFIG_KEY,
   SECONDARY_BACK_LOGO_SCALE_KEY,
+  safeLocalStorageSet,
 } from "../lib/constants";
 
 interface LogoConfig {
@@ -208,7 +208,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [avaEnabled, setAvaEnabled] = useState(cloudSettings.avaEnabled ?? true);
   const [contemplacaoLink, setContemplacaoLink] = useState(cloudSettings.contemplacaoLink || 'https://revista.fajopa.com/index.php/contemplacao');
   const [contemplacaoEnabled, setContemplacaoEnabled] = useState(cloudSettings.contemplacaoEnabled ?? true);
-  const [muralEnabled, setMuralEnabled] = useState(cloudSettings.muralEnabled ?? false);
   const [eventsEnabled, setEventsEnabled] = useState(cloudSettings.eventsEnabled ?? true);
   const [appointmentsEnabled, setAppointmentsEnabled] = useState(cloudSettings.appointmentsEnabled ?? true);
   const [appointmentsExternalLink, setAppointmentsExternalLink] = useState(cloudSettings.appointmentsExternalLink || '');
@@ -221,7 +220,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       appointmentLink: p.appointmentLink || ''
     }))
   );
-  const [useWhatsappMural, setUseWhatsappMural] = useState(cloudSettings.useWhatsappMural ?? false);
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(cloudSettings.autoApproveEnabled ?? false);
   const [autoApproveWhitelistText, setAutoApproveWhitelistText] = useState(
     cloudSettings.autoApproveWhitelistText || (cloudSettings.autoApproveWhitelist ? cloudSettings.autoApproveWhitelist.join("\n") : "")
@@ -257,7 +255,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [testingSmtp, setTestingSmtp] = useState(false);
   const [smtpTestResult, setSmtpTestResult] = useState<{ success: boolean; message: string } | null>(null);
 
-  const [activeTab, setActiveTab] = useState<"visual" | "content" | "database" | "system" | "mural" | "appointments" | "email" | "diocese">(
+  const [activeTab, setActiveTab] = useState<"visual" | "content" | "database" | "system" | "appointments" | "email" | "diocese">(
     "visual",
   );
 
@@ -362,8 +360,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         avaEnabled,
         contemplacaoLink,
         contemplacaoEnabled,
-        useWhatsappMural,
-        muralEnabled,
         eventsEnabled,
         appointmentsEnabled,
         appointmentsExternalLink,
@@ -396,45 +392,45 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         },
       });
 
-      // Legacy fallback
-      localStorage.setItem(URL_STORAGE_KEY, url);
-      localStorage.setItem(DIRECTOR_NAME_KEY, directorName);
-      localStorage.setItem("davveroId_rector_name", rectorName);
-      localStorage.setItem(INSTITUTION_NAME_KEY, instName);
-      localStorage.setItem(INSTITUTION_COLOR_KEY, instColor);
-      localStorage.setItem(INSTITUTION_DESCRIPTION_KEY, instDescription);
-      localStorage.setItem(CARD_DESCRIPTION_KEY, cardDescription);
-      localStorage.setItem(
+      // Legacy fallback with quota protection
+      safeLocalStorageSet(URL_STORAGE_KEY, url);
+      safeLocalStorageSet(DIRECTOR_NAME_KEY, directorName);
+      safeLocalStorageSet("davveroId_rector_name", rectorName);
+      safeLocalStorageSet(INSTITUTION_NAME_KEY, instName);
+      safeLocalStorageSet(INSTITUTION_COLOR_KEY, instColor);
+      safeLocalStorageSet(INSTITUTION_DESCRIPTION_KEY, instDescription);
+      safeLocalStorageSet(CARD_DESCRIPTION_KEY, cardDescription);
+      safeLocalStorageSet(
         CARD_VISIBLE_FIELDS_KEY,
         JSON.stringify(visibleFields),
       );
-      localStorage.setItem(CARD_FRONT_TEXT_KEY, cardFrontText);
-      localStorage.setItem(CARD_BACK_TEXT_KEY, cardBackText);
-      localStorage.setItem(
+      safeLocalStorageSet(CARD_FRONT_TEXT_KEY, cardFrontText);
+      safeLocalStorageSet(CARD_BACK_TEXT_KEY, cardBackText);
+      safeLocalStorageSet(
         CARD_FRONT_LOGO_CONFIG_KEY,
         JSON.stringify(frontLogoConfig),
       );
-      localStorage.setItem(
+      safeLocalStorageSet(
         CARD_BACK_LOGO_CONFIG_KEY,
         JSON.stringify(backLogoConfig),
       );
-      localStorage.setItem(
+      safeLocalStorageSet(
         CARD_SIGNATURE_CONFIG_KEY,
         signatureScale.toString(),
       );
-      localStorage.setItem(
+      safeLocalStorageSet(
         SECONDARY_BACK_LOGO_SCALE_KEY,
         secondaryBackLogoScale.toString(),
       );
-      if (instLogo) localStorage.setItem(INSTITUTION_LOGO_KEY, instLogo);
-      if (cardLogo) localStorage.setItem(CARD_LOGO_KEY, cardLogo);
-      if (cardBackLogo) localStorage.setItem(CARD_BACK_LOGO_KEY, cardBackLogo);
+      if (instLogo) safeLocalStorageSet(INSTITUTION_LOGO_KEY, instLogo);
+      if (cardLogo) safeLocalStorageSet(CARD_LOGO_KEY, cardLogo);
+      if (cardBackLogo) safeLocalStorageSet(CARD_BACK_LOGO_KEY, cardBackLogo);
       if (cardBackImage)
-        localStorage.setItem(CARD_BACK_IMAGE_KEY, cardBackImage);
+        safeLocalStorageSet(CARD_BACK_IMAGE_KEY, cardBackImage);
       if (instSignature)
-        localStorage.setItem(DIRECTOR_SIGNATURE_KEY, instSignature);
+        safeLocalStorageSet(DIRECTOR_SIGNATURE_KEY, instSignature);
       if (rectorSignature)
-        localStorage.setItem("davveroId_rector_signature", rectorSignature);
+        safeLocalStorageSet("davveroId_rector_signature", rectorSignature);
 
       showStatus("Configurações aplicadas globalmente!", "success");
     } catch (e: any) {
@@ -851,7 +847,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                 { id: "database", label: "Banco de Dados", icon: Link },
                 { id: "system", label: "Sistema", icon: Settings },
                 { id: "email", label: "E-mails", icon: Mail },
-                { id: "mural", label: "Mural", icon: MessageCircle },
                 { id: "appointments", label: "Seminário", icon: HeartHandshake },
                 { id: "diocese", label: "Minha Diocese", icon: Landmark },
               ].map((tab) => (
@@ -1932,18 +1927,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         )}
                       </div>
                       <div className="border-t border-emerald-200 dark:border-emerald-700/50 pt-4 space-y-4">
-                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                          <input
-                            type="checkbox"
-                            checked={muralEnabled}
-                            onChange={(e) => setMuralEnabled(e.target.checked)}
-                            className="rounded border-slate-300 text-emerald-600 focus:ring-emerald-500"
-                          />
-                          Exibir "Mural" no App
-                        </label>
-                      </div>
-
-                      <div className="border-t border-emerald-200 dark:border-emerald-700/50 pt-4 space-y-4">
+                        {/* Links e Recursos Externos */}
                         <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
                           <input
                             type="checkbox"
@@ -2359,21 +2343,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
                           <input
                             type="checkbox"
-                            checked={useWhatsappMural}
-                            onChange={(e) => setUseWhatsappMural(e.target.checked)}
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          Usar Mural de Grupos do WhatsApp (Padrão)
-                        </label>
-                        <p className="text-[10px] text-slate-500 max-w-sm mt-1 mb-4">
-                          Se ativado, a aba Mural mostrará uma lista de grupos do WhatsApp oficiais ao invés do feed interativo de posts.
-                        </p>
-                      </div>
-
-                      <div className="col-span-1 space-y-4 border-t border-indigo-100 dark:border-indigo-500/20 pt-4">
-                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                          <input
-                            type="checkbox"
                             checked={headerLogoEnabled}
                             onChange={(e) => setHeaderLogoEnabled(e.target.checked)}
                             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -2699,18 +2668,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
                           <input
                             type="checkbox"
-                            checked={muralEnabled}
-                            onChange={(e) => setMuralEnabled(e.target.checked)}
-                            className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
-                          />
-                          Exibir "Mural" no App
-                        </label>
-                      </div>
-
-                      <div className="border-t border-slate-200 dark:border-slate-700/50 pt-4 space-y-4">
-                        <label className="flex items-center gap-2 text-xs font-bold text-slate-700 dark:text-slate-200">
-                          <input
-                            type="checkbox"
                             checked={eventsEnabled}
                             onChange={(e) => setEventsEnabled(e.target.checked)}
                             className="rounded border-slate-300 text-indigo-600 focus:ring-indigo-500"
@@ -2790,19 +2747,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                       </div>
                     </div>
                   </div>
-                </div>
-              )}
-
-              {activeTab === "mural" && (
-                <div className="space-y-8 animate-in fade-in transition-all duration-300">
-                  <WhatsappMuralView 
-                    isAdmin={true} 
-                    userRoles={[]} 
-                    whatsappGroups={cloudSettings.whatsappGroups || []} 
-                    whatsappCategories={cloudSettings.whatsappCategories || []}
-                    customRoles={cloudSettings.customRoles || []}
-                    updateSettings={updateSettings as any} 
-                  />
                 </div>
               )}
 

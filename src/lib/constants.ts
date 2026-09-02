@@ -26,15 +26,122 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "7.9b";
+export const APP_VERSION = "8.0b";
 export const APP_BUILD = "02.09.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
   `artifacts/${appId}/public/data/students/_asset_${assetType}`;
+
+/**
+ * Utility to extract a clean image/data string from Firestore or local storage values.
+ * Handles string base64/URLs, raw objects { data, url, signature, etc. }, and purges
+ * corrupt '[object Object]' or nullish string literals from storage.
+ */
+export function extractAssetString(val: any): string | null {
+  if (!val) return null;
+  if (typeof val === 'string') {
+    const trimmed = val.trim();
+    if (!trimmed || trimmed === '[object Object]' || trimmed === 'undefined' || trimmed === 'null' || trimmed === '""') {
+      return null;
+    }
+    return trimmed;
+  }
+  if (typeof val === 'object') {
+    const candidate = 
+      val.data || 
+      val.url || 
+      val.base64 || 
+      val.instSignature || 
+      val.rectorSignature || 
+      val.signature || 
+      val.signatureUrl ||
+      val.bishopSignature ||
+      val.bishopSignatureUrl ||
+      val.responsibleSignature ||
+      val.fajopaDirectorSignatureUrl ||
+      val.seminarRectorSignatureUrl ||
+      val.signature1Url ||
+      val.signature2Url ||
+      val.signature3Url ||
+      val.instLogo ||
+      val.cardLogo ||
+      val.cardBackLogo ||
+      val.logoUrl ||
+      val.logo2Url ||
+      val.value || 
+      val.src || 
+      val.photoUrl || 
+      val.imageUrl;
+    if (candidate && candidate !== val) {
+      return extractAssetString(candidate);
+    }
+  }
+  return null;
+}
+
+/**
+ * Safe wrapper for localStorage.setItem that protects against QuotaExceededError.
+ * Purges stale temporary / notification caches on quota errors and avoids crashing the app.
+ */
+export function safeLocalStorageSet(key: string, value: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    localStorage.setItem(key, value);
+    return true;
+  } catch (err) {
+    // Quota exceeded: clean up stale / temporary / heavy items
+    try {
+      const keysToPurge: string[] = [];
+      for (let i = 0; i < localStorage.length; i++) {
+        const k = localStorage.key(i);
+        if (
+          k &&
+          k !== key &&
+          (k.startsWith("notif_cache_") ||
+            k.startsWith("davveroId_offline_") ||
+            k.startsWith("temp_") ||
+            k === "fajopa_settings" ||
+            k === "fajopa_dioceses_config" ||
+            k === "fajopa_seminaries_config")
+        ) {
+          keysToPurge.push(k);
+        }
+      }
+      keysToPurge.forEach((k) => {
+        try {
+          localStorage.removeItem(k);
+        } catch {}
+      });
+
+      // Retry setItem
+      localStorage.setItem(key, value);
+      return true;
+    } catch {
+      // If still overflowing, don't crash the app; in-memory state will continue to work
+      return false;
+    }
+  }
+}
+
+/**
+ * Safe wrapper for sessionStorage.setItem that prevents unhandled quota exceptions.
+ */
+export function safeSessionStorageSet(key: string, value: string): boolean {
+  if (typeof window === "undefined") return false;
+  try {
+    sessionStorage.setItem(key, value);
+    return true;
+  } catch {
+    return false;
+  }
+}
+
 export const CHANGELOG = [
+  "Versão 8.0b - Correção Geral de Assinaturas, Remoção do Mural & Atualização Sob Demanda",
+  "Remoção definitiva e completa do módulo de Mural descontinuado, correção no carregamento e renderização de assinaturas (diretor, reitor e bispos/responsáveis) em dispositivos móveis (iOS/Safari/Android), e nova ferramenta de sincronização profunda e atualização sob demanda sem travar ou deixar o app desatualizado.",
   "Versão 7.9b - Check-in em Lote, Cartaz QR Code de Presença & Otimizações",
-  "Check-in de todos os inscritos com um clique, inclusão de participantes pós-encerramento pelo administrador, geração de cartazes com QR Code para lista de presença digital com controle configurável de janelas de horários e liberação manual, remoção do rótulo 'indisponível' em agendamentos, correção de dados episcopais e desativação do Mural.",
+  "Check-in de todos os inscritos com um clique, inclusão de participantes pós-encerramento pelo administrador, geração de cartazes com QR Code para lista de presença digital com controle configurável de janelas de horários e liberação manual, remoção do rótulo 'indisponível' em agendamentos e correção de dados episcopais.",
   "Versão 7.8b - Acesso Direto a Certificados & Gerenciador de Inscrição de E-mails",
   "Acesso imediato à aba Certificados da Minha ID ao clicar em links recebidos por e-mail (sem exibição de tela de boas-vindas), controle de notificações por e-mail no perfil do usuário e link de descadastramento (opt-out) com 1 clique no rodapé dos e-mails.",
   "Versão 7.7b - Branding Davvero System & Notificações de Certificados e Carteirinhas",

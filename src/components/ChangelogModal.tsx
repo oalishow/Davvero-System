@@ -8,6 +8,17 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v8.0b',
+      title: 'Correção Geral de Assinaturas, Remoção do Mural & Atualização Sob Demanda',
+      changes: [
+        'Remoção Completa do Mural: descontinuação e remoção definitiva de todas as estruturas e abas do antigo mural de recados.',
+        'Correção de Assinaturas em Dispositivos Móveis: resolução completa para exibição de assinaturas do Diretor, Reitor e Bispos Diocesanos em celulares e tablets (iOS/Safari, iPad, Android e WebViews).',
+        'Sincronização Sob Demanda no Botão de Atualização: limpeza profunda de cache do navegador e recarga limpa garantida com 1 clique, sem ficar preso na versão anterior.',
+        'Proteção contra colapso de imagem e erro de carregamento entre domínios (CORS/WebKit).'
+      ],
+      current: true,
+    },
+    {
       version: 'v7.9b',
       title: 'Check-in de Eventos, Cartazes com QR Code & Otimização Episcopal',
       changes: [
@@ -16,10 +27,9 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Cartaz com QR Code para Lista de Presença Digital: geração e impressão de cartazes em formato A4 e compartilhamento com QR Code para os participantes realizarem auto check-in.',
         'Configuração de Liberação de Horários: controle administrativo para definir horários de abertura (padrão 30 min antes, sempre liberado, horário específico ou manual) e fechamento da lista de presença.',
         'Remoção de rotulagem "indisponível" em agendamentos que não possuem link de acesso.',
-        'Otimização e persistência episcopal corrigida em tablets e dispositivos móveis.',
-        'Desativação definitiva do Mural descontinuado.'
+        'Otimização e persistência episcopal corrigida em tablets e dispositivos móveis.'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v7.8b',

@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, appId, loginAnon } from '../lib/firebase';
-import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION } from '../lib/constants';
+import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION, extractAssetString, safeLocalStorageSet, safeSessionStorageSet } from '../lib/constants';
 import type { DioceseInfo } from '../data/diocesesData';
 import { AVAILABLE_DIOCESES, AVAILABLE_SEMINARIES } from '../types';
 
@@ -79,10 +79,8 @@ export interface AppSettings {
   fajopaPlusEnabled: boolean;
   contemplacaoLink: string;
   contemplacaoEnabled: boolean;
-  useWhatsappMural: boolean;
   whatsappGroups: { id: string; name: string; url: string; description?: string; visibleToRoles?: string[]; category?: string; type?: 'academico' | 'seminario'; requiredPassword?: string; imageUrl?: string; }[];
   whatsappCategories: string[];
-  muralEnabled?: boolean;
   eventsEnabled?: boolean;
   appointmentsEnabled?: boolean;
   appointmentsExternalLink?: string;
@@ -201,10 +199,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   fajopaPlusEnabled: true,
   contemplacaoLink: 'https://revista.fajopa.com/index.php/contemplacao',
   contemplacaoEnabled: true,
-  useWhatsappMural: false,
   whatsappGroups: [],
   whatsappCategories: ["Turmas", "Comissões", "Eventos", "Geral"],
-  muralEnabled: false,
   eventsEnabled: true,
   appointmentsEnabled: true,
   appointmentsExternalLink: '',
@@ -286,19 +282,19 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             base.seminariesConfig = parsed;
           }
         }
-        const localDirectorSig = localStorage.getItem('davveroId_director_signature') || sessionStorage.getItem('davveroId_director_signature');
+        const localDirectorSig = extractAssetString(localStorage.getItem('davveroId_director_signature') || sessionStorage.getItem('davveroId_director_signature'));
         if (localDirectorSig && !base.instSignature) {
           base.instSignature = localDirectorSig;
         }
-        const localRectorSig = localStorage.getItem('davveroId_rector_signature') || sessionStorage.getItem('davveroId_rector_signature');
+        const localRectorSig = extractAssetString(localStorage.getItem('davveroId_rector_signature') || sessionStorage.getItem('davveroId_rector_signature'));
         if (localRectorSig && !base.rectorSignature) {
           base.rectorSignature = localRectorSig;
         }
-        const localInstLogo = localStorage.getItem('davveroId_institution_logo') || sessionStorage.getItem('davveroId_institution_logo');
+        const localInstLogo = extractAssetString(localStorage.getItem('davveroId_institution_logo') || sessionStorage.getItem('davveroId_institution_logo'));
         if (localInstLogo && !base.instLogo) {
           base.instLogo = localInstLogo;
         }
-        const localCardLogo = localStorage.getItem('davveroId_card_logo') || sessionStorage.getItem('davveroId_card_logo');
+        const localCardLogo = extractAssetString(localStorage.getItem('davveroId_card_logo') || sessionStorage.getItem('davveroId_card_logo'));
         if (localCardLogo && !base.cardLogo) {
           base.cardLogo = localCardLogo;
         }
@@ -322,10 +318,25 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // Direct fetch helper for critical signatures, assets, and diocese configs to eliminate race conditions
     const performDirectFetch = async () => {
       try {
-        const [mainSnap, dirSigSnap, recSigSnap, diocesesManifestSnap] = await Promise.all([
+        const [
+          mainSnap,
+          dirSigSnap,
+          recSigSnap,
+          instLogoSnap,
+          cardLogoSnap,
+          cardBackLogoSnap,
+          cardSecondaryBackLogoSnap,
+          cardBackImageSnap,
+          diocesesManifestSnap
+        ] = await Promise.all([
           getDoc(docRef).catch(() => null),
           getDoc(doc(db, ASSETS_DOC_PATH(appId, 'instSignature'))).catch(() => null),
           getDoc(doc(db, ASSETS_DOC_PATH(appId, 'rectorSignature'))).catch(() => null),
+          getDoc(doc(db, ASSETS_DOC_PATH(appId, 'instLogo'))).catch(() => null),
+          getDoc(doc(db, ASSETS_DOC_PATH(appId, 'cardLogo'))).catch(() => null),
+          getDoc(doc(db, ASSETS_DOC_PATH(appId, 'cardBackLogo'))).catch(() => null),
+          getDoc(doc(db, ASSETS_DOC_PATH(appId, 'cardSecondaryBackLogo'))).catch(() => null),
+          getDoc(doc(db, ASSETS_DOC_PATH(appId, 'cardBackImage'))).catch(() => null),
           getDoc(doc(db, ASSETS_DOC_PATH(appId, 'dioceses_manifest'))).catch(() => null),
         ]);
 
@@ -338,25 +349,74 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
         if (dirSigSnap && dirSigSnap.exists()) {
           const snapData = dirSigSnap.data();
-          const val = snapData?.data !== undefined ? snapData.data : snapData;
+          const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.instSignature !== undefined ? snapData.instSignature : snapData);
+          const val = extractAssetString(rawVal);
           if (val) {
             setSettings(prev => ({ ...prev, instSignature: val }));
-            try {
-              localStorage.setItem('davveroId_director_signature', val);
-              sessionStorage.setItem('davveroId_director_signature', val);
-            } catch {}
+            safeLocalStorageSet('davveroId_director_signature', val);
+            safeSessionStorageSet('davveroId_director_signature', val);
           }
         }
 
         if (recSigSnap && recSigSnap.exists()) {
           const snapData = recSigSnap.data();
-          const val = snapData?.data !== undefined ? snapData.data : snapData;
+          const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.rectorSignature !== undefined ? snapData.rectorSignature : snapData);
+          const val = extractAssetString(rawVal);
           if (val) {
             setSettings(prev => ({ ...prev, rectorSignature: val }));
-            try {
-              localStorage.setItem('davveroId_rector_signature', val);
-              sessionStorage.setItem('davveroId_rector_signature', val);
-            } catch {}
+            safeLocalStorageSet('davveroId_rector_signature', val);
+            safeSessionStorageSet('davveroId_rector_signature', val);
+          }
+        }
+
+        if (instLogoSnap && instLogoSnap.exists()) {
+          const snapData = instLogoSnap.data();
+          const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.instLogo !== undefined ? snapData.instLogo : snapData);
+          const val = extractAssetString(rawVal);
+          if (val) {
+            setSettings(prev => ({ ...prev, instLogo: val }));
+            safeLocalStorageSet('davveroId_institution_logo', val);
+            safeSessionStorageSet('davveroId_institution_logo', val);
+          }
+        }
+
+        if (cardLogoSnap && cardLogoSnap.exists()) {
+          const snapData = cardLogoSnap.data();
+          const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.cardLogo !== undefined ? snapData.cardLogo : snapData);
+          const val = extractAssetString(rawVal);
+          if (val) {
+            setSettings(prev => ({ ...prev, cardLogo: val }));
+            safeLocalStorageSet('davveroId_card_logo', val);
+            safeSessionStorageSet('davveroId_card_logo', val);
+          }
+        }
+
+        if (cardBackLogoSnap && cardBackLogoSnap.exists()) {
+          const snapData = cardBackLogoSnap.data();
+          const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.cardBackLogo !== undefined ? snapData.cardBackLogo : snapData);
+          const val = extractAssetString(rawVal);
+          if (val) {
+            setSettings(prev => ({ ...prev, cardBackLogo: val }));
+            safeLocalStorageSet('davveroId_card_back_logo', val);
+            safeSessionStorageSet('davveroId_card_back_logo', val);
+          }
+        }
+
+        if (cardSecondaryBackLogoSnap && cardSecondaryBackLogoSnap.exists()) {
+          const snapData = cardSecondaryBackLogoSnap.data();
+          const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.cardSecondaryBackLogo !== undefined ? snapData.cardSecondaryBackLogo : snapData);
+          const val = extractAssetString(rawVal);
+          if (val) {
+            setSettings(prev => ({ ...prev, cardSecondaryBackLogo: val }));
+          }
+        }
+
+        if (cardBackImageSnap && cardBackImageSnap.exists()) {
+          const snapData = cardBackImageSnap.data();
+          const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.cardBackImage !== undefined ? snapData.cardBackImage : snapData);
+          const val = extractAssetString(rawVal);
+          if (val) {
+            setSettings(prev => ({ ...prev, cardBackImage: val }));
           }
         }
 
@@ -394,9 +454,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         if (Object.keys(directDiocesesConfig).length > 0) {
           setSettings(prev => {
             const merged = { ...(prev.diocesesConfig || {}), ...directDiocesesConfig };
-            try {
-              localStorage.setItem('fajopa_dioceses_config', JSON.stringify(merged));
-            } catch {}
+            safeLocalStorageSet('fajopa_dioceses_config', JSON.stringify(merged));
             return { ...prev, diocesesConfig: merged };
           });
         }
@@ -454,25 +512,27 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       const unsubAsset = onSnapshot(assetRef, (snapshot) => {
         if (snapshot.exists()) {
           const snapData = snapshot.data();
-          const val = snapData?.data !== undefined ? snapData.data : snapData;
+          const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.[field] !== undefined ? snapData[field] : snapData);
+          const val = extractAssetString(rawVal);
           if (val !== undefined) {
             setSettings(prev => ({ ...prev, [field]: val }));
-            if (typeof window !== "undefined") {
-              try {
-                if (field === 'instSignature' && val) {
-                  localStorage.setItem('davveroId_director_signature', val);
-                  sessionStorage.setItem('davveroId_director_signature', val);
-                } else if (field === 'rectorSignature' && val) {
-                  localStorage.setItem('davveroId_rector_signature', val);
-                  sessionStorage.setItem('davveroId_rector_signature', val);
-                } else if (field === 'instLogo' && val) {
-                  localStorage.setItem('davveroId_institution_logo', val);
-                  sessionStorage.setItem('davveroId_institution_logo', val);
-                } else if (field === 'cardLogo' && val) {
-                  localStorage.setItem('davveroId_card_logo', val);
-                  sessionStorage.setItem('davveroId_card_logo', val);
-                }
-              } catch {}
+            if (typeof window !== "undefined" && val) {
+              if (field === 'instSignature') {
+                safeLocalStorageSet('davveroId_director_signature', val);
+                safeSessionStorageSet('davveroId_director_signature', val);
+              } else if (field === 'rectorSignature') {
+                safeLocalStorageSet('davveroId_rector_signature', val);
+                safeSessionStorageSet('davveroId_rector_signature', val);
+              } else if (field === 'instLogo') {
+                safeLocalStorageSet('davveroId_institution_logo', val);
+                safeSessionStorageSet('davveroId_institution_logo', val);
+              } else if (field === 'cardLogo') {
+                safeLocalStorageSet('davveroId_card_logo', val);
+                safeSessionStorageSet('davveroId_card_logo', val);
+              } else if (field === 'cardBackLogo') {
+                safeLocalStorageSet('davveroId_card_back_logo', val);
+                safeSessionStorageSet('davveroId_card_back_logo', val);
+              }
             }
           }
         }
@@ -500,9 +560,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
                 ...(prev.diocesesConfig || {}),
                 [cleanKey]: val
               };
-              try {
-                localStorage.setItem('fajopa_dioceses_config', JSON.stringify(updated));
-              } catch {}
+              safeLocalStorageSet('fajopa_dioceses_config', JSON.stringify(updated));
               return {
                 ...prev,
                 diocesesConfig: updated
@@ -512,9 +570,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             setSettings(prev => {
               const current = { ...(prev.diocesesConfig || {}) };
               delete current[cleanKey];
-              try {
-                localStorage.setItem('fajopa_dioceses_config', JSON.stringify(current));
-              } catch {}
+              safeLocalStorageSet('fajopa_dioceses_config', JSON.stringify(current));
               return { ...prev, diocesesConfig: current };
             });
           }
@@ -680,18 +736,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         // Exclude ultra-heavy assets and partitioned structures from main localStorage cache
         delete (safeSettings as any).cardBackImage;
         delete (safeSettings as any).diocesesConfig;
+        delete (safeSettings as any).instLogo;
+        delete (safeSettings as any).cardLogo;
+        delete (safeSettings as any).cardBackLogo;
+        delete (safeSettings as any).cardSecondaryBackLogo;
+        delete (safeSettings as any).seminariesConfig;
         
-        try {
-          localStorage.setItem('fajopa_settings', JSON.stringify(safeSettings));
-        } catch (storageErr) {
-          // If browser storage quota exceeded, strip further heavy assets and retry
-          delete (safeSettings as any).instLogo;
-          delete (safeSettings as any).cardLogo;
-          delete (safeSettings as any).cardBackLogo;
-          delete (safeSettings as any).cardSecondaryBackLogo;
-          delete (safeSettings as any).seminariesConfig;
-          localStorage.setItem('fajopa_settings', JSON.stringify(safeSettings));
-        }
+        safeLocalStorageSet('fajopa_settings', JSON.stringify(safeSettings));
       } catch (err) {
         console.warn("[SettingsContext] Não foi possível salvar em cache local:", err);
       }
@@ -724,9 +775,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       const diocesesMap = newSettings.diocesesConfig || {};
       const dioceseKeys = Object.keys(diocesesMap);
 
-      try {
-        localStorage.setItem('fajopa_dioceses_config', JSON.stringify(diocesesMap));
-      } catch {}
+      safeLocalStorageSet('fajopa_dioceses_config', JSON.stringify(diocesesMap));
 
       // Salva cada diocese individualmente em seu próprio documento (~30KB-50KB por doc)
       dioceseKeys.forEach(k => {

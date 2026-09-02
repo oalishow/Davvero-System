@@ -888,7 +888,7 @@ export default function EventManagement({
               </div>
               <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
                 {isPublic
-                  ? "Este evento será exibido no mural geral da faculdade/instituto para todos os alunos e visitantes, além das abas específicas."
+                  ? "Este evento será exibido no catálogo público da instituição para todos os participantes e visitantes, além das abas específicas."
                   : "Este evento ficará visível conforme a categoria selecionada (Seminário, Diocese ou Acadêmico)."}
               </p>
             </div>

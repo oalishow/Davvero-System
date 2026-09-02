@@ -103,18 +103,6 @@ export default function BackupModal({ onClose }: { onClose: () => void }) {
                 } else {
                   batchPromises.push(addDoc(collection(db, `artifacts/${appId}/public/data/${colName}`), data));
                 }
-
-                // Restore comments for mural posts
-                if (colName === 'mural_posts' && comments_backup && Array.isArray(comments_backup)) {
-                  for (const comment of comments_backup) {
-                    const cid = comment.id;
-                    const cdata = { ...comment };
-                    delete cdata.id;
-                    if (cid) {
-                      batchPromises.push(setDoc(doc(db, `artifacts/${appId}/public/data/mural_posts/${id}/comments`, cid), cdata));
-                    }
-                  }
-                }
               }
             }
           }

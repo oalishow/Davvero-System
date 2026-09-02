@@ -170,7 +170,7 @@ export interface Event {
   seminaryId?: string; // SPSCJ, Marília, Bauru, or ALL
   isDiocese?: boolean; // NEW: Indicates if it's a diocese event
   dioceseId?: string; // Specific Diocese name or empty for all
-  isPublic?: boolean; // Se true, o evento fica visível para todos (no mural geral e para todas as dioceses)
+  isPublic?: boolean; // Se true, o evento fica visível para todos no catálogo público e para todas as dioceses
   createdBy?: string; // ID ou RA do usuário que criou o evento
   creatorName?: string; // Nome de quem criou o evento
   creatorEmail?: string; // E-mail de quem criou o evento
@@ -243,38 +243,4 @@ export interface Appointment {
   notes?: string;
   createdAt: string;
   updatedAt?: string;
-}
-
-export interface MuralPost {
-  id: string;
-  tabFn: "academico" | "seminario"; // Which tab it belongs to
-  authorId?: string; // If known (memberId)
-  authorName: string; // The selected or provided name
-  authorPhotoUrl?: string;
-  text: string;
-  type: "message" | "poll";
-  mediaUrl?: string; // For images/PDFs
-  mediaType?: "image" | "pdf" | "link" | "video" | "document";
-  pollOptions?: { id: string; text: string; votes: number }[];
-  isAnonymousPoll?: boolean; // Se a enquete é anônima (padrão)
-  voterDetails?: { userId: string; userName: string; optionId: string }[]; // Para enquetes públicas
-  votedUserIds?: string[]; // IDs of users who voted
-  createdAt: any;
-  isPinned: boolean;
-  orderIndex?: number; // For manual reordering
-  expiresAt?: any; // Auto delete timestamp
-  status: "pending" | "approved"; // Non-admin posts are pending by default
-  isAdminPost?: boolean;
-  likes?: string[]; // Array of member IDs who liked
-  commentsCount?: number;
-}
-
-export interface MuralComment {
-  id: string;
-  postId: string;
-  authorId: string;
-  authorName: string;
-  authorPhotoUrl?: string;
-  text: string;
-  createdAt: any;
 }
