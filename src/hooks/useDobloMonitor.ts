@@ -37,7 +37,9 @@ export function useDobloMonitor(bondedId: string | null) {
       where("arrivalTime", "==", "")
     );
 
+    let interval: NodeJS.Timeout;
     let unsubscribe = () => {};
+    
     try {
       unsubscribe = onSnapshot(q, (snapshot) => {
         const pendingLogs = snapshot.docs.map(doc => ({ id: doc.id, ...doc.data() } as any));
@@ -56,29 +58,21 @@ export function useDobloMonitor(bondedId: string | null) {
 
             if (diffHours >= 2 && !notifiedSet.current.has(log.id)) {
               notifiedSet.current.add(log.id);
-              if (Notification.permission === 'granted') {
-                new Notification('Doblô: Viagem pendente', {
-                  body: `Você esqueceu de finalizar o registro de viagem da Doblô iniciada às ${log.departureTime}.`,
-                  icon: '/icon-192.png'
-                });
-              } else if (Notification.permission !== 'denied') {
-                Notification.requestPermission().then(permission => {
-                  if (permission === 'granted') {
-                    new Notification('Doblô: Viagem pendente', {
-                      body: `Você esqueceu de finalizar o registro de viagem da Doblô iniciada às ${log.departureTime}.`,
-                      icon: '/icon-192.png'
-                    });
-                  }
-                });
+              if (typeof window !== "undefined" && "Notification" in window) {
+                if (Notification.permission === 'granted') {
+                  new Notification('Doblô: Viagem pendente', {
+                    body: `Você esqueceu de finalizar o registro de viagem da Doblô iniciada às ${log.departureTime}.`,
+                    icon: '/icon-192.png'
+                  });
+                }
               }
             }
           });
         };
 
         checkLogs();
-        const interval = setInterval(checkLogs, 60000);
-
-        return () => clearInterval(interval);
+        if (interval) clearInterval(interval);
+        interval = setInterval(checkLogs, 60000);
       });
     } catch (e) {
       console.error("Error monitoring doblo logs", e);
@@ -86,6 +80,7 @@ export function useDobloMonitor(bondedId: string | null) {
 
     return () => {
       unsubscribe();
+      if (interval) clearInterval(interval);
     };
   }, [authorId]);
 }

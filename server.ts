@@ -203,7 +203,7 @@ async function startServer() {
     }
 
     let host = (smtpData?.host || process.env.SMTP_HOST || "").trim();
-    const port = Number(smtpData?.port || process.env.SMTP_PORT || 587);
+    const port = Number(smtpData?.port || process.env.SMTP_PORT || 0);
     const secure = smtpData?.secure !== undefined 
       ? Boolean(smtpData.secure) 
       : (process.env.SMTP_SECURE === "true" || port === 465);
@@ -211,9 +211,11 @@ async function startServer() {
     let user = (smtpData?.user || process.env.SMTP_USER || "").trim();
     let pass = (smtpData?.pass || process.env.SMTP_PASS || "").trim();
 
-    // Auto-clean Google App Passwords if pasted with spaces (e.g. "abcd efgh ijkl mnop" -> "abcdefghijklmnop")
-    if (host.includes("gmail") || host.includes("google") || user.endsWith("@gmail.com") || user.endsWith("@fajopa.edu.br")) {
-      pass = pass.replace(/\s+/g, "");
+    // Auto-clean passwords if pasted with spaces or quotes (e.g. "abcd efgh ijkl mnop" -> "abcdefghijklmnop")
+    pass = pass.replace(/[\s\u200B\u00A0\t\r\n"']/g, "");
+
+    const isGmail = host.toLowerCase().includes("gmail") || host.toLowerCase().includes("google") || user.endsWith("@gmail.com") || user.endsWith("@fajopa.edu.br");
+    if (isGmail) {
       if (!host || host.toLowerCase() === "gmail" || host.toLowerCase() === "google") {
         host = "smtp.gmail.com";
       }
@@ -238,18 +240,25 @@ async function startServer() {
       greetingTimeout: 15000,
       socketTimeout: 25000,
       tls: {
-        rejectUnauthorized: false
+        rejectUnauthorized: false,
+        minVersion: "TLSv1.2"
       }
     });
   }
 
   function formatSmtpError(err: any): string {
     const rawMsg = err?.message || String(err);
-    if (rawMsg.includes("535") || rawMsg.includes("BadCredentials") || rawMsg.includes("Username and Password not accepted")) {
-      return "Erro de Autenticação do Gmail (535): O Google não aceita a sua senha comum de login. É obrigatório usar uma 'Senha de App' de 16 letras gerada em sua Conta Google (myaccount.google.com/apppasswords).";
+    if (
+      rawMsg.includes("535") ||
+      rawMsg.includes("5.7.8") ||
+      rawMsg.includes("BadCredentials") ||
+      rawMsg.includes("Username and Password not accepted") ||
+      rawMsg.includes("Invalid login")
+    ) {
+      return "Erro de Autenticação (535): Nome de usuário ou senha rejeitados pelo provedor (Google/Gmail). O Google não aceita a senha comum de login. É OBRIGATÓRIO ativar a 'Verificação em 2 Etapas' e gerar uma 'Senha de App' de 16 letras em https://myaccount.google.com/apppasswords.";
     }
     if (rawMsg.includes("ETIMEDOUT") || rawMsg.includes("ECONNREFUSED") || rawMsg.includes("Timeout")) {
-      return `Não foi possível conectar ao servidor SMTP (${rawMsg}). Verifique o endereço do Host e a Porta (Porta 465 com SSL marcado, ou Porta 587 com SSL desmarcado).`;
+      return `Não foi possível conectar ao servidor SMTP (${rawMsg}). Verifique o endereço do Host e a Porta (Recomendado para Gmail: smtp.gmail.com / Porta 465 com SSL Direto).`;
     }
     return rawMsg;
   }

@@ -79,16 +79,32 @@ export default class ErrorBoundary extends React.Component<Props, State> {
                 </>
             )}
 
-            <button 
-                onClick={() => {
-                    sessionStorage.clear();
-                    window.location.reload();
-                }}
-                className="px-6 py-3 bg-slate-800 hover:bg-slate-700 dark:bg-slate-700 dark:hover:bg-slate-600 text-white rounded-xl font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
-            >
-                <RefreshCw className="w-4 h-4" />
-                Recarregar Sistema
-            </button>
+            <div className="flex flex-wrap items-center justify-center gap-3">
+              <button 
+                  onClick={() => {
+                      sessionStorage.clear();
+                      window.location.reload();
+                  }}
+                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
+              >
+                  <RefreshCw className="w-3.5 h-3.5" />
+                  Recarregar Sistema
+              </button>
+
+              <button 
+                  onClick={() => {
+                      try {
+                        localStorage.removeItem('fajopa_settings');
+                        localStorage.removeItem('app_version_state');
+                        sessionStorage.clear();
+                      } catch {}
+                      window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
+                  }}
+                  className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+              >
+                  Limpar Cache & Reiniciar
+              </button>
+            </div>
         </div>
       );
     }

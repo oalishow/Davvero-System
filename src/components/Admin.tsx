@@ -13,8 +13,10 @@ export default function Admin() {
       // For LGPD security, we only allow explicit non-anonymous users
       if (user && !user.isAnonymous) {
         setIsAuthenticated(true);
+        localStorage.setItem("adminMasterLogged", "true");
       } else {
         setIsAuthenticated(false);
+        localStorage.removeItem("adminMasterLogged");
       }
     });
     return () => unsub();

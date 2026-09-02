@@ -50,6 +50,7 @@ import FajopaIDCard from "./FajopaIDCard";
 import BackupModal from "./BackupModal";
 import WhatsappMuralView from "./WhatsappMuralView";
 import DioceseManager from "./DioceseManager";
+import OpenBetaModal from "./OpenBetaModal";
 import { useSettings } from "../context/SettingsContext";
 import { DEFAULT_EMAIL_TEMPLATES, getCompiledEmail, EmailTemplatesSettings, EmailTemplateKey, parseEmailList } from "../lib/emailService";
 import { AVAILABLE_SEMINARIES } from "../types";
@@ -225,6 +226,9 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [autoApproveWhitelistText, setAutoApproveWhitelistText] = useState(
     cloudSettings.autoApproveWhitelistText || (cloudSettings.autoApproveWhitelist ? cloudSettings.autoApproveWhitelist.join("\n") : "")
   );
+  const [openBetaBadgeEnabled, setOpenBetaBadgeEnabled] = useState(cloudSettings.openBetaBadgeEnabled ?? true);
+  const [openBetaEndDate, setOpenBetaEndDate] = useState(cloudSettings.openBetaEndDate || '2026-10-05');
+  const [showBetaModalPreview, setShowBetaModalPreview] = useState(false);
 
   // Email Notification States
   const [emailNotificationsEnabled, setEmailNotificationsEnabled] = useState(cloudSettings.emailNotificationsEnabled ?? true);
@@ -370,6 +374,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           .map(s => s.trim())
           .filter(Boolean),
         autoApproveWhitelistText,
+        openBetaBadgeEnabled,
+        openBetaEndDate,
         emailNotificationsEnabled,
         notifyStudentOnPending,
         notifyStudentOnApproved,
@@ -384,7 +390,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
           port: Number(smtpPort) || 587,
           secure: smtpSecure,
           user: smtpUser.trim(),
-          pass: smtpPass.trim(),
+          pass: smtpPass.replace(/\s+/g, ''),
           fromName: smtpFromName.trim(),
           fromEmail: smtpFromEmail.trim(),
         },
@@ -2122,6 +2128,50 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                     </div>
                   </div>
 
+                  <div className="bg-amber-50 dark:bg-amber-950/20 p-5 rounded-2xl border border-amber-200 dark:border-amber-500/30 space-y-4">
+                    <div className="flex items-center justify-between">
+                      <h3 className="text-sm font-bold flex items-center gap-2 text-amber-800 dark:text-amber-300 uppercase tracking-widest text-[10px]">
+                        <Sparkles className="w-4 h-4 text-amber-500" /> Selo "BETA ABERTO" (Período de Testes)
+                      </h3>
+                      <label className="relative inline-flex items-center cursor-pointer">
+                        <input
+                          type="checkbox"
+                          checked={openBetaBadgeEnabled}
+                          onChange={(e) => setOpenBetaBadgeEnabled(e.target.checked)}
+                          className="sr-only peer"
+                        />
+                        <div className="w-11 h-6 bg-slate-200 peer-focus:outline-none rounded-full peer dark:bg-slate-700 peer-checked:after:translate-x-full peer-checked:after:border-white after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-slate-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all peer-checked:bg-amber-500"></div>
+                      </label>
+                    </div>
+                    <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+                      Exibe o selo interativo "BETA ABERTO" abaixo do logotipo do Davvero na tela principal. Quando os usuários clicam no selo, abre uma janela explicando a fase de testes e fornecendo canal direto para reporte de bugs no WhatsApp (18) 99703-4969.
+                    </p>
+                    
+                    <div className="space-y-1.5 pt-1">
+                      <label className="block text-[11px] font-bold text-slate-700 dark:text-slate-300 uppercase tracking-wider">
+                        Data Limite do Período de Testes
+                      </label>
+                      <input
+                        type="date"
+                        value={openBetaEndDate}
+                        onChange={(e) => setOpenBetaEndDate(e.target.value)}
+                        className="w-full px-3.5 py-2.5 rounded-xl border border-amber-300 dark:border-amber-500/40 bg-white dark:bg-slate-900 text-slate-800 dark:text-white text-xs font-medium focus:ring-2 focus:ring-amber-500 focus:outline-none"
+                      />
+                      <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                        Data padrão do projeto: 05/10/2026 (5 de outubro de 2026).
+                      </p>
+                    </div>
+
+                    <button
+                      type="button"
+                      onClick={() => setShowBetaModalPreview(true)}
+                      className="w-full py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-colors shadow-sm flex items-center justify-center gap-2"
+                    >
+                      <Sparkles className="w-3.5 h-3.5" />
+                      Visualizar / Testar Modal do Beta Aberto
+                    </button>
+                  </div>
+
                   <div className="bg-fuchsia-50 dark:bg-fuchsia-900/10 p-5 rounded-2xl border border-fuchsia-200 dark:border-fuchsia-500/20">
                     <h3 className="text-sm font-bold flex items-center gap-2 mb-4 text-fuchsia-700 dark:text-fuchsia-300 uppercase tracking-widest text-[10px]">
                       <Sparkles className="w-4 h-4" /> Modal de Boas-vindas
@@ -3200,14 +3250,14 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                               type="button"
                               onClick={() => {
                                 setSmtpHost('smtp.gmail.com');
-                                setSmtpPort(587);
-                                setSmtpSecure(false);
+                                setSmtpPort(465);
+                                setSmtpSecure(true);
                                 if (!smtpUser) setSmtpUser('comunicacao@fajopa.edu.br');
                                 if (!smtpFromName) setSmtpFromName('FAJOPA e SPSCJ - Comunicação');
                               }}
                               className="px-2.5 py-1 text-[11px] font-bold rounded-lg bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800 hover:bg-sky-100 transition-colors flex items-center gap-1"
                             >
-                              ⚡ Preencher Google / FAJOPA
+                              ⚡ Preencher Google / FAJOPA (SSL 465)
                             </button>
                             <button
                               type="button"
@@ -3242,7 +3292,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                               </a>
                             </div>
                             <p className="text-amber-700 dark:text-amber-300/90 text-[11px] leading-relaxed">
-                              Para a conta <strong>comunicacao@fajopa.edu.br</strong> (Google Workspace), o Google exige uma <strong>Senha de App</strong> de 16 letras. Logado na conta do Google da FAJOPA, acesse o link acima, crie a senha com o nome <strong>Davvero</strong> e cole o código de 16 caracteres no campo de senha abaixo.
+                              Para contas Google e <strong>comunicacao@fajopa.edu.br</strong>, o Google exige que você ative a <strong>Verificação em 2 Etapas</strong> e crie uma <strong>Senha de App</strong> de 16 letras no link acima. Digite o código de 16 letras (sem espaços) no campo de senha abaixo.
                             </p>
                           </div>
                         )}
@@ -3367,7 +3417,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                       port: Number(smtpPort) || 587,
                                       secure: smtpSecure,
                                       user: smtpUser.trim(),
-                                      pass: smtpPass.trim(),
+                                      pass: smtpPass.replace(/\s+/g, ''),
                                       fromName: smtpFromName.trim(),
                                       fromEmail: smtpFromEmail.trim()
                                     },
@@ -3398,16 +3448,33 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                         </div>
 
                         {smtpTestResult && (
-                          <div className={`p-3.5 rounded-xl text-xs flex items-start gap-2.5 ${
+                          <div className={`p-3.5 rounded-xl text-xs flex flex-col gap-2.5 ${
                             smtpTestResult.success 
                               ? "bg-emerald-50 text-emerald-800 dark:bg-emerald-500/10 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-500/20" 
                               : "bg-rose-50 text-rose-800 dark:bg-rose-500/10 dark:text-rose-300 border border-rose-200 dark:border-rose-500/20"
                           }`}>
-                            {smtpTestResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />}
-                            <div className="flex-1 space-y-1">
-                              <p className="font-bold">{smtpTestResult.success ? "Conexão Estabelecida!" : "Falha na Autenticação SMTP"}</p>
-                              <p className="text-[11.5px] leading-relaxed">{smtpTestResult.message}</p>
+                            <div className="flex items-start gap-2.5">
+                              {smtpTestResult.success ? <CheckCircle2 className="w-4 h-4 shrink-0 text-emerald-600 mt-0.5" /> : <AlertCircle className="w-4 h-4 shrink-0 text-rose-600 mt-0.5" />}
+                              <div className="flex-1 space-y-1">
+                                <p className="font-bold">{smtpTestResult.success ? "Conexão Estabelecida!" : "Falha na Autenticação SMTP"}</p>
+                                <p className="text-[11.5px] leading-relaxed">{smtpTestResult.message}</p>
+                              </div>
                             </div>
+                            {!smtpTestResult.success && (smtpTestResult.message.includes("535") || smtpTestResult.message.includes("Google") || smtpTestResult.message.includes("Gmail")) && (
+                              <div className="pt-2 border-t border-rose-200/60 dark:border-rose-500/20 flex flex-wrap items-center justify-between gap-2">
+                                <span className="text-[11px] font-medium text-rose-700 dark:text-rose-300">
+                                  Precisa gerar a senha de 16 letras no Google?
+                                </span>
+                                <a
+                                  href="https://myaccount.google.com/apppasswords"
+                                  target="_blank"
+                                  rel="noopener noreferrer"
+                                  className="px-3 py-1.5 rounded-lg bg-rose-600 hover:bg-rose-700 text-white font-bold text-[11px] transition-colors shadow-sm inline-flex items-center gap-1.5"
+                                >
+                                  Gerar Senha de App no Google ↗
+                                </a>
+                              </div>
+                            )}
                           </div>
                         )}
                       </div>
@@ -3929,7 +3996,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                                             port: Number(smtpPort) || 587,
                                             secure: smtpSecure,
                                             user: smtpUser.trim(),
-                                            pass: smtpPass.trim(),
+                                            pass: smtpPass.replace(/\s+/g, ''),
                                             fromName: smtpFromName.trim(),
                                             fromEmail: smtpFromEmail.trim()
                                           }
@@ -3984,6 +4051,11 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
               )}
 
               {showBackup && <BackupModal onClose={() => setShowBackup(false)} />}
+              <OpenBetaModal 
+                isOpen={showBetaModalPreview} 
+                onClose={() => setShowBetaModalPreview(false)} 
+                endDate={openBetaEndDate} 
+              />
 
               <div className="pt-4 border-t border-slate-200 dark:border-slate-800">
                 <button

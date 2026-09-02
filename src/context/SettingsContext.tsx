@@ -89,6 +89,8 @@ export interface AppSettings {
   autoApproveEnabled?: boolean;
   autoApproveWhitelist?: string[];
   autoApproveWhitelistText?: string;
+  openBetaBadgeEnabled?: boolean;
+  openBetaEndDate?: string;
   emailNotificationsEnabled?: boolean;
   emailHeaderName?: string;
   emailLogoMode?: 'davvero' | 'institution' | 'custom' | 'none';
@@ -214,6 +216,8 @@ const DEFAULT_SETTINGS: AppSettings = {
   autoApproveEnabled: false,
   autoApproveWhitelist: [],
   autoApproveWhitelistText: '',
+  openBetaBadgeEnabled: true,
+  openBetaEndDate: '2026-10-05',
   emailNotificationsEnabled: true,
   emailHeaderName: 'DAVVERO System',
   emailLogoMode: 'davvero',
@@ -508,9 +512,26 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
   useEffect(() => {
     if (settings) {
-      localStorage.setItem('fajopa_settings', JSON.stringify(settings));
-      // Aplica o zoom visualmente no elemento raiz para persistência imediata
-      document.documentElement.style.setProperty('--card-zoom', settings.cardZoom?.toString() || '1');
+      try {
+        const safeSettings = { ...settings };
+        // Exclude heavy base64 assets from localStorage cache to prevent quota exceeded errors
+        delete (safeSettings as any).instLogo;
+        delete (safeSettings as any).cardLogo;
+        delete (safeSettings as any).cardBackLogo;
+        delete (safeSettings as any).cardSecondaryBackLogo;
+        delete (safeSettings as any).cardBackImage;
+        delete (safeSettings as any).instSignature;
+        delete (safeSettings as any).rectorSignature;
+        delete (safeSettings as any).diocesesConfig;
+        delete (safeSettings as any).seminariesConfig;
+        localStorage.setItem('fajopa_settings', JSON.stringify(safeSettings));
+      } catch (err) {
+        console.warn("[SettingsContext] Não foi possível salvar em cache local:", err);
+      }
+      try {
+        // Aplica o zoom visualmente no elemento raiz para persistência imediata
+        document.documentElement.style.setProperty('--card-zoom', settings.cardZoom?.toString() || '1');
+      } catch {}
     }
   }, [settings]);
 

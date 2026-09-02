@@ -1,5 +1,5 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Download, Sun, Moon, Bell, Trash2, Lock, Share2, Volume2, VolumeX, Volume1, RefreshCw, Vibrate, VibrateOff } from 'lucide-react';
+import { Download, Sun, Moon, Bell, Trash2, Lock, Share2, Volume2, VolumeX, Volume1, RefreshCw, Vibrate, VibrateOff, Sparkles } from 'lucide-react';
 import { APP_VERSION, APP_BUILD } from '../lib/constants';
 import { safeReloadApp } from '../lib/versionManager';
 import { useSettings } from '../context/SettingsContext';
@@ -11,6 +11,7 @@ import { getSoundVolume, setSoundVolume, playSound } from '../lib/sounds';
 import { getHapticsEnabled, setHapticsEnabled, triggerHaptic } from '../lib/haptics';
 import ChangelogModal from './ChangelogModal';
 import DavveroLogo from './DavveroLogo';
+import OpenBetaModal from './OpenBetaModal';
 
 const STUDENT_BOND_KEY = 'davveroId_student_identity';
 const STUDENT_TRACK_KEY = 'davveroId_student_track_ra';
@@ -28,6 +29,7 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
   const [showDropdown, setShowDropdown] = useState(false);
   const [showVolumeDropdown, setShowVolumeDropdown] = useState(false);
   const [showChangelog, setShowChangelog] = useState(false);
+  const [showBetaModal, setShowBetaModal] = useState(false);
   const [currentVolume, setCurrentVolume] = useState(() => getSoundVolume());
   const [haptics, setHaptics] = useState(() => getHapticsEnabled());
   const [isMobileDevice, setIsMobileDevice] = useState(false);
@@ -430,7 +432,7 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
           <Share2 className="w-4 h-4" />
         </button>
       </div>
-      <div className="flex justify-center mb-6 no-print min-h-[140px] items-center relative">
+      <div className="flex flex-col justify-center mb-5 no-print min-h-[140px] items-center relative">
         <motion.div
           initial={{ scale: 0.8, opacity: 0, y: 20 }}
           animate={{ 
@@ -457,6 +459,32 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
             <ScannerLogo />
           </div>
         </motion.div>
+
+        {/* Selo BETA ABERTO abaixo do ícone do Davvero */}
+        {settings.openBetaBadgeEnabled !== false && (
+          <motion.button
+            type="button"
+            onClick={() => {
+              playSound('pop');
+              setShowBetaModal(true);
+            }}
+            initial={{ opacity: 0, y: 5 }}
+            animate={{ opacity: 1, y: 0 }}
+            whileHover={{ scale: 1.06 }}
+            whileTap={{ scale: 0.95 }}
+            className="mt-3.5 z-20 inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-gradient-to-r from-amber-500/10 via-orange-500/15 to-sky-500/10 dark:from-amber-500/20 dark:via-orange-500/20 dark:to-sky-500/20 border border-amber-400/50 dark:border-amber-400/40 text-amber-700 dark:text-amber-300 shadow-sm backdrop-blur-md transition-all hover:shadow-md hover:border-amber-500 cursor-pointer"
+            title="Programa Beta Aberto - Clique para saber mais"
+          >
+            <span className="relative flex h-2 w-2">
+              <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-amber-400 opacity-75"></span>
+              <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500"></span>
+            </span>
+            <span className="text-[10px] sm:text-[11px] font-black tracking-widest uppercase">
+              BETA ABERTO
+            </span>
+            <Sparkles className="w-3 h-3 text-amber-500 animate-pulse" />
+          </motion.button>
+        )}
       </div>
       <h1 
         className="text-3xl sm:text-4xl md:text-5xl font-extrabold animated-slide-in-up tracking-tight mb-1 print:text-2xl flex justify-center items-baseline gap-1.5 sm:gap-2"
@@ -498,6 +526,11 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
         </div>
       </div>
       {showChangelog && <ChangelogModal onClose={() => setShowChangelog(false)} />}
+      <OpenBetaModal 
+        isOpen={showBetaModal} 
+        onClose={() => setShowBetaModal(false)} 
+        endDate={settings.openBetaEndDate} 
+      />
     </div>
   );
 }
