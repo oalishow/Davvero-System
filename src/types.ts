@@ -134,6 +134,16 @@ export interface CertificateTemplate {
   signatureGap?: number; // 10 to 60px
 }
 
+export interface EventPresenceConfig {
+  enabled: boolean;
+  openMode: "default_30min" | "custom" | "always" | "manual";
+  customOpenTime?: string; 
+  closeMode: "24h_after" | "1h_after" | "custom" | "manual";
+  customCloseTime?: string;
+  isManualUnlocked?: boolean;
+  allowSelfEnroll?: boolean;
+}
+
 export interface Event {
   id: string;
   title: string;
@@ -175,13 +185,7 @@ export interface Event {
   certificateReleaseMode?: "attended_only" | "all_registered"; // Disponibilizar para presentes ou todos os inscritos
   allowAllRegisteredCertificates?: boolean; // Se true, todos os inscritos recebem certificado
   autoSendCertificatesOnClose?: boolean; // Se false, remove o envio automático de e-mail ao término
-  presenceConfig?: {
-    enabled: boolean;
-    openMode: "default_30min" | "custom";
-    customOpenTime?: string; 
-    closeMode: "24h_after" | "1h_after" | "custom" | "manual";
-    customCloseTime?: string;
-  };
+  presenceConfig?: EventPresenceConfig;
 }
 
 export interface Attendance {

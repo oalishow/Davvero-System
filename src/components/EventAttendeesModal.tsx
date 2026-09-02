@@ -1,10 +1,36 @@
 import React, { useState, useEffect } from "react";
 import { createPortal } from "react-dom";
-import { X, Search, CheckCircle, Trash2, Star, ScanLine, Mail } from "lucide-react";
+import {
+  X,
+  Search,
+  CheckCircle,
+  CheckCircle2,
+  Trash2,
+  Star,
+  ScanLine,
+  Mail,
+  UserPlus,
+  Plus,
+  UserCheck,
+  Sparkles,
+  Clock,
+  Shield,
+  User
+} from "lucide-react";
 import type { Event, Attendance, Member } from "../types";
-import { db, appId, unsubscribeFromEvent, updateAttendanceDetails, updateAttendanceStatus, removeAttendancePresence } from "../lib/firebase";
+import {
+  db,
+  appId,
+  unsubscribeFromEvent,
+  updateAttendanceDetails,
+  updateAttendanceStatus,
+  removeAttendancePresence,
+  enrollStudent
+} from "../lib/firebase";
 import { collection, getDocs, query, where } from "firebase/firestore";
 import Modal from "./Modal";
+import CertificateEditor from "./CertificateEditor";
+import EventQrCodeModal from "./EventQrCodeModal";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import { sendEmailNotification, getCompiledEmail } from "../lib/emailService";
@@ -32,9 +58,26 @@ export default function EventAttendeesModal({
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
+    title?: string;
     message: string;
+    confirmVariant?: "primary" | "danger";
     onConfirm: () => void;
   } | null>(null);
+
+  // States for Adding Participants (Admin Override)
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [showQrModal, setShowQrModal] = useState(false);
+  const [currentEvent, setCurrentEvent] = useState<Event>(event);
+  const [addSearch, setAddSearch] = useState("");
+  const [addTab, setAddTab] = useState<"members" | "visitor">("members");
+  const [isAdding, setIsAdding] = useState(false);
+  const [visitorForm, setVisitorForm] = useState({
+    name: "",
+    cpf: "",
+    email: "",
+    diocese: "",
+    course: "Visitante",
+  });
 
   const loadData = async () => {
     try {
@@ -136,6 +179,134 @@ export default function EventAttendeesModal({
       loadData();
     } catch (err) {
       showAlert("Erro ao atualizar status de organização.", { type: 'error' });
+    }
+  };
+
+  const handleCheckInAll = async () => {
+    const unconfirmed = attendees.filter((a) => a.status !== "presente");
+    if (unconfirmed.length === 0) {
+      showAlert("Todos os participantes deste evento já estão com presença confirmada!", { type: "info" });
+      return;
+    }
+
+    const todayStr = new Date().toISOString().split("T")[0];
+    const todayFormatted = new Date().toLocaleDateString("pt-BR");
+
+    setConfirmModal({
+      isOpen: true,
+      title: "Check-in de Todos",
+      confirmVariant: "primary",
+      message: `Deseja realizar o check-in e confirmar a presença de TODOS os ${unconfirmed.length} participante(s) pendente(s) com a data de hoje (${todayFormatted})?`,
+      onConfirm: async () => {
+        try {
+          setLoading(true);
+          const updatePromises = unconfirmed.map((a) =>
+            updateAttendanceStatus(a.id, "presente", todayStr).catch((err) => {
+              console.warn("Error updating individual attendance:", a.id, err);
+            })
+          );
+          await Promise.all(updatePromises);
+          await loadData();
+          showAlert(
+            `Check-in de todos realizado com sucesso! (${unconfirmed.length} presenças confirmadas).`,
+            { type: "success" }
+          );
+        } catch (err) {
+          console.error("Erro ao fazer check-in de todos:", err);
+          showAlert("Ocorreu um erro ao processar o check-in em massa.", { type: "error" });
+        } finally {
+          setLoading(false);
+        }
+      },
+    });
+  };
+
+  const handleEnrollMember = async (mbr: Member, markPresentImmediately: boolean = false) => {
+    try {
+      setIsAdding(true);
+      const todayStr = new Date().toISOString().split("T")[0];
+      await enrollStudent({
+        eventId: event.id,
+        studentId: mbr.id,
+        status: markPresentImmediately ? "presente" : "inscrito",
+        checkInDates: markPresentImmediately ? [todayStr] : [],
+        timestamp: new Date().toISOString(),
+      });
+      await loadData();
+      showAlert(
+        `${mbr.name} foi inscrito(a) no evento com sucesso!${
+          markPresentImmediately ? " Presença confirmada." : ""
+        }`,
+        { type: "success" }
+      );
+    } catch (err: any) {
+      console.error("Erro ao adicionar aluno ao evento:", err);
+      showAlert("Erro ao adicionar aluno ao evento: " + (err.message || ""), { type: "error" });
+    } finally {
+      setIsAdding(false);
+    }
+  };
+
+  const handleEnrollNewVisitor = async (markPresentImmediately: boolean = false) => {
+    if (!visitorForm.name.trim()) {
+      showAlert("Por favor, preencha o nome do participante.", { type: "warning" });
+      return;
+    }
+    try {
+      setIsAdding(true);
+      const newVisitorId = `visitor_${Date.now()}_${Math.floor(Math.random() * 1000)}`;
+
+      const newMember: Member = {
+        id: newVisitorId,
+        name: visitorForm.name.trim(),
+        cpf: visitorForm.cpf.trim() || undefined,
+        email: visitorForm.email.trim() || undefined,
+        diocese: visitorForm.diocese.trim() || undefined,
+        course: visitorForm.course.trim() || "Visitante",
+        roles: ["VISITANTE"],
+        isActive: true,
+        registrationType: "quick",
+        createdAt: new Date().toISOString(),
+      };
+
+      // Save visitor to students collection
+      const { setDoc, doc } = await import("firebase/firestore");
+      await setDoc(
+        doc(db, `artifacts/${appId}/public/data/students`, newVisitorId),
+        newMember
+      );
+
+      const todayStr = new Date().toISOString().split("T")[0];
+      await enrollStudent({
+        eventId: event.id,
+        studentId: newVisitorId,
+        status: markPresentImmediately ? "presente" : "inscrito",
+        checkInDates: markPresentImmediately ? [todayStr] : [],
+        timestamp: new Date().toISOString(),
+      });
+
+      // Update allMembers state and local list
+      setAllMembers((prev) => [...prev, newMember]);
+      await loadData();
+      setVisitorForm({
+        name: "",
+        cpf: "",
+        email: "",
+        diocese: "",
+        course: "Visitante",
+      });
+      setShowAddModal(false);
+      showAlert(
+        `Participante visitante ${newMember.name} cadastrado e inscrito com sucesso!${
+          markPresentImmediately ? " Presença confirmada." : ""
+        }`,
+        { type: "success" }
+      );
+    } catch (err: any) {
+      console.error("Erro ao cadastrar visitante:", err);
+      showAlert("Erro ao cadastrar visitante: " + (err.message || ""), { type: "error" });
+    } finally {
+      setIsAdding(false);
     }
   };
 
@@ -610,73 +781,125 @@ export default function EventAttendeesModal({
           </button>
         </div>
 
-        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-center justify-between gap-3">
-          <div className="relative w-full sm:flex-1">
-            <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-            <input
-              type="text"
-              placeholder="Pesquisar por nome, RA ou CPF..."
-              value={searchTerm}
-              onChange={(e) => setSearchTerm(e.target.value)}
-              className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:border-sky-500 dark:focus:border-sky-500 text-slate-700 dark:text-slate-200"
-            />
-          </div>
-          <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-            <div className="flex items-center gap-2">
-              <div className="text-[10px] font-bold text-slate-400 uppercase mr-1 whitespace-nowrap">Listas:</div>
+        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-3">
+          {/* Action Row 1: Check-in de Todos & Adicionar Participante */}
+          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-800/60">
+            <div className="flex items-center gap-2 flex-wrap">
               <button
-                onClick={() => handlePrint("all")}
-                className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
-                title="Lista de Presença Completa (Assinatura)"
+                onClick={handleCheckInAll}
+                disabled={loading || attendees.length === 0}
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 disabled:opacity-50 cursor-pointer"
+                title="Confirmar presença de todos os inscritos com 1 clique"
               >
-                Tudo
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Check-in de Todos</span>
+                {attendees.filter((a) => a.status !== "presente").length > 0 && (
+                  <span className="bg-emerald-800 text-emerald-100 text-[10px] px-1.5 py-0.5 rounded-full font-black ml-0.5">
+                    {attendees.filter((a) => a.status !== "presente").length} pendente(s)
+                  </span>
+                )}
               </button>
+
               <button
-                onClick={() => handlePrint("alunos")}
-                className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
-                title="Apenas Alunos e Seminaristas (Assinatura)"
+                onClick={() => {
+                  setAddSearch("");
+                  setShowAddModal(true);
+                }}
+                className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+                title="Adicionar alunos ou participantes ao evento mesmo com prazo encerrado"
               >
-                Alunos
+                <UserPlus className="w-4 h-4" />
+                <span>+ Adicionar Participante</span>
               </button>
+
               <button
-                onClick={() => handlePrint("visitantes")}
-                className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
-                title="Apenas Visitantes (Assinatura)"
+                onClick={() => setShowQrModal(true)}
+                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+                title="Gerar cartaz com QR Code para lista de presença e configurar horários"
               >
-                Visitantes
+                <ScanLine className="w-4 h-4" />
+                <span>Cartaz QR Code</span>
               </button>
             </div>
-            {activeTab !== "organizacao" ? (
-              <div className="flex items-center gap-2 pl-0 sm:pl-3 sm:border-l border-slate-200 dark:border-slate-700">
-                <div className="text-[10px] font-bold text-slate-400 uppercase mr-1 whitespace-nowrap">Relatórios:</div>
+
+            <div className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
+              <span>Total: <strong className="text-slate-800 dark:text-white font-bold">{attendees.length}</strong> inscritos</span>
+              <span>•</span>
+              <span className="text-emerald-600 dark:text-emerald-400 font-bold">
+                {attendees.filter((a) => a.status === "presente").length} presentes
+              </span>
+            </div>
+          </div>
+
+          {/* Action Row 2: Search and Print/Report Buttons */}
+          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+            <div className="relative w-full sm:flex-1">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+              <input
+                type="text"
+                placeholder="Pesquisar por nome, RA ou CPF..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-2 text-sm outline-none focus:border-sky-500 dark:focus:border-sky-500 text-slate-700 dark:text-slate-200"
+              />
+            </div>
+            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
+              <div className="flex items-center gap-2">
+                <div className="text-[10px] font-bold text-slate-400 uppercase mr-1 whitespace-nowrap">Listas:</div>
                 <button
-                  onClick={handleExportCSV}
-                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors shrink-0"
-                  title="Exportar Relatório em CSV"
+                  onClick={() => handlePrint("all")}
+                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
+                  title="Lista de Presença Completa (Assinatura)"
                 >
-                  <span className="hidden sm:inline">Normal</span> CSV
+                  Tudo
                 </button>
                 <button
-                  onClick={handlePrintReport}
-                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-700 transition-colors shrink-0"
-                  title="Imprimir Relatório de Presenças"
+                  onClick={() => handlePrint("alunos")}
+                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
+                  title="Apenas Alunos e Seminaristas (Assinatura)"
                 >
-                  Imprimir
+                  Alunos
+                </button>
+                <button
+                  onClick={() => handlePrint("visitantes")}
+                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
+                  title="Apenas Visitantes (Assinatura)"
+                >
+                  Visitantes
                 </button>
               </div>
-            ) : (
-              <div className="flex items-center gap-2 pl-0 sm:pl-3 sm:border-l border-slate-200 dark:border-slate-700">
-                <button
-                  onClick={handleNotifyOrganizersEmail}
-                  disabled={isSendingEmails}
-                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition-colors shrink-0 disabled:opacity-50 shadow-xs"
-                  title="Enviar e-mail para todos os membros da organização informando que o certificado está disponível"
-                >
-                  <Mail className="w-3.5 h-3.5" />
-                  {isSendingEmails ? "Enviando..." : "Avisar Certificado (E-mail)"}
-                </button>
-              </div>
-            )}
+              {activeTab !== "organizacao" ? (
+                <div className="flex items-center gap-2 pl-0 sm:pl-3 sm:border-l border-slate-200 dark:border-slate-700">
+                  <div className="text-[10px] font-bold text-slate-400 uppercase mr-1 whitespace-nowrap">Relatórios:</div>
+                  <button
+                    onClick={handleExportCSV}
+                    className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors shrink-0"
+                    title="Exportar Relatório em CSV"
+                  >
+                    <span className="hidden sm:inline">Normal</span> CSV
+                  </button>
+                  <button
+                    onClick={handlePrintReport}
+                    className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-700 transition-colors shrink-0"
+                    title="Imprimir Relatório de Presenças"
+                  >
+                    Imprimir
+                  </button>
+                </div>
+              ) : (
+                <div className="flex items-center gap-2 pl-0 sm:pl-3 sm:border-l border-slate-200 dark:border-slate-700">
+                  <button
+                    onClick={handleNotifyOrganizersEmail}
+                    disabled={isSendingEmails}
+                    className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition-colors shrink-0 disabled:opacity-50 shadow-xs"
+                    title="Enviar e-mail para todos os membros da organização informando que o certificado está disponível"
+                  >
+                    <Mail className="w-3.5 h-3.5" />
+                    {isSendingEmails ? "Enviando..." : "Avisar Certificado (E-mail)"}
+                  </button>
+                </div>
+              )}
+            </div>
           </div>
         </div>
 
@@ -955,15 +1178,272 @@ export default function EventAttendeesModal({
       <Modal
         isOpen={!!confirmModal?.isOpen}
         onClose={() => setConfirmModal(null)}
-        title="Remover Inscrição"
+        title={confirmModal?.title || "Confirmação"}
         confirmLabel="Confirmar"
-        confirmVariant="danger"
+        confirmVariant={confirmModal?.confirmVariant || "danger"}
         onConfirm={confirmModal?.onConfirm}
       >
         <p className="text-slate-600 dark:text-slate-400">
           {confirmModal?.message}
         </p>
       </Modal>
+
+      {/* --- MODAL ADICIONAR PARTICIPANTE (ADMIN OVERRIDE) --- */}
+      {showAddModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-950/70 backdrop-blur-sm animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-2xl border border-slate-200 dark:border-slate-800 flex flex-col max-h-[90vh] overflow-hidden">
+            {/* Modal Header */}
+            <div className="p-5 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/80 dark:bg-slate-800/40">
+              <div className="flex items-center gap-3">
+                <div className="w-10 h-10 rounded-2xl bg-sky-100 dark:bg-sky-900/40 text-sky-600 dark:text-sky-400 flex items-center justify-center shadow-inner">
+                  <UserPlus className="w-5 h-5" />
+                </div>
+                <div>
+                  <h3 className="text-lg font-black text-slate-800 dark:text-white">
+                    Adicionar Participante ao Evento
+                  </h3>
+                  <p className="text-xs font-medium text-slate-500 dark:text-slate-400">
+                    Inscrição administrativa direta • Válida mesmo após término de prazos
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowAddModal(false)}
+                className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {/* Modal Tabs */}
+            <div className="flex bg-slate-100 dark:bg-slate-800/60 p-1 mx-5 mt-4 rounded-xl">
+              <button
+                onClick={() => setAddTab("members")}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  addTab === "members"
+                    ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
+                }`}
+              >
+                Alunos / Membros Cadastrados
+              </button>
+              <button
+                onClick={() => setAddTab("visitor")}
+                className={`flex-1 py-2 text-xs font-bold rounded-lg transition-all ${
+                  addTab === "visitor"
+                    ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
+                }`}
+              >
+                Cadastrar Novo Visitante
+              </button>
+            </div>
+
+            {/* Modal Body */}
+            <div className="p-5 flex-1 overflow-y-auto">
+              {addTab === "members" ? (
+                <div className="space-y-4">
+                  <div className="relative">
+                    <Search className="absolute left-3.5 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
+                    <input
+                      type="text"
+                      placeholder="Buscar por Nome, RA, CPF, Curso ou Diocese..."
+                      value={addSearch}
+                      onChange={(e) => setAddSearch(e.target.value)}
+                      className="w-full bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-2.5 text-sm outline-none focus:border-sky-500 text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+
+                  <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
+                    {allMembers
+                      .filter((m) => {
+                        if (!addSearch.trim()) return true;
+                        const q = addSearch.toLowerCase();
+                        return (
+                          m.name?.toLowerCase().includes(q) ||
+                          m.ra?.toLowerCase().includes(q) ||
+                          m.cpf?.toLowerCase().includes(q) ||
+                          m.course?.toLowerCase().includes(q) ||
+                          m.diocese?.toLowerCase().includes(q) ||
+                          m.seminary?.toLowerCase().includes(q)
+                        );
+                      })
+                      .slice(0, 40)
+                      .map((mbr) => {
+                        const isAlreadyEnrolled = attendees.some((a) => a.studentId === mbr.id);
+                        return (
+                          <div
+                            key={mbr.id}
+                            className="p-3 bg-white dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/80 flex flex-col sm:flex-row sm:items-center justify-between gap-3 hover:border-slate-300 dark:hover:border-slate-600 transition-all"
+                          >
+                            <div className="flex items-center gap-3">
+                              {mbr.photoUrl ? (
+                                <img
+                                  src={mbr.photoUrl}
+                                  alt={mbr.name}
+                                  className="w-10 h-10 rounded-full object-cover border border-slate-200 dark:border-slate-700 shrink-0"
+                                />
+                              ) : (
+                                <div className="w-10 h-10 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 font-bold shrink-0">
+                                  {mbr.name?.substring(0, 1) || <User className="w-5 h-5" />}
+                                </div>
+                              )}
+                              <div>
+                                <h4 className="font-bold text-sm text-slate-800 dark:text-slate-100">
+                                  {mbr.name}
+                                </h4>
+                                <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                                  {mbr.ra ? `RA: ${mbr.ra}` : mbr.cpf ? `CPF: ${mbr.cpf}` : ""}
+                                  {mbr.course ? ` • ${mbr.course}` : ""}
+                                  {mbr.diocese ? ` • ${mbr.diocese}` : ""}
+                                </p>
+                              </div>
+                            </div>
+
+                            <div className="flex items-center gap-2 self-end sm:self-center">
+                              {isAlreadyEnrolled ? (
+                                <span className="inline-flex items-center gap-1 text-[11px] font-bold px-2.5 py-1 bg-emerald-50 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 rounded-lg border border-emerald-200 dark:border-emerald-800">
+                                  <CheckCircle2 className="w-3.5 h-3.5" />
+                                  Já Inscrito
+                                </span>
+                              ) : (
+                                <>
+                                  <button
+                                    onClick={() => handleEnrollMember(mbr, false)}
+                                    disabled={isAdding}
+                                    className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+                                  >
+                                    Inscrever
+                                  </button>
+                                  <button
+                                    onClick={() => handleEnrollMember(mbr, true)}
+                                    disabled={isAdding}
+                                    className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 flex items-center gap-1 cursor-pointer"
+                                  >
+                                    <CheckCircle2 className="w-3.5 h-3.5" />
+                                    Inscrever + Check-in
+                                  </button>
+                                </>
+                              )}
+                            </div>
+                          </div>
+                        );
+                      })}
+                  </div>
+                </div>
+              ) : (
+                <div className="space-y-3.5">
+                  <div>
+                    <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                      Nome Completo *
+                    </label>
+                    <input
+                      type="text"
+                      placeholder="Ex: Pe. João Silva"
+                      value={visitorForm.name}
+                      onChange={(e) =>
+                        setVisitorForm((prev) => ({ ...prev, name: e.target.value }))
+                      }
+                      className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-sky-500 text-slate-800 dark:text-slate-100"
+                    />
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        CPF ou Documento
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="000.000.000-00"
+                        value={visitorForm.cpf}
+                        onChange={(e) =>
+                          setVisitorForm((prev) => ({ ...prev, cpf: e.target.value }))
+                        }
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-sky-500 text-slate-800 dark:text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        E-mail
+                      </label>
+                      <input
+                        type="email"
+                        placeholder="email@exemplo.com"
+                        value={visitorForm.email}
+                        onChange={(e) =>
+                          setVisitorForm((prev) => ({ ...prev, email: e.target.value }))
+                        }
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-sky-500 text-slate-800 dark:text-slate-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Diocese / Instituição
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Diocese de Marília"
+                        value={visitorForm.diocese}
+                        onChange={(e) =>
+                          setVisitorForm((prev) => ({ ...prev, diocese: e.target.value }))
+                        }
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-sky-500 text-slate-800 dark:text-slate-100"
+                      />
+                    </div>
+                    <div>
+                      <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">
+                        Categoria / Vínculo
+                      </label>
+                      <input
+                        type="text"
+                        placeholder="Ex: Visitante / Convidado"
+                        value={visitorForm.course}
+                        onChange={(e) =>
+                          setVisitorForm((prev) => ({ ...prev, course: e.target.value }))
+                        }
+                        className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2.5 text-sm outline-none focus:border-sky-500 text-slate-800 dark:text-slate-100"
+                      />
+                    </div>
+                  </div>
+
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-800 flex justify-end gap-2.5">
+                    <button
+                      type="button"
+                      onClick={() => handleEnrollNewVisitor(false)}
+                      disabled={isAdding || !visitorForm.name.trim()}
+                      className="px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all disabled:opacity-50 cursor-pointer"
+                    >
+                      Inscrever Visitante
+                    </button>
+                    <button
+                      type="button"
+                      onClick={() => handleEnrollNewVisitor(true)}
+                      disabled={isAdding || !visitorForm.name.trim()}
+                      className="px-4 py-2.5 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-sm disabled:opacity-50 flex items-center gap-1.5 cursor-pointer"
+                    >
+                      <CheckCircle2 className="w-4 h-4" />
+                      Cadastrar, Inscrever & Fazer Check-in
+                    </button>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {showQrModal && (
+        <EventQrCodeModal
+          event={currentEvent}
+          initialMode="attendance"
+          onClose={() => setShowQrModal(false)}
+          onEventUpdated={(updated) => setCurrentEvent(updated)}
+        />
+      )}
     </div>,
     document.body
   );

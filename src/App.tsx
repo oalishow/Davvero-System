@@ -712,7 +712,7 @@ export default function App() {
 
             <div 
               className="grid bg-slate-200/50 dark:bg-slate-900/60 rounded-xl p-1 shadow-inner border border-slate-200/50 dark:border-slate-700/50 no-print print:hidden gap-1"
-              style={{ gridTemplateColumns: `repeat(${3 + (settings.eventsEnabled !== false ? 1 : 0) + (settings.muralEnabled !== false ? 1 : 0) + (settings.appointmentsEnabled !== false ? 1 : 0)}, minmax(0, 1fr))` }}
+              style={{ gridTemplateColumns: `repeat(${3 + (settings.eventsEnabled !== false ? 1 : 0) + (settings.muralEnabled === true ? 1 : 0) + (settings.appointmentsEnabled !== false ? 1 : 0)}, minmax(0, 1fr))` }}
             >
               <button
                 onClick={() => setActiveTab("student")}
@@ -753,7 +753,7 @@ export default function App() {
                 <Landmark className="w-4 h-4 mb-0.5" />
                 Minha Diocese
               </button>
-              {settings.muralEnabled !== false && (
+              {settings.muralEnabled === true && (
                 <button
                   onClick={() => setActiveTab("mural")}
                   className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "mural" ? "bg-white dark:bg-amber-600 text-amber-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}

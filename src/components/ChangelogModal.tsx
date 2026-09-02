@@ -8,6 +8,20 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v7.9b',
+      title: 'Check-in de Eventos, Cartazes com QR Code & Otimização Episcopal',
+      changes: [
+        'Check-in de Todos com 1 Clique: os administradores agora podem confirmar a presença de todos os inscritos pendentes com um único botão no painel do evento.',
+        'Inscrição Pós-Prazo pelo Administrador: inclusão de novos participantes e membros a eventos mesmo após o encerramento dos prazos.',
+        'Cartaz com QR Code para Lista de Presença Digital: geração e impressão de cartazes em formato A4 e compartilhamento com QR Code para os participantes realizarem auto check-in.',
+        'Configuração de Liberação de Horários: controle administrativo para definir horários de abertura (padrão 30 min antes, sempre liberado, horário específico ou manual) e fechamento da lista de presença.',
+        'Remoção de rotulagem "indisponível" em agendamentos que não possuem link de acesso.',
+        'Otimização e persistência episcopal corrigida em tablets e dispositivos móveis.',
+        'Desativação definitiva do Mural descontinuado.'
+      ],
+      current: true,
+    },
+    {
       version: 'v7.8b',
       title: 'Acesso Direto a Certificados & Gerenciador de Inscrição de E-mails',
       changes: [
@@ -17,7 +31,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Seleção de Modalidade no Primeiro Acesso (Cadastro Rápido vs. Cadastro Completo).',
         'Cláusula regulatória de pagamentos e transações financeiras atualizada nos Termos de Uso.'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v7.7b',

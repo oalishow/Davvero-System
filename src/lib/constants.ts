@@ -26,13 +26,15 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "7.8b";
-export const APP_BUILD = "01.09.2026";
+export const APP_VERSION = "7.9b";
+export const APP_BUILD = "02.09.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
   `artifacts/${appId}/public/data/students/_asset_${assetType}`;
 export const CHANGELOG = [
+  "Versão 7.9b - Check-in em Lote, Cartaz QR Code de Presença & Otimizações",
+  "Check-in de todos os inscritos com um clique, inclusão de participantes pós-encerramento pelo administrador, geração de cartazes com QR Code para lista de presença digital com controle configurável de janelas de horários e liberação manual, remoção do rótulo 'indisponível' em agendamentos, correção de dados episcopais e desativação do Mural.",
   "Versão 7.8b - Acesso Direto a Certificados & Gerenciador de Inscrição de E-mails",
   "Acesso imediato à aba Certificados da Minha ID ao clicar em links recebidos por e-mail (sem exibição de tela de boas-vindas), controle de notificações por e-mail no perfil do usuário e link de descadastramento (opt-out) com 1 clique no rodapé dos e-mails.",
   "Versão 7.7b - Branding Davvero System & Notificações de Certificados e Carteirinhas",

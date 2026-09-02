@@ -57,6 +57,7 @@ import QuickEventEnrollModal from "./QuickEventEnrollModal";
 import CreateDioceseEventModal from "./CreateDioceseEventModal";
 import EventAttendeesModal from "./EventAttendeesModal";
 import CertificateEditor from "./CertificateEditor";
+import EventCheckInModal from "./EventCheckInModal";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import { DEFAULT_PUBLIC_URL } from "../lib/constants";
@@ -87,10 +88,11 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
   const [showRegistrationSuccessModal, setShowRegistrationSuccessModal] = useState(false);
   const [selectedQrEvent, setSelectedQrEvent] = useState<Event | null>(null);
   const [quickEnrollEvent, setQuickEnrollEvent] = useState<Event | null>(null);
+  const [checkInEvent, setCheckInEvent] = useState<Event | null>(null);
   const [sharedEventId, setSharedEventId] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
-      return params.get("event");
+      return params.get("event") || params.get("checkin_event");
     }
     return null;
   });
@@ -187,7 +189,14 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
   useEffect(() => {
     const params = new URLSearchParams(window.location.search);
     const eventIdFromUrl = params.get("event");
-    if (eventIdFromUrl && events.length > 0) {
+    const checkinEventId = params.get("checkin_event");
+
+    if (checkinEventId && events.length > 0) {
+      const target = events.find((e) => e.id === checkinEventId);
+      if (target) {
+        setCheckInEvent(target);
+      }
+    } else if (eventIdFromUrl && events.length > 0) {
       setTimeout(() => {
         const eventEl = document.getElementById(`event-${eventIdFromUrl}`);
         if (eventEl) {
@@ -372,32 +381,42 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
   };
 
   const isPresenceOpen = (event: Event) => {
-    if (!event.presenceConfig?.enabled) return false;
+    if (event.presenceConfig?.enabled === false) return false;
+    const cfg = event.presenceConfig || { enabled: true, openMode: "default_30min", closeMode: "24h_after" };
+    if (!cfg.enabled) return false;
+
+    if (cfg.openMode === "always") {
+      return true;
+    }
+
+    if (cfg.openMode === "manual") {
+      return Boolean(cfg.isManualUnlocked);
+    }
     
     const now = new Date().getTime();
     
     let openTime = 0;
-    if (event.presenceConfig.openMode === "default_30min") {
-      const endTimestamp = event.endDate ? new Date(event.endDate).getTime() : new Date(event.startDate).getTime();
-      openTime = endTimestamp - 30 * 60 * 1000;
-    } else if (event.presenceConfig.openMode === "custom" && event.presenceConfig.customOpenTime) {
-      openTime = new Date(event.presenceConfig.customOpenTime).getTime();
+    if (cfg.openMode === "default_30min" || !cfg.openMode) {
+      const startTimestamp = new Date(event.startDate).getTime();
+      openTime = startTimestamp - 30 * 60 * 1000;
+    } else if (cfg.openMode === "custom" && cfg.customOpenTime) {
+      openTime = new Date(cfg.customOpenTime).getTime();
     }
     
-    let closeTime = 0;
-    if (event.presenceConfig.closeMode === "24h_after") {
+    let closeTime = Infinity;
+    if (cfg.closeMode === "24h_after" || !cfg.closeMode) {
       const endTimestamp = event.endDate ? new Date(event.endDate).getTime() : new Date(event.startDate).getTime();
       closeTime = endTimestamp + 24 * 60 * 60 * 1000;
-    } else if (event.presenceConfig.closeMode === "1h_after") {
+    } else if (cfg.closeMode === "1h_after") {
       const endTimestamp = event.endDate ? new Date(event.endDate).getTime() : new Date(event.startDate).getTime();
       closeTime = endTimestamp + 1 * 60 * 60 * 1000;
-    } else if (event.presenceConfig.closeMode === "custom" && event.presenceConfig.customCloseTime) {
-      closeTime = new Date(event.presenceConfig.customCloseTime).getTime();
-    } else if (event.presenceConfig.closeMode === "manual") {
+    } else if (cfg.closeMode === "custom" && cfg.customCloseTime) {
+      closeTime = new Date(cfg.customCloseTime).getTime();
+    } else if (cfg.closeMode === "manual") {
       closeTime = Infinity;
     }
     
-    if (openTime === 0) return false; 
+    if (openTime === 0) return true; 
     
     return now >= openTime && now <= closeTime;
   };
@@ -1397,6 +1416,17 @@ END:VCALENDAR`;
           onSaved={() => {
             setCertificateEditorEvent(null);
             showAlert("Modelo de certificado salvo com sucesso!", { type: "success" });
+          }}
+        />
+      )}
+
+      {checkInEvent && (
+        <EventCheckInModal
+          event={checkInEvent}
+          currentMember={member}
+          onClose={() => setCheckInEvent(null)}
+          onSuccess={() => {
+            // Success callback
           }}
         />
       )}

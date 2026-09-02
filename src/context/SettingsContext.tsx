@@ -201,10 +201,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   fajopaPlusEnabled: true,
   contemplacaoLink: 'https://revista.fajopa.com/index.php/contemplacao',
   contemplacaoEnabled: true,
-  useWhatsappMural: true,
+  useWhatsappMural: false,
   whatsappGroups: [],
   whatsappCategories: ["Turmas", "Comissões", "Eventos", "Geral"],
-  muralEnabled: true,
+  muralEnabled: false,
   eventsEnabled: true,
   appointmentsEnabled: true,
   appointmentsExternalLink: '',
@@ -272,6 +272,20 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
       // Fallback from individual localStorage/sessionStorage keys for instant signature & logo availability
       try {
+        const cachedDioceses = localStorage.getItem('fajopa_dioceses_config');
+        if (cachedDioceses) {
+          const parsed = JSON.parse(cachedDioceses);
+          if (parsed && typeof parsed === 'object') {
+            base.diocesesConfig = parsed;
+          }
+        }
+        const cachedSeminaries = localStorage.getItem('fajopa_seminaries_config');
+        if (cachedSeminaries) {
+          const parsed = JSON.parse(cachedSeminaries);
+          if (parsed && typeof parsed === 'object') {
+            base.seminariesConfig = parsed;
+          }
+        }
         const localDirectorSig = localStorage.getItem('davveroId_director_signature') || sessionStorage.getItem('davveroId_director_signature');
         if (localDirectorSig && !base.instSignature) {
           base.instSignature = localDirectorSig;
@@ -305,13 +319,14 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     const docRef = doc(db, SETTINGS_DOC_PATH(appId));
     const unsubscribes: (() => void)[] = [];
 
-    // Direct fetch helper for critical signatures and assets to eliminate race conditions
+    // Direct fetch helper for critical signatures, assets, and diocese configs to eliminate race conditions
     const performDirectFetch = async () => {
       try {
-        const [mainSnap, dirSigSnap, recSigSnap] = await Promise.all([
+        const [mainSnap, dirSigSnap, recSigSnap, diocesesManifestSnap] = await Promise.all([
           getDoc(docRef).catch(() => null),
           getDoc(doc(db, ASSETS_DOC_PATH(appId, 'instSignature'))).catch(() => null),
           getDoc(doc(db, ASSETS_DOC_PATH(appId, 'rectorSignature'))).catch(() => null),
+          getDoc(doc(db, ASSETS_DOC_PATH(appId, 'dioceses_manifest'))).catch(() => null),
         ]);
 
         if (mainSnap && mainSnap.exists()) {
@@ -343,6 +358,47 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
               sessionStorage.setItem('davveroId_rector_signature', val);
             } catch {}
           }
+        }
+
+        // Direct fetch diocese individual documents for instant bishop/diocese info delivery
+        const dioceseKeysToFetch = new Set<string>(AVAILABLE_DIOCESES);
+        if (diocesesManifestSnap && diocesesManifestSnap.exists()) {
+          const manifestKeys: string[] = diocesesManifestSnap.data()?.keys || [];
+          manifestKeys.forEach(k => dioceseKeysToFetch.add(k));
+        }
+
+        const dioceseFetches = Array.from(dioceseKeysToFetch).map(async (k) => {
+          const cleanKey = k.trim().toUpperCase();
+          const docKey = sanitizeDocKey(cleanKey);
+          try {
+            const snap = await getDoc(doc(db, ASSETS_DOC_PATH(appId, `diocese_${docKey}`)));
+            if (snap.exists()) {
+              const snapData = snap.data();
+              const val = snapData?.data !== undefined ? snapData.data : snapData;
+              if (val) {
+                return { key: cleanKey, val };
+              }
+            }
+          } catch {}
+          return null;
+        });
+
+        const fetchedDioceses = await Promise.all(dioceseFetches);
+        const directDiocesesConfig: Record<string, any> = {};
+        fetchedDioceses.forEach(item => {
+          if (item && item.val) {
+            directDiocesesConfig[item.key] = item.val;
+          }
+        });
+
+        if (Object.keys(directDiocesesConfig).length > 0) {
+          setSettings(prev => {
+            const merged = { ...(prev.diocesesConfig || {}), ...directDiocesesConfig };
+            try {
+              localStorage.setItem('fajopa_dioceses_config', JSON.stringify(merged));
+            } catch {}
+            return { ...prev, diocesesConfig: merged };
+          });
         }
       } catch (err) {
         console.warn("[SettingsContext] Direct fetch non-critical notice:", err);
@@ -439,17 +495,26 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const snapData = snapshot.data();
           const val = snapData?.data !== undefined ? snapData.data : snapData;
           if (val) {
-            setSettings(prev => ({
-              ...prev,
-              diocesesConfig: {
+            setSettings(prev => {
+              const updated = {
                 ...(prev.diocesesConfig || {}),
                 [cleanKey]: val
-              }
-            }));
+              };
+              try {
+                localStorage.setItem('fajopa_dioceses_config', JSON.stringify(updated));
+              } catch {}
+              return {
+                ...prev,
+                diocesesConfig: updated
+              };
+            });
           } else {
             setSettings(prev => {
               const current = { ...(prev.diocesesConfig || {}) };
               delete current[cleanKey];
+              try {
+                localStorage.setItem('fajopa_dioceses_config', JSON.stringify(current));
+              } catch {}
               return { ...prev, diocesesConfig: current };
             });
           }
@@ -641,6 +706,15 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // Optimistic UI update
     setSettings(prev => ({ ...prev, ...newSettings }));
 
+    // Ensure user has valid authentication session before writing
+    if (!auth.currentUser) {
+      try {
+        await loginAnon();
+      } catch (authErr) {
+        console.warn("[SettingsContext] Anon auth notice:", authErr);
+      }
+    }
+
     const docRef = doc(db, SETTINGS_DOC_PATH(appId));
     const settingsToSave = { ...newSettings };
     const assetOperations: Promise<any>[] = [];
@@ -649,6 +723,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     if ('diocesesConfig' in newSettings) {
       const diocesesMap = newSettings.diocesesConfig || {};
       const dioceseKeys = Object.keys(diocesesMap);
+
+      try {
+        localStorage.setItem('fajopa_dioceses_config', JSON.stringify(diocesesMap));
+      } catch {}
 
       // Salva cada diocese individualmente em seu próprio documento (~30KB-50KB por doc)
       dioceseKeys.forEach(k => {

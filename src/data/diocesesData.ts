@@ -848,22 +848,38 @@ export const DIOCESES_DATA: Record<string, DioceseInfo> = {
   }
 };
 
+const normalizeDioceseString = (str: string): string => {
+  return (str || "")
+    .normalize("NFD")
+    .replace(/[\u0300-\u036f]/g, "")
+    .toUpperCase()
+    .trim();
+};
+
 export function getDioceseInfo(
   dioceseKey: string,
   customConfigMap?: Record<string, Partial<DioceseInfo>>
 ): DioceseInfo {
   const rawKey = (dioceseKey || "MARÍLIA").trim();
   const normalizedKey = rawKey.toUpperCase();
+  const plainSearchKey = normalizeDioceseString(rawKey);
 
   // 1. Look up in default base data
   let baseInfo: DioceseInfo;
   if (DIOCESES_DATA[normalizedKey]) {
     baseInfo = JSON.parse(JSON.stringify(DIOCESES_DATA[normalizedKey]));
   } else {
-    // Try partial match in default base data
-    const foundKey = Object.keys(DIOCESES_DATA).find(
-      (k) => normalizedKey.includes(k) || k.includes(normalizedKey)
-    );
+    // Try exact or accent-folded or partial match in default base data
+    const foundKey = Object.keys(DIOCESES_DATA).find((k) => {
+      const plainK = normalizeDioceseString(k);
+      return (
+        k === normalizedKey ||
+        plainK === plainSearchKey ||
+        plainSearchKey.includes(plainK) ||
+        plainK.includes(plainSearchKey)
+      );
+    });
+
     if (foundKey && DIOCESES_DATA[foundKey]) {
       baseInfo = JSON.parse(JSON.stringify(DIOCESES_DATA[foundKey]));
       baseInfo.id = normalizedKey;
@@ -930,10 +946,16 @@ export function getDioceseInfo(
 
   // 2. Check if customConfig exists for this diocese
   if (customConfigMap) {
-    // Find custom config key (exact or case-insensitive)
-    const customKey = Object.keys(customConfigMap).find(
-      (k) => k.toUpperCase().trim() === normalizedKey
-    );
+    // Find custom config key (exact, accent-insensitive or partial match)
+    const customKey = Object.keys(customConfigMap).find((k) => {
+      const plainK = normalizeDioceseString(k);
+      return (
+        k.toUpperCase().trim() === normalizedKey ||
+        plainK === plainSearchKey ||
+        plainSearchKey.includes(plainK) ||
+        plainK.includes(plainSearchKey)
+      );
+    });
 
     if (customKey && customConfigMap[customKey]) {
       const custom = customConfigMap[customKey];

@@ -179,14 +179,7 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
                         {prof.appointmentType === "whatsapp" ? <MessageCircle className="w-4 h-4" /> : prof.appointmentType === "google_calendar" ? <CalendarIcon className="w-4 h-4" /> : <ExternalLink className="w-4 h-4" />}
                         Agendar Horário
                       </a>
-                    ) : (
-                      <button 
-                        disabled
-                        className="w-full py-3 bg-slate-100 dark:bg-slate-800 text-slate-400 dark:text-slate-500 rounded-xl text-sm font-bold border border-slate-200 dark:border-slate-700 cursor-not-allowed"
-                      >
-                        Indisponível
-                      </button>
-                    )}
+                    ) : null}
                     {prof.whatsappNumber && (
                       <a href={`https://wa.me/${prof.whatsappNumber.replace(/\D/g, '').startsWith('55') ? prof.whatsappNumber.replace(/\D/g, '') : '55' + prof.whatsappNumber.replace(/\D/g, '')}`} target="_blank" rel="noopener noreferrer" className="w-full mt-3 py-3 bg-[#25D366] hover:bg-[#20bd5a] text-white rounded-xl text-sm font-bold transition-all shadow-sm flex items-center justify-center gap-2">
                         <MessageCircle className="w-4 h-4 fill-white" />

@@ -129,16 +129,31 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
   const [editingLink, setEditingLink] = useState<DioceseLink | null>(null);
   const [isAddingLink, setIsAddingLink] = useState(false);
 
+  // Track if user has modified the form for the currently selected diocese to avoid race conditions
+  const isDirtyRef = useRef(false);
+  const currentKeyRef = useRef(selectedKey);
+
   // Load current diocese draft info
-  const [form, setForm] = useState<DioceseInfo>(() => {
+  const [form, setFormState] = useState<DioceseInfo>(() => {
     return getDioceseInfo(selectedKey, settings.diocesesConfig);
   });
 
-  // When selection changes, reload form
+  const setForm: typeof setFormState = (action) => {
+    isDirtyRef.current = true;
+    return setFormState(action);
+  };
+
+  // When diocese selection changes or config initializes cleanly
   useEffect(() => {
-    setForm(getDioceseInfo(selectedKey, settings.diocesesConfig));
-    setEditingLink(null);
-    setIsAddingLink(false);
+    if (currentKeyRef.current !== selectedKey) {
+      currentKeyRef.current = selectedKey;
+      isDirtyRef.current = false;
+      setFormState(getDioceseInfo(selectedKey, settings.diocesesConfig));
+      setEditingLink(null);
+      setIsAddingLink(false);
+    } else if (!isDirtyRef.current) {
+      setFormState(getDioceseInfo(selectedKey, settings.diocesesConfig));
+    }
   }, [selectedKey, settings.diocesesConfig]);
 
   const isCustomDiocese = !AVAILABLE_DIOCESES.includes(selectedKey);
@@ -304,6 +319,7 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
         customDioceses: updatedCustomDioceses
       });
 
+      isDirtyRef.current = false;
       setStatus({ msg: "Alterações da Diocese salvas com sucesso!", type: "success" });
       setTimeout(() => setStatus(null), 3500);
     } catch (err: any) {
@@ -326,7 +342,8 @@ export default function DioceseManager({ initialDioceseKey, onClose }: DioceseMa
         diocesesConfig: updatedDiocesesConfig
       });
 
-      setForm(getDioceseInfo(selectedKey, updatedDiocesesConfig));
+      isDirtyRef.current = false;
+      setFormState(getDioceseInfo(selectedKey, updatedDiocesesConfig));
       setStatus({ msg: "Configurações restauradas para o padrão oficial!", type: "success" });
       setTimeout(() => setStatus(null), 3000);
     } catch (err: any) {

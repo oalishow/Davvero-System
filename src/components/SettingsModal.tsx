@@ -208,7 +208,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
   const [avaEnabled, setAvaEnabled] = useState(cloudSettings.avaEnabled ?? true);
   const [contemplacaoLink, setContemplacaoLink] = useState(cloudSettings.contemplacaoLink || 'https://revista.fajopa.com/index.php/contemplacao');
   const [contemplacaoEnabled, setContemplacaoEnabled] = useState(cloudSettings.contemplacaoEnabled ?? true);
-  const [muralEnabled, setMuralEnabled] = useState(cloudSettings.muralEnabled ?? true);
+  const [muralEnabled, setMuralEnabled] = useState(cloudSettings.muralEnabled ?? false);
   const [eventsEnabled, setEventsEnabled] = useState(cloudSettings.eventsEnabled ?? true);
   const [appointmentsEnabled, setAppointmentsEnabled] = useState(cloudSettings.appointmentsEnabled ?? true);
   const [appointmentsExternalLink, setAppointmentsExternalLink] = useState(cloudSettings.appointmentsExternalLink || '');
@@ -221,7 +221,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       appointmentLink: p.appointmentLink || ''
     }))
   );
-  const [useWhatsappMural, setUseWhatsappMural] = useState(cloudSettings.useWhatsappMural ?? true);
+  const [useWhatsappMural, setUseWhatsappMural] = useState(cloudSettings.useWhatsappMural ?? false);
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(cloudSettings.autoApproveEnabled ?? false);
   const [autoApproveWhitelistText, setAutoApproveWhitelistText] = useState(
     cloudSettings.autoApproveWhitelistText || (cloudSettings.autoApproveWhitelist ? cloudSettings.autoApproveWhitelist.join("\n") : "")
