@@ -33,6 +33,7 @@ import { useSettings } from "./context/SettingsContext";
 import { APP_VERSION, CHANGELOG } from "./lib/constants";
 import { playSound } from "./lib/sounds";
 import { checkServerVersionWithAntiLoop, safeReloadApp, clearAppCaches } from "./lib/versionManager";
+import { triggerSWCheck } from "./pwa";
 import { lazyWithRetry } from "./lib/lazyWithRetry";
 import Verifier from "./components/Verifier";
 
@@ -146,11 +147,13 @@ export default function App() {
     });
 
     try {
+      // Disparar verificação tanto no service worker quanto na API de versão
+      triggerSWCheck().catch(() => {});
       const startTime = Date.now();
       const res = await checkServerVersionWithAntiLoop(true);
       const elapsed = Date.now() - startTime;
-      if (elapsed < 1200) {
-        await new Promise((r) => setTimeout(r, 1200 - elapsed));
+      if (elapsed < 1000) {
+        await new Promise((r) => setTimeout(r, 1000 - elapsed));
       }
 
       if (res.isObsolete) {
@@ -171,8 +174,8 @@ export default function App() {
           setTimeout(async () => {
             setUpdateProgress(100);
             await safeReloadApp(res.serverVersion);
-          }, 400);
-        }, 1400);
+          }, 350);
+        }, 1200);
       } else {
         setUpdateCheckModal({
           isOpen: true,
@@ -248,32 +251,51 @@ export default function App() {
           setTimeout(async () => {
             setUpdateProgress(100);
             await safeReloadApp(res.serverVersion);
-          }, 600);
+          }, 450);
         }
       } else {
         setIsLoopBlocked(false);
       }
     };
 
+    // Verificação inicial imediata
     performSafeVersionCheck(false);
 
     // Telemetry and Realtime Presence
     recordAppAccess();
     const stopPresence = startPresenceHeartbeat();
 
+    // Verificação periódica ativa a cada 45 segundos para detectar novas publicações imediatamente
+    const versionInterval = setInterval(() => {
+      performSafeVersionCheck(false);
+    }, 45 * 1000);
+
     const onVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
         performSafeVersionCheck(false);
+        triggerSWCheck().catch(() => {});
       }
+    };
+
+    const onServiceWorkerUpdated = () => {
+      console.log("[App] Evento de Service Worker atualizado recebido.");
+      performSafeVersionCheck(true);
     };
 
     window.addEventListener('focus', onVisibilityOrFocus);
     document.addEventListener('visibilitychange', onVisibilityOrFocus);
+    window.addEventListener('online', onVisibilityOrFocus);
+    window.addEventListener('swUpdated', onServiceWorkerUpdated);
+    window.addEventListener('swNeedRefresh', onServiceWorkerUpdated);
 
     return () => {
+      clearInterval(versionInterval);
       stopPresence();
       window.removeEventListener('focus', onVisibilityOrFocus);
       document.removeEventListener('visibilitychange', onVisibilityOrFocus);
+      window.removeEventListener('online', onVisibilityOrFocus);
+      window.removeEventListener('swUpdated', onServiceWorkerUpdated);
+      window.removeEventListener('swNeedRefresh', onServiceWorkerUpdated);
     };
   }, []);
 

@@ -15,7 +15,7 @@ export interface VersionCheckResult {
 }
 
 let lastCheckTime = 0;
-const CHECK_COOLDOWN_MS = 30000; // 30 seconds cooldown between network checks to prevent rapid spam
+const CHECK_COOLDOWN_MS = 15000; // 15 seconds cooldown between routine network checks
 
 /**
  * Normalizes and compares versions safely.
@@ -27,47 +27,56 @@ export function isVersionOutdated(local: string, server: string): boolean {
 }
 
 /**
- * Deeply purges browser caches, CacheStorage, and outdated service workers
- * without corrupting user application state.
+ * Deeply purges browser cache storage safely without breaking in-flight modules
+ * or corrupting user application state.
  */
 export async function clearAppCaches(): Promise<void> {
   try {
     // 1. Clear CacheStorage (PWA and fetch caches)
     if (typeof window !== "undefined" && "caches" in window) {
       const keys = await caches.keys();
-      await Promise.all(keys.map((key) => caches.delete(key)));
-      console.log("[VersionManager] Caches locais limpos com sucesso.");
+      await Promise.all(
+        keys.map((key) => {
+          // Delete old cache stores safely
+          return caches.delete(key);
+        })
+      );
+      console.log("[VersionManager] Caches locais sincronizados com sucesso.");
     }
 
-    // 2. Unregister legacy service workers
+    // 2. Notify active service workers to update and activate immediately
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations();
       for (const reg of registrations) {
-        // Unregister service worker to force fresh fetch on reload
-        await reg.unregister();
+        if (reg.waiting) {
+          reg.waiting.postMessage({ type: "SKIP_WAITING" });
+        }
+        await reg.update().catch(() => {});
       }
-      console.log("[VersionManager] Service workers desregistrados para atualização.");
     }
   } catch (err) {
-    console.warn("[VersionManager] Aviso ao limpar caches:", err);
+    console.warn("[VersionManager] Aviso ao sincronizar caches:", err);
   }
 }
 
 /**
- * Safely reloads the application with clean URL params
+ * Safely reloads the application with clean URL params and cache-busting timestamp
  */
 export async function safeReloadApp(targetVersion?: string): Promise<void> {
-  await clearAppCaches();
   const finalVersion = targetVersion || APP_VERSION;
   try {
     localStorage.setItem("app_version", finalVersion);
     localStorage.setItem("last_seen_app_version", finalVersion);
   } catch {}
+
+  await clearAppCaches();
   
   // Use timestamp query param to force browser HTTP disk cache bypass
   const baseCleanUrl = window.location.origin + window.location.pathname;
   const reloadUrl = `${baseCleanUrl}?_upd=${Date.now()}`;
-  window.location.href = reloadUrl;
+  
+  // Replace location so the outdated page is not stored in session history
+  window.location.replace(reloadUrl);
 }
 
 /**

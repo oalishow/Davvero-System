@@ -14,7 +14,7 @@ clientsClaim();
 
 // Ouvinte para mensagens de SKIP_WAITING enviadas pelo aplicativo cliente
 self.addEventListener('message', (event: any) => {
-  if (event.data && event.data.type === 'SKIP_WAITING') {
+  if (event.data && (event.data.type === 'SKIP_WAITING' || event.data === 'SKIP_WAITING' || event.data?.type === 'CHECK_UPDATE')) {
     self.skipWaiting();
   }
 });
@@ -28,6 +28,7 @@ try {
   const navigationRoute = new NavigationRoute(handler, {
     denylist: [
       new RegExp('/__/'), // Exclude Firebase reserved URLs
+      new RegExp('/api/'), // Exclude API routes
     ],
   });
   registerRoute(navigationRoute);
@@ -45,12 +46,12 @@ const apiBgSyncPlugin = new BackgroundSyncPlugin('davvero-api-queue', {
   maxRetentionTime: 24 * 60, // Retry for max of 24 Hours
 });
 
+// Garantir que rotas de API NUNCA sejam cacheadas e acessem a rede diretamente
 registerRoute(
   ({ url }) => url.pathname.startsWith('/api/'),
   new NetworkOnly({
     plugins: [apiBgSyncPlugin]
-  }),
-  'POST'
+  })
 );
 
 // Cache para chamadas do Firestore e APIs (Dados básicos)
