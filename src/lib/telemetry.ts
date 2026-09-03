@@ -182,8 +182,15 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
   const sessionId = getSessionId();
   const presenceDocRef = doc(db, `artifacts/${appId}/public/data/online_presence`, sessionId);
 
+  let lastHeartbeatTime = 0;
+
   const updateHeartbeat = async () => {
     try {
+      // Avoid heartbeat if document is hidden in background
+      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
+        return;
+      }
+      lastHeartbeatTime = Date.now();
       await loginAnon();
       await setDoc(presenceDocRef, {
         sessionId,
@@ -199,13 +206,24 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
     }
   };
 
-  // Immediate heartbeat
+  // Immediate heartbeat on start
   updateHeartbeat();
 
-  // Pulse every 35 seconds
-  const intervalId = setInterval(updateHeartbeat, 35000);
+  // Pulse every 90 seconds (saves ~65% of Firestore writes while keeping online status fresh)
+  const intervalId = setInterval(updateHeartbeat, 90000);
 
-  // Remove presence on window unload or hidden
+  // Resume heartbeat when tab becomes visible after being hidden
+  const handleVisibilityChange = () => {
+    if (document.visibilityState === "visible") {
+      const elapsed = Date.now() - lastHeartbeatTime;
+      if (elapsed > 60000) {
+        updateHeartbeat();
+      }
+    }
+  };
+  document.addEventListener("visibilitychange", handleVisibilityChange);
+
+  // Remove presence on window unload
   const handleUnload = () => {
     try {
       deleteDoc(presenceDocRef);
@@ -216,6 +234,7 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
 
   return () => {
     clearInterval(intervalId);
+    document.removeEventListener("visibilitychange", handleVisibilityChange);
     window.removeEventListener("beforeunload", handleUnload);
     try {
       deleteDoc(presenceDocRef);
@@ -229,7 +248,8 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
 export const getFullTelemetryData = async (
   totalMembers: number = 0,
   totalEvents: number = 0,
-  totalCertificates: number = 0
+  totalCertificates: number = 0,
+  existingAttendancesCount: number = 0
 ): Promise<TelemetryStats> => {
   const statsDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
   const today = getTodayKey();
@@ -254,10 +274,15 @@ export const getFullTelemetryData = async (
     console.warn("[Telemetry] Error fetching stats doc:", err);
   }
 
-  // 1. Fetch real online presence count (sessions active in last 90 seconds)
+  // 1. Fetch real online presence count (limited to avoid unbounded reads)
   let onlineCount = 1;
   try {
-    const presenceSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/online_presence`));
+    const presenceSnap = await getDocs(
+      query(
+        collection(db, `artifacts/${appId}/public/data/online_presence`),
+        limit(50)
+      )
+    );
     const now = Date.now();
     let validOnline = 0;
     
@@ -266,7 +291,7 @@ export const getFullTelemetryData = async (
       let isActive = true;
       if (data.lastActive) {
         const lastActiveTime = new Date(data.lastActive).getTime();
-        if (now - lastActiveTime > 90 * 1000) {
+        if (now - lastActiveTime > 120 * 1000) {
           isActive = false;
         }
       }
@@ -277,12 +302,8 @@ export const getFullTelemetryData = async (
     console.warn("[Telemetry] Error fetching presence count:", err);
   }
 
-  // 2. Fetch Attendances to calculate real verified QR scans
-  let totalAttendancesCount = 0;
-  try {
-    const attSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/attendances`));
-    totalAttendancesCount = attSnap.size;
-  } catch (err) {}
+  // 2. Reuse known attendances count from caller to prevent duplicate getDocs collection read
+  const totalAttendancesCount = existingAttendancesCount;
 
   // 3. Fetch recent daily historical records
   const dailyMetrics: TelemetryStats["dailyMetrics"] = [];

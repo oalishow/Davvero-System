@@ -297,13 +297,20 @@ export const closeEvent = async (eventId: string, options: CloseEventOptions = {
 
     const docSnap = await getDocs(qAttendances).catch(() => null);
     if (docSnap && !docSnap.empty) {
-      const batch = writeBatch(db);
+      let currentBatch = writeBatch(db);
+      let batchOps = 0;
       const eligibleStudentIds: string[] = [];
 
-      docSnap.docs.forEach((d) => {
+      for (const d of docSnap.docs) {
         const a: any = d.data();
         if (a.status !== "cancelado") {
-          batch.update(d.ref, { status: "apto_para_certificado" });
+          if (batchOps >= 450) {
+            await currentBatch.commit();
+            currentBatch = writeBatch(db);
+            batchOps = 0;
+          }
+          currentBatch.update(d.ref, { status: "apto_para_certificado" });
+          batchOps++;
           if (a.studentId) {
             eligibleStudentIds.push(a.studentId);
           }
@@ -316,8 +323,10 @@ export const closeEvent = async (eventId: string, options: CloseEventOptions = {
             }).catch(console.error);
           }
         }
-      });
-      await batch.commit();
+      }
+      if (batchOps > 0) {
+        await currentBatch.commit();
+      }
 
       // Disparar notificações Push e E-mails em massa se habilitado
       if (shouldNotify && eligibleStudentIds.length > 0) {

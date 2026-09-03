@@ -784,6 +784,9 @@ export default function QuickEventEnrollModal({
                     Número de CPF inválido. Verifique os dígitos digitados.
                   </p>
                 )}
+                <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                  Obrigatório para que você encontre sua inscrição e histórico na aba <strong>MINHA ID</strong>.
+                </p>
               </div>
 
               {/* 3. Vínculo Institucional (Obrigatório) */}

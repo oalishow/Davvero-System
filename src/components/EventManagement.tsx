@@ -43,6 +43,7 @@ import EventAttendeesModal from "./EventAttendeesModal";
 import CertificateEditor from "./CertificateEditor";
 import Modal from "./Modal";
 import { useDialog } from "../context/DialogContext";
+import { getEventEndTime } from "../lib/certificateAuth";
 
 export default function EventManagement({ 
   adminAccessLevel = "ADMIN",
@@ -102,6 +103,7 @@ export default function EventManagement({
   const [hotmartLink, setHotmartLink] = useState("");
   const [allowAllRegisteredCertificates, setAllowAllRegisteredCertificates] = useState(false);
   const [autoSendCertificatesOnClose, setAutoSendCertificatesOnClose] = useState(true);
+  const [autoReleaseCertificatesOnEnd, setAutoReleaseCertificatesOnEnd] = useState(true);
   const [presenceConfigEnabled, setPresenceConfigEnabled] = useState(false);
   const [presenceOpenMode, setPresenceOpenMode] = useState<"default_30min" | "custom">("default_30min");
   const [presenceCustomOpenTime, setPresenceCustomOpenTime] = useState("");
@@ -130,10 +132,14 @@ export default function EventManagement({
       evts.forEach((e) => {
         // Se o evento foi reaberto manualmente pelo administrador, NÃO auto-encerrar destrutivamente
         if (e.status === "aberto" && !e.manuallyReopened) {
-          const checkDate = e.endDate ? new Date(e.endDate).getTime() : new Date(e.startDate).getTime();
-          const GRACE_PERIOD = 24 * 60 * 60 * 1000; // 1 day
-          if (checkDate + GRACE_PERIOD < now) {
-             closeEvent(e.id).catch(console.error);
+          const endTime = getEventEndTime(e);
+          const shouldAutoRelease = e.autoReleaseCertificatesOnEnd !== false;
+          // Se o término do evento já passou e a liberação automática estiver ativa, encerra e libera certificados
+          if (endTime > 0 && endTime <= now && shouldAutoRelease) {
+            closeEvent(e.id, {
+              releaseToAllRegistered: Boolean(e.allowAllRegisteredCertificates),
+              sendNotifications: e.autoSendCertificatesOnClose !== false,
+            }).catch(console.error);
           }
         }
       });
@@ -202,6 +208,7 @@ export default function EventManagement({
     setHotmartLink(event.hotmartLink || "");
     setAllowAllRegisteredCertificates(Boolean(event.allowAllRegisteredCertificates || event.certificateReleaseMode === "all_registered"));
     setAutoSendCertificatesOnClose(event.autoSendCertificatesOnClose !== false);
+    setAutoReleaseCertificatesOnEnd(event.autoReleaseCertificatesOnEnd !== false);
     if (event.presenceConfig) {
       setPresenceConfigEnabled(event.presenceConfig.enabled);
       setPresenceOpenMode(event.presenceConfig.openMode);
@@ -245,6 +252,7 @@ export default function EventManagement({
     setHotmartLink("");
     setAllowAllRegisteredCertificates(false);
     setAutoSendCertificatesOnClose(true);
+    setAutoReleaseCertificatesOnEnd(true);
     setPresenceConfigEnabled(false);
     setPresenceOpenMode("default_30min");
     setPresenceCustomOpenTime("");
@@ -295,6 +303,7 @@ export default function EventManagement({
         hotmartLink: isPaid && hotmartLink ? hotmartLink : null,
         allowAllRegisteredCertificates: Boolean(allowAllRegisteredCertificates),
         autoSendCertificatesOnClose: Boolean(autoSendCertificatesOnClose),
+        autoReleaseCertificatesOnEnd: Boolean(autoReleaseCertificatesOnEnd),
         certificateReleaseMode: allowAllRegisteredCertificates ? "all_registered" : "attended_only",
         presenceConfig: {
           enabled: presenceConfigEnabled,

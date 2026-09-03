@@ -185,6 +185,7 @@ export interface Event {
   certificateReleaseMode?: "attended_only" | "all_registered"; // Disponibilizar para presentes ou todos os inscritos
   allowAllRegisteredCertificates?: boolean; // Se true, todos os inscritos recebem certificado
   autoSendCertificatesOnClose?: boolean; // Se false, remove o envio automático de e-mail ao término
+  autoReleaseCertificatesOnEnd?: boolean; // Se true (padrão), libera certificados automaticamente após o horário de término
   presenceConfig?: EventPresenceConfig;
 }
 
@@ -215,6 +216,23 @@ export interface Notification {
 
 export type AvailabilityStatus = "LIVRE" | "OCUPADO" | "CANCELADO";
 
+export interface ProfessionalConfig {
+  id: string;
+  name: string;
+  role: string;
+  photoUrl: string | null;
+  appointmentLink?: string;
+  appointmentType?: "whatsapp" | "google_calendar" | "other";
+  whatsappNumber?: string;
+  seminary?: string; // Seminário específico ou vazio para todos
+  meetingLinkFilosofia?: string; // Link de atendimento para Filosofia
+  meetingLinkTeologia?: string; // Link de atendimento para Teologia
+  formationDocUrl?: string | null; // URL ou data base64 do PDF ou Imagem
+  formationDocName?: string; // Nome do documento (ex: "Diretrizes_Formacao.pdf")
+  formationDocType?: "pdf" | "image" | "link";
+  formationDocDescription?: string; // Descrição ou instruções do documento
+}
+
 export interface Availability {
   id: string;
   professionalId: string;
@@ -225,6 +243,13 @@ export interface Availability {
   status: AvailabilityStatus;
   location?: string;
   seminary?: string;
+  meetingLinkFilosofia?: string;
+  meetingLinkTeologia?: string;
+  formationDocUrl?: string | null;
+  formationDocName?: string;
+  formationDocType?: "pdf" | "image" | "link";
+  formationDocDescription?: string;
+  targetCourse?: "TODOS" | "FILOSOFIA" | "TEOLOGIA";
   createdAt?: string;
   updatedAt?: string;
 }
@@ -239,8 +264,56 @@ export interface Appointment {
   startTime: string;      // Desnormalizado
   endTime?: string;       // Desnormalizado
   location?: string;      // Desnormalizado
+  seminary?: string;
+  meetingLinkFilosofia?: string;
+  meetingLinkTeologia?: string;
+  formationDocUrl?: string | null;
+  formationDocName?: string;
+  formationDocType?: "pdf" | "image" | "link";
+  targetCourse?: "TODOS" | "FILOSOFIA" | "TEOLOGIA";
   status: "CONFIRMADO" | "CANCELADO";
   notes?: string;
   createdAt: string;
   updatedAt?: string;
 }
+
+export interface PollOption {
+  id: string;
+  text: string;
+  votesCount: number;
+  color?: string;
+}
+
+export interface PollVote {
+  pollId: string;
+  optionId: string;
+  voterId?: string; // memberId or client device ID
+  voterName?: string;
+  feedback?: string;
+  rating?: number;
+  timestamp: string;
+}
+
+export interface Poll {
+  id: string;
+  title: string;
+  description?: string;
+  category?: "davvero_experience" | "general" | "features" | "seminary";
+  options: PollOption[];
+  totalVotes: number;
+  allowFeedback?: boolean;
+  feedbackPlaceholder?: string;
+  active: boolean;
+  createdAt: string;
+  expiresAt?: string;
+  createdBy?: string;
+  feedbacks?: Array<{
+    id: string;
+    voterName?: string;
+    optionText: string;
+    feedback: string;
+    rating?: number;
+    timestamp: string;
+  }>;
+}
+

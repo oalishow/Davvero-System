@@ -4,7 +4,7 @@ import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, appId, loginAnon } from '../lib/firebase';
 import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION, extractAssetString, safeLocalStorageSet, safeSessionStorageSet, purgeOversizedLocalStorage } from '../lib/constants';
 import type { DioceseInfo } from '../data/diocesesData';
-import { AVAILABLE_DIOCESES, AVAILABLE_SEMINARIES } from '../types';
+import { AVAILABLE_DIOCESES, AVAILABLE_SEMINARIES, ProfessionalConfig } from '../types';
 
 export const sanitizeDocKey = (key: string): string => {
   if (!key) return "DEFAULT";
@@ -48,7 +48,7 @@ export interface AppSettings {
     logo: string | null; 
     signature: string | null; 
     rectorName: string;
-    professionals?: { id: string, name: string, role: string, photoUrl: string | null, appointmentLink?: string, appointmentType?: "whatsapp" | "google_calendar" | "other", whatsappNumber?: string }[];
+    professionals?: ProfessionalConfig[];
   }>;
   useGoogleScriptCertificate: boolean;
   googleScriptCertificateUrl: string;
@@ -84,7 +84,7 @@ export interface AppSettings {
   eventsEnabled?: boolean;
   appointmentsEnabled?: boolean;
   appointmentsExternalLink?: string;
-  professionals?: { id: string, name: string, role: string, photoUrl: string | null, appointmentLink?: string, appointmentType?: "whatsapp" | "google_calendar" | "other", whatsappNumber?: string }[];
+  professionals?: ProfessionalConfig[];
   autoApproveEnabled?: boolean;
   autoApproveWhitelist?: string[];
   autoApproveWhitelistText?: string;

@@ -57,6 +57,7 @@ import { CertificateRenderer } from "./CertificateRenderer";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import TermsOfUseModal from "./TermsOfUseModal";
+import HomePollsWidget from "./HomePollsWidget";
 import { playSound } from '../lib/sounds';
 import { isWebAuthnSupported, registerBiometric, verifyBiometric } from "../lib/webauthn";
 import { compressOriginalImage } from "../lib/cropUtils";
@@ -1885,6 +1886,8 @@ export default function StudentPortal({
                   }}
                   isMyID={true}
                 />
+
+                <HomePollsWidget currentMemberName={member?.name} currentMemberId={member?.id} />
 
                 <div className="px-4 py-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-3xl border border-blue-100 dark:border-blue-900/30">
                   <p className="text-xs text-blue-700 dark:text-blue-400 font-medium leading-relaxed">

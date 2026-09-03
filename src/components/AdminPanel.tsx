@@ -54,12 +54,13 @@ import EventsRecycleBin from "./EventsRecycleBin";
 import NotificationsManager from "./NotificationsManager";
 import AdminAppointments from "./AdminAppointments";
 import DashboardPanel from "./DashboardPanel";
+import AdminPolls from "./AdminPolls";
 import { performAutoBackupIfDue } from "../lib/autoBackup";
-import { Calendar, BriefcaseMedical, LayoutDashboard } from "lucide-react";
+import { Calendar, BriefcaseMedical, LayoutDashboard, Vote } from "lucide-react";
 
 export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const { settings, updateSettings, loading } = useSettings();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "members" | "events" | "appointments" | "notifications">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "members" | "events" | "appointments" | "notifications" | "polls">("dashboard");
     const [name, setName] = useState("");
   const [ra, setRa] = useState("");
   const [cpf, setCpf] = useState("");
@@ -614,10 +615,26 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
           <Bell className="w-4 h-4 hidden sm:block" />
           Notificações
         </button>
+
+        <button
+          onClick={() => setActiveTab("polls")}
+          className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:py-2.5 rounded-lg sm:rounded-full font-bold text-xs sm:text-sm transition-all whitespace-nowrap border flex-grow sm:flex-grow-0 ${
+            activeTab === "polls"
+              ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-600/30 dark:border-sky-400/30"
+              : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/80"
+          }`}
+        >
+          <Vote className="w-4 h-4 hidden sm:block" />
+          Enquetes
+        </button>
       </div>
 
       {activeTab === "dashboard" && (
         <DashboardPanel allMembers={allMembers} />
+      )}
+
+      {activeTab === "polls" && (
+        <AdminPolls />
       )}
 
       {activeTab === "events" && (

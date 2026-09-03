@@ -12,6 +12,7 @@ import { getHapticsEnabled, setHapticsEnabled, triggerHaptic } from '../lib/hapt
 import ChangelogModal from './ChangelogModal';
 import DavveroLogo from './DavveroLogo';
 import OpenBetaModal from './OpenBetaModal';
+import YouTubeLiveButton from './YouTubeLiveButton';
 
 const STUDENT_BOND_KEY = 'davveroId_student_identity';
 const STUDENT_TRACK_KEY = 'davveroId_student_track_ra';
@@ -212,6 +213,7 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
         </button>
       </div>
       <div className="absolute top-0 right-0 flex items-center gap-2 z-50 no-print print:hidden">
+        <YouTubeLiveButton />
         <button 
           onClick={() => {
              if ((window as any).triggerCheckUpdates) {

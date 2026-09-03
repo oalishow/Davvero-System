@@ -61,6 +61,117 @@ async function startServer() {
     res.sendFile(manifestPath);
   });
 
+  // YouTube Live Channel Status Check Cache
+  let youtubeLiveCache: {
+    data: {
+      isLive: boolean;
+      channel: string;
+      channelUrl: string;
+      liveUrl: string;
+      watchUrl: string | null;
+      videoId: string | null;
+      title: string | null;
+      checkedAt: string;
+    };
+    expiresAt: number;
+  } | null = null;
+
+  app.get("/api/youtube/live-status", async (req, res) => {
+    res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");
+    const channelHandle = (req.query.channel as string) || "@fajopademarilia";
+    const force = req.query.force === "true";
+    const now = Date.now();
+
+    if (!force && youtubeLiveCache && youtubeLiveCache.expiresAt > now) {
+      return res.json({
+        ...youtubeLiveCache.data,
+        cached: true,
+      });
+    }
+
+    const channelUrl = `https://www.youtube.com/${channelHandle}`;
+    const liveUrl = `https://www.youtube.com/${channelHandle}/live`;
+
+    try {
+      const response = await fetch(liveUrl, {
+        headers: {
+          "User-Agent":
+            "Mozilla/5.0 (Windows NT 10.0; Win64; x64) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36",
+          "Accept-Language": "pt-BR,pt;q=0.9,en;q=0.8",
+        },
+        redirect: "follow",
+      });
+
+      const html = await response.text();
+
+      // Determine if a live broadcast is currently running
+      const hasLiveNow = html.includes('"isLiveNow":true');
+      const hasLiveStatus = html.includes('"status":"LIVE"');
+      const hasLiveBroadcast =
+        html.includes('"isLive":true') &&
+        !html.includes("LIVE_STREAM_OFFLINE") &&
+        !html.includes('"status":"OFFLINE"');
+      const isLive = Boolean(hasLiveNow || hasLiveStatus || hasLiveBroadcast);
+
+      // Extract videoId and title if available
+      const videoIdMatch =
+        html.match(/"externalVideoId":"([^"]+)"/) || html.match(/"videoId":"([^"]+)"/);
+      const videoId = videoIdMatch ? videoIdMatch[1] : null;
+
+      let title: string | null = null;
+      const titleMatch = html.match(/<title>([^<]+)<\/title>/);
+      if (titleMatch) {
+        title = titleMatch[1]
+          .replace(/ - YouTube$/, "")
+          .replace(/&quot;/g, '"')
+          .replace(/&#39;/g, "'")
+          .replace(/&amp;/g, "&");
+      }
+
+      const liveData = {
+        isLive,
+        channel: channelHandle,
+        channelUrl,
+        liveUrl,
+        watchUrl: videoId ? `https://www.youtube.com/watch?v=${videoId}` : liveUrl,
+        videoId,
+        title: isLive ? title : null,
+        checkedAt: new Date().toISOString(),
+      };
+
+      // Cache for 60 seconds
+      youtubeLiveCache = {
+        data: liveData,
+        expiresAt: now + 60 * 1000,
+      };
+
+      return res.json({
+        ...liveData,
+        cached: false,
+      });
+    } catch (err: any) {
+      console.error("[YouTube Live Check] Error:", err.message);
+      if (youtubeLiveCache) {
+        return res.json({
+          ...youtubeLiveCache.data,
+          cached: true,
+          warning: "Fetch failed, serving cached status",
+        });
+      }
+      return res.status(200).json({
+        isLive: false,
+        channel: channelHandle,
+        channelUrl,
+        liveUrl,
+        watchUrl: null,
+        videoId: null,
+        title: null,
+        checkedAt: new Date().toISOString(),
+        error: err.message,
+      });
+    }
+  });
+
   // Routes for Push Notifications
   app.get("/api/push/public-key", (req, res) => {
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate");

@@ -9,6 +9,7 @@ import { motion } from "motion/react";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import DavveroLogo from "./DavveroLogo";
+import { getCardDocumentTitle } from "../lib/cardRoles";
 import CardRequirementsAnimation from "./CardRequirementsAnimation";
 
 interface VerificationResultProps {
@@ -63,9 +64,9 @@ export default function VerificationResult({
     case "VALID":
       themeClass = "emerald";
       titleText = "Verificado com Sucesso";
-      subtitleText = "Documento Estudantil Digital";
+      subtitleText = `${getCardDocumentTitle(member)} Digital`;
       descHtml =
-        "Acesso Concedido. Membro da comunidade devidamente matriculado.";
+        "Acesso Concedido. Membro da comunidade devidamente cadastrado e validado.";
       dotColor = "bg-emerald-500 animate-pulse";
       badgeText = "Ativo";
       break;
@@ -370,6 +371,11 @@ export default function VerificationResult({
               <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Participante Certificado</p>
               <p className="text-base sm:text-lg font-black text-slate-800 dark:text-white leading-snug">{safeName}</p>
               {member?.ra && <p className="text-xs text-slate-500 font-mono mt-0.5 font-semibold">RA: {member.ra}</p>}
+              {member?.course && (
+                <p className="text-xs text-sky-700 dark:text-sky-400 font-bold mt-0.5">
+                  Curso: <span className="font-normal">{member.course}</span>
+                </p>
+              )}
               {member?.cpf && (isMyID || isAdminLogged) && <p className="text-xs text-slate-500 font-mono font-semibold">CPF: {member.cpf}</p>}
             </div>
 
@@ -390,7 +396,7 @@ export default function VerificationResult({
               <div>
                 <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Carga Horária</p>
                 <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">
-                  {isOrganizer && event?.organizationHours ? event.organizationHours : (event?.hours || 0)} Horas
+                  {Number(String(isOrganizer && event?.organizationHours ? event.organizationHours : (event?.hours || 0)).replace(/[^0-9.]/g, "")) || 0} Horas
                 </p>
               </div>
               {event?.startDate && (
@@ -480,7 +486,7 @@ export default function VerificationResult({
 
             <p className="text-[10px] text-slate-500 mt-5 font-semibold uppercase tracking-widest bg-emerald-100/50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3 py-1 rounded-full">
               <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>{" "}
-              Documento Estudantil Válido
+              {getCardDocumentTitle(member)} Válido
             </p>
             <p className="text-[10px] text-slate-400 mt-2 font-medium">
               Toque no cartão para girar e ver o verso.

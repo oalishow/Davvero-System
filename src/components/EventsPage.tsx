@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { AnimatePresence } from "motion/react";
 import {
   Calendar,
@@ -33,6 +33,7 @@ import {
   query,
   where,
   getDocs,
+  getDoc,
   doc,
   onSnapshot,
   updateDoc,
@@ -100,7 +101,32 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
   const [eventTypeTab, setEventTypeTab] = useState<"general" | "seminary" | "diocese" | "appointments">(renderSeminary ? "seminary" : "general");
   const [subTab, setSubTab] = useState<"upcoming" | "past">("upcoming");
   const [myAttendances, setMyAttendances] = useState<Attendance[]>([]);
-  const [member, setMember] = useState<Member | null>(null);
+  const [member, setMember] = useState<Member | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("davveroId_cached_member");
+        if (cached) return JSON.parse(cached) as Member;
+      } catch {}
+    }
+    return null;
+  });
+
+  const isSystemAdmin = useMemo(() => {
+    if (isAdmin) return true;
+    if (typeof window !== "undefined") {
+      if (localStorage.getItem("adminMasterLogged") === "true") return true;
+      try {
+        const cached = localStorage.getItem("davveroId_cached_member");
+        if (cached) {
+          const m = JSON.parse(cached) as Member;
+          if (m.roles && m.roles.some(r => ['admin', 'diretoria', 'gestão', 'comunicação', 'secretaria'].includes(r.toLowerCase()))) {
+            return true;
+          }
+        }
+      } catch {}
+    }
+    return false;
+  }, [isAdmin, member]);
   const [isEnrollingInProgress, setIsEnrollingInProgress] = useState<
     string | null
   >(null);
@@ -191,11 +217,26 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     const eventIdFromUrl = params.get("event");
     const checkinEventId = params.get("checkin_event");
 
-    if (checkinEventId && events.length > 0) {
-      const target = events.find((e) => e.id === checkinEventId);
-      if (target) {
-        setCheckInEvent(target);
+    if (checkinEventId) {
+      if (events.length > 0) {
+        const target = events.find((e) => e.id === checkinEventId);
+        if (target) {
+          setCheckInEvent(target);
+          return;
+        }
       }
+      // If not in current list or before list finishes loading, fetch directly
+      const fetchDirectEvent = async () => {
+        try {
+          const docSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/events`, checkinEventId));
+          if (docSnap.exists()) {
+            setCheckInEvent({ id: docSnap.id, ...docSnap.data() } as Event);
+          }
+        } catch (err) {
+          console.error("Error fetching direct checkin event:", err);
+        }
+      };
+      fetchDirectEvent();
     } else if (eventIdFromUrl && events.length > 0) {
       setTimeout(() => {
         const eventEl = document.getElementById(`event-${eventIdFromUrl}`);
@@ -1171,11 +1212,11 @@ END:VCALENDAR`;
                         <Share2 className="w-3.5 h-3.5" /> Compartilhar
                       </button>
 
-                      {isEventAdmin(event) && (
+                      {isSystemAdmin && (
                         <button
                           onClick={() => setSelectedQrEvent(event)}
                           className="flex items-center justify-center sm:justify-start gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max cursor-pointer"
-                          title="Gerar Cartaz com Foto e QR Code para Impressão (Administradores)"
+                          title="Gerar Cartaz com Foto e QR Code para Impressão (Exclusivo Administradores)"
                         >
                           <QrCode className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
                           <span>Cartaz / QR Code</span>
@@ -1406,6 +1447,7 @@ END:VCALENDAR`;
       {adminAttendeesEvent && (
         <EventAttendeesModal
           event={adminAttendeesEvent}
+          isAdmin={isSystemAdmin}
           onClose={() => setAdminAttendeesEvent(null)}
         />
       )}
@@ -1426,9 +1468,22 @@ END:VCALENDAR`;
         <EventCheckInModal
           event={checkInEvent}
           currentMember={member}
-          onClose={() => setCheckInEvent(null)}
+          onClose={() => {
+            setCheckInEvent(null);
+            if (typeof window !== "undefined" && window.location.search.includes("checkin_event")) {
+              const u = new URL(window.location.href);
+              u.searchParams.delete("checkin_event");
+              window.history.replaceState({}, "", u.toString());
+            }
+          }}
           onSuccess={() => {
-            // Success callback
+            // refresh or handle
+          }}
+          onRequestRegistration={() => {
+            setShowPublicReq(true);
+          }}
+          onNavigateToLogin={() => {
+            if (onNavigateToStudent) onNavigateToStudent();
           }}
         />
       )}

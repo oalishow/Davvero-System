@@ -4,6 +4,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import { useSettings } from '../context/SettingsContext';
 import { playSound } from '../lib/sounds';
 import { extractAssetString } from '../lib/constants';
+import { getCardDocumentTitle, getCardDocumentDescription } from '../lib/cardRoles';
 import DavveroLogo from './DavveroLogo';
 
 interface FajopaIDCardProps {
@@ -77,7 +78,7 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
   } = settings;
 
   const cleanBaseUrl = baseUrl.endsWith('/') ? baseUrl.slice(0, -1) : baseUrl;
-  const displayDescription = cardDescription || 'Documento de identificação estudantil é padronizado e apresenta os dados requeridos pela Lei 12.933/2013 para comprovação de matrícula, sendo sua aceitação sujeita aos critérios dos organizadores de eventos.';
+  const displayDescription = getCardDocumentDescription(member, cardDescription);
   
   const normalizedDiocese = member.diocese?.toUpperCase().trim() || '';
   const isSeminarista = member.roles?.some(r => r.trim().toUpperCase() === 'SEMINARISTA');
@@ -185,7 +186,7 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
         }}
       >
          <h1 className="text-white font-black tracking-tighter whitespace-nowrap" style={{ fontSize: '18px' }}>
-            {isSeminarista ? 'DOCUMENTO ESTUDANTIL E VOCACIONAL' : (cardFrontText || 'IDENTIFICAÇÃO ESTUDANTIL')}
+            {getCardDocumentTitle(member, cardFrontText)}
          </h1>
          <span className="text-white opacity-80 text-[9px] font-bold tracking-widest bg-white/10 px-2 py-0.5 rounded-full uppercase ml-1">
            {displayInstNameForCard}

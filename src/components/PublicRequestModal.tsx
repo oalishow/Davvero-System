@@ -156,6 +156,17 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
       return;
     }
 
+    const cleanCpf = cpf.trim().replace(/\D/g, "");
+    if (!cleanCpf) {
+      setError('O CPF é obrigatório no cadastro para que você consiga localizar seu cadastro depois na aba "MINHA ID".');
+      return;
+    }
+
+    if (cleanCpf.length !== 11) {
+      setError('Por favor, digite um CPF válido com 11 dígitos numéricos.');
+      return;
+    }
+
     if (regMode === 'full') {
       if (!birthdate) {
         setError('Data de Nascimento é obrigatória no cadastro completo.');
@@ -176,6 +187,7 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
 
     try {
       const formattedRa = ra.trim();
+      const cleanCpf = cpf.trim().replace(/\D/g, "");
       const membersRef = collection(db, `artifacts/${appId}/public/data/students`);
 
       if (formattedRa) {
@@ -189,8 +201,18 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
         }
       }
 
+      if (cleanCpf) {
+        const qCpf = query(membersRef, where('cpf', '==', cleanCpf));
+        const cpfSnapshot = await getDocs(qCpf);
+        const existingCpf = cpfSnapshot.docs.find(doc => !doc.data().deletedAt);
+        if (existingCpf) {
+          setError(`Este CPF (${cpf.trim()}) já possui cadastro no sistema. Acesse a aba "MINHA ID" para consultar sua carteirinha ou solicite ajuda à secretaria.`);
+          setLoading(false);
+          return;
+        }
+      }
+
       const alphaCode = Array(6).fill(0).map(() => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]).join('');
-      const cleanCpf = cpf.trim().replace(/\D/g, "");
 
       const isAutoApproved = checkAutoApproval(
         {
@@ -526,7 +548,7 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
 
                 <div className="pt-3 border-t border-emerald-100 dark:border-emerald-900/40 space-y-1.5 text-[11px] text-slate-500 dark:text-slate-400">
                   <div className="flex items-center gap-1.5">
-                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Nome, E-mail e WhatsApp/CPF
+                    <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Nome, E-mail, Celular e CPF (obrigatório para Minha ID)
                   </div>
                   <div className="flex items-center gap-1.5">
                     <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> Sem necessidade de foto agora
@@ -659,16 +681,25 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
                 </div>
 
                 <div>
-                  <label className="block text-[10px] sm:text-xs font-bold text-slate-500 dark:text-slate-400 uppercase mb-1 flex items-center gap-1.5">
-                    <CreditCard className="w-3.5 h-3.5 text-slate-400" /> CPF {regMode === 'full' ? '*' : '(Opcional)'}
+                  <label className="block text-[10px] sm:text-xs font-bold text-slate-700 dark:text-slate-300 uppercase mb-1 flex items-center justify-between">
+                    <span className="flex items-center gap-1.5">
+                      <CreditCard className="w-3.5 h-3.5 text-rose-500 shrink-0" /> CPF *
+                    </span>
+                    <span className="text-[10px] text-rose-600 dark:text-rose-400 font-bold lowercase tracking-normal">
+                      obrigatório para Minha ID
+                    </span>
                   </label>
                   <input 
                     type="text" 
+                    required
                     value={cpf} 
                     onChange={e => setCpf(formatCpfInput(e.target.value))} 
-                    placeholder="000.000.000-00" 
-                    className="input-modern w-full rounded-xl py-2.5 px-3.5 text-sm bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700" 
+                    placeholder="000.000.000-00 (obrigatório)" 
+                    className="input-modern w-full rounded-xl py-2.5 px-3.5 text-sm bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700 focus:border-sky-500" 
                   />
+                  <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                    Obrigatório para que você encontre e acerte seu cadastro depois na aba <strong>MINHA ID</strong>.
+                  </p>
                 </div>
               </div>
 

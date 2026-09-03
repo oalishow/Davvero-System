@@ -20,6 +20,7 @@ import RegistrationSuccessModal from "./RegistrationSuccessModal";
 import { useDialog } from "../context/DialogContext";
 import { playSound } from '../lib/sounds';
 import { recordQRScan } from "../lib/telemetry";
+import { resolveCertificate, syncAllExistingCertificates } from "../lib/certificateAuth";
 
 import { motion } from "motion/react";
 import confetti from "canvas-confetti";
@@ -125,6 +126,36 @@ export default function Verifier({
 
     // Clean formatting: remove extra quotes, uppercase
     code = code.replace(/["']/g, "").trim().toUpperCase();
+
+    // Centralized Certificate Authentication Resolution
+    try {
+      const resolved = await resolveCertificate(code, eventsCache, membersCache, attendancesCache);
+      if (resolved) {
+        const { event: foundEvent, member: resolvedMember, isOrganizer, certCode } = resolved;
+        recordQRScan("certificate", certCode, "Válido");
+
+        setValidationResult({
+          member: resolvedMember,
+          status: "VALID_CERTIFICATE",
+          event: foundEvent,
+          isOrganizer,
+          certCode,
+        });
+        playSound("success");
+
+        setTimeout(() => {
+          const panel = document.getElementById("verification-result-panel");
+          if (panel) {
+            panel.scrollIntoView({ behavior: "smooth", block: "start" });
+          } else {
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }
+        }, 100);
+        return;
+      }
+    } catch (e) {
+      console.warn("Error in resolveCertificate:", e);
+    }
 
     // Split by common separators (- , / , :)
     let eventPart = "";
@@ -530,6 +561,8 @@ export default function Verifier({
         }
 
         setCacheLoaded(true);
+        // Background retroactive sync for legacy certificates
+        syncAllExistingCertificates().catch(() => null);
       } catch (e) {
         console.error("Cache load error", e);
         if (retries > 0) {

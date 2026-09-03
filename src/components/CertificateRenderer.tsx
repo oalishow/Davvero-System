@@ -1,8 +1,9 @@
-import React, { forwardRef } from 'react';
+import React, { forwardRef, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Event, CertificateTemplate, Member } from '../types';
 import { useSettings } from '../context/SettingsContext';
 import { extractAssetString } from '../lib/constants';
+import { generateCertificateCode, registerCertificateRecord } from '../lib/certificateAuth';
 
 interface CertificateRendererProps {
   event: Event;
@@ -76,6 +77,20 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     const rawHours = isOrganizer && event.organizationHours ? event.organizationHours : event.hours;
     const hasValidHours = rawHours && String(rawHours).trim() !== "" && String(rawHours).toLowerCase() !== "null" && String(rawHours).toLowerCase() !== "undefined" && Number(rawHours) !== 0;
     const hoursText = hasValidHours ? `, com carga horária total de ${rawHours} horas` : "";
+
+    const certCode = generateCertificateCode(event, member, isOrganizer);
+    const certVerificationUrl = `${typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?cert=` : ''}${certCode}`;
+
+    useEffect(() => {
+      if (event?.id && member?.id) {
+        registerCertificateRecord({
+          code: certCode,
+          event,
+          member: member as Member,
+          isOrganizer: Boolean(isOrganizer),
+        }).catch(() => null);
+      }
+    }, [certCode, event, member, isOrganizer]);
 
     const defaultBodyText = isOrganizer
       ? `Certificamos que [NOME DO ALUNO], atuou com distinção como membro da Equipe de Organização do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado entre ${new Date(event.startDate).toLocaleDateString('pt-BR')} e ${new Date(event.endDate || event.startDate).toLocaleDateString('pt-BR')}${hoursText}.`
@@ -711,7 +726,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
         <div className="absolute bottom-5 left-9 z-20 flex items-center gap-3">
           <div className="bg-white p-1.5 rounded-lg shadow-sm border border-slate-200">
             <QRCodeSVG 
-               value={`${typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?cert=` : ''}${event.id.slice(0,8).toUpperCase()}-${(member.id || member.ra || "DOC").slice(0,8).toUpperCase()}`} 
+               value={certVerificationUrl} 
                size={54} 
                level="M" 
                includeMargin={false} 
@@ -719,7 +734,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           </div>
           <div className={`flex flex-col ${template.bgStyle === 'theme-solemn' ? 'text-slate-400' : 'text-slate-600'}`}>
              <p className="text-[9px] font-bold uppercase tracking-widest mb-0.5 opacity-80">Autenticidade Oficial</p>
-             <p className="text-[12px] font-mono font-bold tracking-wider">{event.id.slice(0,8).toUpperCase()}-{(member.id || member.ra || "DOC").slice(0,8).toUpperCase()}</p>
+             <p className="text-[12px] font-mono font-bold tracking-wider">{certCode}</p>
           </div>
         </div>
 

@@ -36,6 +36,8 @@ import { checkServerVersionWithAntiLoop, safeReloadApp, clearAppCaches } from ".
 import { triggerSWCheck } from "./pwa";
 import { lazyWithRetry } from "./lib/lazyWithRetry";
 import Verifier from "./components/Verifier";
+import YouTubeLiveButton from "./components/YouTubeLiveButton";
+import HomePollsWidget from "./components/HomePollsWidget";
 
 const Admin = lazyWithRetry(() => import("./components/Admin"));
 const StudentPortal = lazyWithRetry(() => import("./components/StudentPortal"));
@@ -52,6 +54,8 @@ export default function App() {
       const params = new URLSearchParams(window.location.search);
       const isDirectDeepLink =
         params.has("event") || 
+        params.has("checkin_event") ||
+        params.has("checkin") ||
         params.has("cert") || 
         params.has("verify") || 
         params.has("diocese") || 
@@ -94,7 +98,7 @@ export default function App() {
       ) {
         return "student";
       }
-      if (params.has("event")) {
+      if (params.has("event") || params.has("checkin_event") || params.has("checkin")) {
         return "events";
       }
       if (params.has("cert")) {
@@ -671,8 +675,12 @@ export default function App() {
             </div>
           )}
 
-          
-                    {settings.fajopaPlusEnabled && (
+          {/* YouTube Live Banner (Ativado quando canal estiver ao vivo / Desativando quando offline) */}
+          <div className="flex justify-center mb-4 mt-2 px-2 no-print print:hidden">
+            <YouTubeLiveButton variant="banner" className="w-full max-w-sm" />
+          </div>
+
+          {settings.fajopaPlusEnabled && (
             <div className="flex justify-center mb-6 mt-2 no-print print:hidden">
               <a 
                 href={settings.fajopaPlusUrl} 
@@ -829,10 +837,13 @@ export default function App() {
                   }
                 >
                   {activeTab === "verifier" && (
-                    <Verifier
-                      externalCode={targetVerifyCode}
-                      onExternalVerified={() => setTargetVerifyCode(null)}
-                    />
+                    <div className="space-y-6">
+                      <HomePollsWidget />
+                      <Verifier
+                        externalCode={targetVerifyCode}
+                        onExternalVerified={() => setTargetVerifyCode(null)}
+                      />
+                    </div>
                   )}
                   {activeTab === "admin" && <Admin />}
                   {activeTab === "events" && <EventsPage onNavigateToStudent={() => setActiveTab("student")} />}

@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { collection, query, getDocs, onSnapshot, orderBy, limit } from "firebase/firestore";
 import { db, appId } from "../lib/firebase";
 import { getFullTelemetryData, TelemetryStats } from "../lib/telemetry";
@@ -11,110 +11,315 @@ import {
 import { 
   Users, Calendar, Activity, Loader2, TrendingUp, UserCheck, Shield, Printer,
   QrCode, Eye, Database, Radio, RefreshCw, Smartphone, Laptop, CheckCircle2,
-  Clock, Award, Bell, Car, Server, ArrowUpRight, Sparkles, BookOpen
+  Clock, Award, Bell, Car, Server, ArrowUpRight, Sparkles, BookOpen, ShieldCheck,
+  CheckCheck, Globe, MapPin, Gauge
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#ef4444'];
 const SCAN_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6'];
 const DEVICE_COLORS = ['#10b981', '#0ea5e9', '#6366f1'];
+const FORMAT_COLORS = ['#10b981', '#0ea5e9', '#8b5cf6'];
+
+// Global in-memory cache to prevent Firebase quota burnout
+interface DashboardCache {
+  timestamp: number;
+  eventsStats: {
+    totalEvents: number;
+    activeEvents: number;
+    completedEvents: number;
+    eventHoursMap: Record<string, number>;
+    formats: { name: string; value: number }[];
+    dateCounts: Record<string, number>;
+  };
+  attendanceStats: {
+    totalAttendances: number;
+    validPresentCount: number;
+    totalAccumulatedHours: number;
+    attendanceRate: number;
+    dateCounts: Record<string, number>;
+  };
+  pushDevicesCount: number;
+  notificationsCount: number;
+  dobloCount: number;
+  telemetry: TelemetryStats;
+}
+
+let globalDashboardCache: DashboardCache | null = null;
 
 export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
   const { settings } = useSettings();
-  const [loading, setLoading] = useState(true);
+  const [loading, setLoading] = useState(!globalDashboardCache);
   const [refreshing, setRefreshing] = useState(false);
-  const [autoRefresh, setAutoRefresh] = useState(true);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
+  // Default autoRefresh to false to protect Firebase Firestore read quota
+  const [autoRefresh, setAutoRefresh] = useState(false);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(
+    globalDashboardCache ? new Date(globalDashboardCache.timestamp) : new Date()
+  );
   const [activeRange, setActiveRange] = useState<"7d" | "14d" | "all">("14d");
 
-  const [telemetry, setTelemetry] = useState<TelemetryStats | null>(null);
-  const [stats, setStats] = useState<{
-    totalMembers: number;
-    activeMembers: number;
+  const [telemetry, setTelemetry] = useState<TelemetryStats | null>(
+    globalDashboardCache ? globalDashboardCache.telemetry : null
+  );
+
+  const [dbData, setDbData] = useState<{
     totalEvents: number;
     activeEvents: number;
+    completedEvents: number;
+    eventFormats: { name: string; value: number }[];
     totalAttendances: number;
-    totalCertificates: number;
-    totalAcademicHours: number;
+    validPresentCount: number;
+    totalAccumulatedHours: number;
+    attendanceRate: number;
     totalPushDevices: number;
     totalNotifications: number;
     totalDobloLogs: number;
-    peakUsageDate: string;
-    peakUsageCount: number;
-    rolesDistribution: { name: string; value: number }[];
-    seminaryDistribution: { name: string; value: number }[];
-    recentActivity: { date: string; membersAdded: number; events: number; attendances: number }[];
-  } | null>(null);
+    eventDateCounts: Record<string, number>;
+    attendanceDateCounts: Record<string, number>;
+  } | null>(() => {
+    if (!globalDashboardCache) return null;
+    return {
+      totalEvents: globalDashboardCache.eventsStats.totalEvents,
+      activeEvents: globalDashboardCache.eventsStats.activeEvents,
+      completedEvents: globalDashboardCache.eventsStats.completedEvents,
+      eventFormats: globalDashboardCache.eventsStats.formats,
+      totalAttendances: globalDashboardCache.attendanceStats.totalAttendances,
+      validPresentCount: globalDashboardCache.attendanceStats.validPresentCount,
+      totalAccumulatedHours: globalDashboardCache.attendanceStats.totalAccumulatedHours,
+      attendanceRate: globalDashboardCache.attendanceStats.attendanceRate,
+      totalPushDevices: globalDashboardCache.pushDevicesCount,
+      totalNotifications: globalDashboardCache.notificationsCount,
+      totalDobloLogs: globalDashboardCache.dobloCount,
+      eventDateCounts: globalDashboardCache.eventsStats.dateCounts,
+      attendanceDateCounts: globalDashboardCache.attendanceStats.dateCounts,
+    };
+  });
 
+  // 1. Process allMembers data in-memory via useMemo (Zero Firestore reads!)
+  const memberMetrics = useMemo(() => {
+    let total = 0;
+    let active = 0;
+    let inactive = 0;
+    const roleCounts: Record<string, number> = {};
+    const seminaryCounts: Record<string, number> = {};
+    const dioceseCounts: Record<string, number> = {};
+    const memberDateCounts: Record<string, number> = {};
+
+    (allMembers || []).forEach((data) => {
+      if (data.isTrash || data.deletedAt) return;
+
+      total++;
+      if (data.isActive !== false) {
+        active++;
+      } else {
+        inactive++;
+      }
+
+      if (data.roles && Array.isArray(data.roles)) {
+        data.roles.forEach((r: string) => {
+          if (r) roleCounts[r] = (roleCounts[r] || 0) + 1;
+        });
+      }
+
+      if (data.seminary && typeof data.seminary === "string" && data.seminary.trim()) {
+        const sem = data.seminary.trim();
+        seminaryCounts[sem] = (seminaryCounts[sem] || 0) + 1;
+      }
+
+      if (data.diocese && typeof data.diocese === "string" && data.diocese.trim()) {
+        const dio = data.diocese.trim();
+        dioceseCounts[dio] = (dioceseCounts[dio] || 0) + 1;
+      }
+
+      let dateAdded = "Desconhecido";
+      if (data.createdAt) {
+        try {
+          if (data.createdAt?.toDate && typeof data.createdAt.toDate === "function") {
+            dateAdded = data.createdAt.toDate().toISOString().split("T")[0];
+          } else if (data.createdAt?.seconds) {
+            dateAdded = new Date(data.createdAt.seconds * 1000).toISOString().split("T")[0];
+          } else if (typeof data.createdAt === "string" || typeof data.createdAt === "number") {
+            dateAdded = new Date(data.createdAt).toISOString().split("T")[0];
+          }
+        } catch (err) {}
+      }
+      if (dateAdded !== "Desconhecido") {
+        memberDateCounts[dateAdded] = (memberDateCounts[dateAdded] || 0) + 1;
+      }
+    });
+
+    const rolesDistribution = Object.entries(roleCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const seminaryDistribution = Object.entries(seminaryCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    const dioceseDistribution = Object.entries(dioceseCounts)
+      .map(([name, value]) => ({ name, value }))
+      .sort((a, b) => b.value - a.value);
+
+    return {
+      totalMembers: total,
+      activeMembers: active,
+      inactiveMembers: inactive,
+      rolesDistribution,
+      seminaryDistribution,
+      dioceseDistribution,
+      memberDateCounts,
+    };
+  }, [allMembers]);
+
+  // 2. Fetch server-side metrics with intelligent 2-minute in-memory caching
   const fetchDashboardData = useCallback(async (isManual = false) => {
     try {
       if (isManual) setRefreshing(true);
+
+      // Check if cache is fresh (< 2 minutes old) and not a manual user click
+      const nowMs = Date.now();
+      if (!isManual && globalDashboardCache && nowMs - globalDashboardCache.timestamp < 120000) {
+        setDbData({
+          totalEvents: globalDashboardCache.eventsStats.totalEvents,
+          activeEvents: globalDashboardCache.eventsStats.activeEvents,
+          completedEvents: globalDashboardCache.eventsStats.completedEvents,
+          eventFormats: globalDashboardCache.eventsStats.formats,
+          totalAttendances: globalDashboardCache.attendanceStats.totalAttendances,
+          validPresentCount: globalDashboardCache.attendanceStats.validPresentCount,
+          totalAccumulatedHours: globalDashboardCache.attendanceStats.totalAccumulatedHours,
+          attendanceRate: globalDashboardCache.attendanceStats.attendanceRate,
+          totalPushDevices: globalDashboardCache.pushDevicesCount,
+          totalNotifications: globalDashboardCache.notificationsCount,
+          totalDobloLogs: globalDashboardCache.dobloCount,
+          eventDateCounts: globalDashboardCache.eventsStats.dateCounts,
+          attendanceDateCounts: globalDashboardCache.attendanceStats.dateCounts,
+        });
+        setTelemetry(globalDashboardCache.telemetry);
+        setLastRefreshedAt(new Date(globalDashboardCache.timestamp));
+        setLoading(false);
+        setRefreshing(false);
+        return;
+      }
       
-      // 1. Fetch events
+      // Fetch events
       const eventsQuery = query(collection(db, `artifacts/${appId}/public/data/events`));
       const eventsSnapshot = await getDocs(eventsQuery);
       let totalEvts = 0;
       let activeEvts = 0;
+      let completedEvts = 0;
       const eventHoursMap: Record<string, number> = {};
+      const formatCounts: Record<string, number> = {
+        "Presencial": 0,
+        "Online": 0,
+        "Híbrido": 0
+      };
+      const eventDateCounts: Record<string, number> = {};
 
       eventsSnapshot.forEach((doc) => {
         totalEvts++;
         const data = doc.data();
-        if (data.status !== "closed" && data.status !== "cancelled") {
+        if (data.status === "closed" || data.status === "cancelled" || data.status === "concluido") {
+          completedEvts++;
+        } else {
           activeEvts++;
         }
-        const hours = Number(data.workloadHours || data.workload || data.hours || 0);
-        if (hours > 0) {
-          eventHoursMap[doc.id] = hours;
+
+        const formatRaw = String(data.format || "presencial").toLowerCase();
+        if (formatRaw.includes("online") || formatRaw.includes("remoto") || formatRaw.includes("ead")) {
+          formatCounts["Online"] = (formatCounts["Online"] || 0) + 1;
+        } else if (formatRaw.includes("hibrid") || formatRaw.includes("híbrid")) {
+          formatCounts["Híbrido"] = (formatCounts["Híbrido"] || 0) + 1;
+        } else {
+          formatCounts["Presencial"] = (formatCounts["Presencial"] || 0) + 1;
+        }
+
+        const rawHours = data.workloadHours || data.workload || data.hours || 0;
+        const parsedH = parseFloat(String(rawHours).replace(",", ".")) || 0;
+        if (parsedH > 0) {
+          eventHoursMap[doc.id] = parsedH;
+        }
+
+        let d = "Desconhecido";
+        if (data.createdAt) {
+          try {
+            if (data.createdAt?.toDate && typeof data.createdAt.toDate === "function") {
+              d = data.createdAt.toDate().toISOString().split("T")[0];
+            } else if (data.createdAt?.seconds) {
+              d = new Date(data.createdAt.seconds * 1000).toISOString().split("T")[0];
+            } else if (typeof data.createdAt === "string" || typeof data.createdAt === "number") {
+              d = new Date(data.createdAt).toISOString().split("T")[0];
+            }
+          } catch (err) {}
+        }
+        if (d !== "Desconhecido") {
+          eventDateCounts[d] = (eventDateCounts[d] || 0) + 1;
         }
       });
 
-      // 2. Fetch attendances count & compute certificates and academic hours
-      let attendancesCount = 0;
-      let validCertificatesCount = 0;
-      let totalAccumulatedHours = 0;
-      const dateCounts: Record<string, { members: number; events: number; attendances: number }> = {};
+      const eventFormats = Object.entries(formatCounts)
+        .map(([name, value]) => ({ name, value }))
+        .filter(item => item.value > 0);
 
-      const trackDate = (dateStr: string, type: 'members' | 'events' | 'attendances') => {
-        if (dateStr === 'Desconhecido') return;
-        if (!dateCounts[dateStr]) {
-          dateCounts[dateStr] = { members: 0, events: 0, attendances: 0 };
-        }
-        dateCounts[dateStr][type]++;
-      };
+      // Fetch attendances & accurate check-in counts
+      let totalAttendancesCount = 0;
+      let validPresentCount = 0;
+      let totalAccumulatedHours = 0;
+      const attendanceDateCounts: Record<string, number> = {};
 
       try {
         const attSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/attendances`));
-        attendancesCount = attSnap.size;
         attSnap.forEach((doc) => {
           const data = doc.data();
-          if (data.status === "present" || data.status === "confirmed" || !data.status) {
-            validCertificatesCount++;
+          if (data.status === "cancelado") return;
+
+          totalAttendancesCount++;
+
+          // Accurately detect presence and certificates across all status standards
+          const isPresent = 
+            data.status === "presente" || 
+            data.status === "apto_para_certificado" || 
+            data.status === "present" || 
+            data.status === "confirmed" || 
+            data.checkedIn === true || 
+            Boolean(data.checkInTime) || 
+            Boolean(data.digitalSignatureProtocol);
+
+          if (isPresent) {
+            validPresentCount++;
             if (data.eventId && eventHoursMap[data.eventId]) {
               totalAccumulatedHours += eventHoursMap[data.eventId];
             } else if (data.hours) {
-              totalAccumulatedHours += Number(data.hours);
+              const h = parseFloat(String(data.hours).replace(",", ".")) || 0;
+              totalAccumulatedHours += h;
             }
           }
 
-          let d = 'Desconhecido';
-          if (data.createdAt || data.checkInTime || data.timestamp) {
-            const rawDate = data.createdAt || data.checkInTime || data.timestamp;
+          let d = "Desconhecido";
+          const rawDate = data.createdAt || data.checkInTime || data.timestamp;
+          if (rawDate) {
             try {
-              if (rawDate?.toDate && typeof rawDate.toDate === 'function') {
-                d = rawDate.toDate().toISOString().split('T')[0];
+              if (rawDate?.toDate && typeof rawDate.toDate === "function") {
+                d = rawDate.toDate().toISOString().split("T")[0];
               } else if (rawDate?.seconds) {
-                d = new Date(rawDate.seconds * 1000).toISOString().split('T')[0];
-              } else if (typeof rawDate === 'string' || typeof rawDate === 'number') {
-                d = new Date(rawDate).toISOString().split('T')[0];
+                d = new Date(rawDate.seconds * 1000).toISOString().split("T")[0];
+              } else if (typeof rawDate === "string" || typeof rawDate === "number") {
+                d = new Date(rawDate).toISOString().split("T")[0];
               }
             } catch (err) {}
           }
-          trackDate(d, 'attendances');
+          if (d !== "Desconhecido") {
+            attendanceDateCounts[d] = (attendanceDateCounts[d] || 0) + 1;
+          }
         });
-      } catch (e) {}
+      } catch (e) {
+        console.warn("[Dashboard] Error fetching attendances:", e);
+      }
 
-      // 3. Fetch push subscriptions (connected devices)
+      const attendanceRate = totalAttendancesCount > 0 
+        ? Math.round((validPresentCount / totalAttendancesCount) * 100) 
+        : 0;
+
+      // Fetch push subscriptions
       let pushDevicesCount = 0;
       try {
         const [pushSnap, fcmSnap] = await Promise.all([
@@ -138,115 +343,68 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         pushDevicesCount = Math.max(endpoints.size, pushSnap?.size || 0);
       } catch (e) {}
 
-      // 4. Fetch notifications count
+      // Fetch notifications count
       let notificationsCount = 0;
       try {
         const notifSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/notifications`));
         notificationsCount = notifSnap.size;
       } catch (e) {}
 
-      // 5. Fetch doblo logs count
+      // Fetch doblo logs count
       let dobloCount = 0;
       try {
         const dobloSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/doblo_logs`));
         dobloCount = dobloSnap.size;
       } catch (e) {}
 
-      let total = 0;
-      let active = 0;
-      const roleCounts: Record<string, number> = {};
-      const seminaryCounts: Record<string, number> = {};
+      // Fetch telemetry stats (passing known attendance count to save Firebase reads)
+      const teleData = await getFullTelemetryData(
+        memberMetrics.totalMembers, 
+        totalEvts, 
+        validPresentCount,
+        totalAttendancesCount
+      );
 
-      allMembers.forEach((data) => {
-        if (data.isTrash) return;
+      // Save to global cache
+      globalDashboardCache = {
+        timestamp: Date.now(),
+        eventsStats: {
+          totalEvents: totalEvts,
+          activeEvents: activeEvts,
+          completedEvents: completedEvts,
+          eventHoursMap,
+          formats: eventFormats,
+          dateCounts: eventDateCounts,
+        },
+        attendanceStats: {
+          totalAttendances: totalAttendancesCount,
+          validPresentCount,
+          totalAccumulatedHours,
+          attendanceRate,
+          dateCounts: attendanceDateCounts,
+        },
+        pushDevicesCount,
+        notificationsCount,
+        dobloCount,
+        telemetry: teleData,
+      };
 
-        total++;
-        if (data.isActive) active++;
-
-        if (data.roles && Array.isArray(data.roles)) {
-          data.roles.forEach((r: string) => {
-            roleCounts[r] = (roleCounts[r] || 0) + 1;
-          });
-        }
-
-        if (data.seminary) {
-          seminaryCounts[data.seminary] = (seminaryCounts[data.seminary] || 0) + 1;
-        }
-
-        let dateAdded = 'Desconhecido';
-        if (data.createdAt) {
-          try {
-            if (data.createdAt?.toDate && typeof data.createdAt.toDate === 'function') {
-              dateAdded = data.createdAt.toDate().toISOString().split('T')[0];
-            } else if (data.createdAt?.seconds) {
-              dateAdded = new Date(data.createdAt.seconds * 1000).toISOString().split('T')[0];
-            } else if (typeof data.createdAt === 'string' || typeof data.createdAt === 'number') {
-              dateAdded = new Date(data.createdAt).toISOString().split('T')[0];
-            }
-          } catch (err) {}
-        }
-        trackDate(dateAdded, 'members');
-      });
-
-      eventsSnapshot.forEach((doc) => {
-        const data = doc.data();
-        let d = 'Desconhecido';
-        if (data.createdAt) {
-          try {
-            if (data.createdAt?.toDate && typeof data.createdAt.toDate === 'function') {
-              d = data.createdAt.toDate().toISOString().split('T')[0];
-            } else if (data.createdAt?.seconds) {
-              d = new Date(data.createdAt.seconds * 1000).toISOString().split('T')[0];
-            } else if (typeof data.createdAt === 'string' || typeof data.createdAt === 'number') {
-              d = new Date(data.createdAt).toISOString().split('T')[0];
-            }
-          } catch (err) {}
-        }
-        trackDate(d, 'events');
-      });
-
-      const rolesDistribution = Object.entries(roleCounts)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value);
-
-      const seminaryDistribution = Object.entries(seminaryCounts)
-        .map(([name, value]) => ({ name, value }))
-        .sort((a, b) => b.value - a.value);
-
-      const recentActivity = Object.entries(dateCounts)
-        .map(([date, counts]) => ({ date, membersAdded: counts.members, events: counts.events, attendances: counts.attendances }))
-        .sort((a, b) => a.date.localeCompare(b.date));
-
-      let peakDate = 'N/A';
-      let peakVal = 0;
-      recentActivity.forEach(day => {
-        const sum = day.attendances + day.events + day.membersAdded;
-        if (sum > peakVal) {
-          peakVal = sum;
-          peakDate = day.date;
-        }
-      });
-
-      setStats({
-        totalMembers: total,
-        activeMembers: active,
+      setDbData({
         totalEvents: totalEvts,
         activeEvents: activeEvts,
-        totalAttendances: attendancesCount,
-        totalCertificates: validCertificatesCount,
-        totalAcademicHours: totalAccumulatedHours,
+        completedEvents: completedEvts,
+        eventFormats,
+        totalAttendances: totalAttendancesCount,
+        validPresentCount,
+        totalAccumulatedHours,
+        attendanceRate,
         totalPushDevices: pushDevicesCount,
         totalNotifications: notificationsCount,
         totalDobloLogs: dobloCount,
-        peakUsageDate: peakDate,
-        peakUsageCount: peakVal,
-        rolesDistribution,
-        seminaryDistribution,
-        recentActivity: recentActivity.slice(-14)
+        eventDateCounts,
+        attendanceDateCounts,
       });
 
-      // 6. Fetch Telemetry Stats
-      const teleData = await getFullTelemetryData(total, totalEvts, validCertificatesCount);
       setTelemetry(teleData);
       setLastRefreshedAt(new Date());
 
@@ -256,26 +414,29 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
       setLoading(false);
       setRefreshing(false);
     }
-  }, [allMembers]);
+  }, [memberMetrics.totalMembers]);
 
   // Initial load
   useEffect(() => {
     fetchDashboardData();
   }, [fetchDashboardData]);
 
-  // Auto-refresh interval (every 30s when enabled)
+  // Auto-refresh interval (every 180s / 3 minutes when explicitly enabled by user)
   useEffect(() => {
     if (!autoRefresh) return;
     const interval = setInterval(() => {
       fetchDashboardData();
-    }, 30000);
+    }, 180000);
     return () => clearInterval(interval);
   }, [autoRefresh, fetchDashboardData]);
 
-  // Realtime listener for online presence
+  // Realtime listener for online presence (listening on presence doesn't cause repeated full collection scans)
   useEffect(() => {
     try {
-      const presenceQuery = query(collection(db, `artifacts/${appId}/public/data/online_presence`));
+      const presenceQuery = query(
+        collection(db, `artifacts/${appId}/public/data/online_presence`),
+        limit(50)
+      );
       const unsubscribe = onSnapshot(presenceQuery, (snap) => {
         const now = Date.now();
         let online = 0;
@@ -283,7 +444,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           const data = d.data();
           if (data.lastActive) {
             const diff = now - new Date(data.lastActive).getTime();
-            if (diff < 90 * 1000) online++;
+            if (diff < 120 * 1000) online++;
           }
         });
         setTelemetry((prev) => prev ? { ...prev, onlineUsersCount: Math.max(1, online) } : prev);
@@ -303,7 +464,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
     );
   }
 
-  if (!stats || !telemetry) return null;
+  if (!dbData || !telemetry) return null;
 
   // Prepare chart data for QR Scans by Type
   const scanTypesData = [
@@ -396,6 +557,26 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             <Printer className="w-3.5 h-3.5" />
             <span>Relatório</span>
           </button>
+        </div>
+      </div>
+
+      {/* Quota & Optimization Status Banner */}
+      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-xs shadow-sm">
+        <div className="flex items-center gap-2.5 text-emerald-900 dark:text-emerald-200 font-semibold">
+          <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
+            <ShieldCheck className="w-4 h-4" />
+          </div>
+          <span>
+            <strong>Otimizador de Quota Firebase Ativo:</strong> Consultas utilizam cache inteligente de 2 minutos e agregação em memória para economizar leituras do plano gratuito.
+          </span>
+        </div>
+        <div className="flex items-center gap-2 text-[11px] text-emerald-700 dark:text-emerald-400 shrink-0 font-medium">
+          <span className="inline-flex items-center gap-1.5">
+            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
+            Cache Seguro
+          </span>
+          <span className="text-slate-300 dark:text-slate-700">•</span>
+          <span>{autoRefresh ? "Sync 3 min" : "Atualização Manual"}</span>
         </div>
       </div>
 
@@ -558,10 +739,15 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             <Users className="w-4 h-4 text-sky-500" />
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalMembers}</p>
+            <p className="text-2xl font-black text-slate-800 dark:text-white">{memberMetrics.totalMembers}</p>
             <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-              {stats.activeMembers} ativos ({stats.totalMembers > 0 ? Math.round((stats.activeMembers / stats.totalMembers) * 100) : 0}%)
+              {memberMetrics.activeMembers} ativos ({memberMetrics.totalMembers > 0 ? Math.round((memberMetrics.activeMembers / memberMetrics.totalMembers) * 100) : 0}%)
             </p>
+            {memberMetrics.inactiveMembers > 0 && (
+              <p className="text-[9px] text-slate-400 mt-0.5">
+                {memberMetrics.inactiveMembers} inativos
+              </p>
+            )}
           </div>
         </div>
 
@@ -572,9 +758,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             <Calendar className="w-4 h-4 text-fuchsia-500" />
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalEvents}</p>
+            <p className="text-2xl font-black text-slate-800 dark:text-white">{dbData.totalEvents}</p>
             <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              {stats.activeEvents} em andamento / ativos
+              {dbData.activeEvents} ativos • {dbData.completedEvents} concluídos
             </p>
           </div>
         </div>
@@ -586,9 +772,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             <CheckCircle2 className="w-4 h-4 text-emerald-500" />
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalAttendances}</p>
+            <p className="text-2xl font-black text-slate-800 dark:text-white">{dbData.totalAttendances}</p>
             <p className="text-[10px] font-bold text-emerald-600 dark:text-emerald-400 mt-0.5">
-              Check-ins validados
+              {dbData.attendanceRate}% taxa ({dbData.validPresentCount} validadas)
             </p>
           </div>
         </div>
@@ -600,9 +786,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             <Award className="w-4 h-4 text-amber-500" />
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalCertificates}</p>
+            <p className="text-2xl font-black text-slate-800 dark:text-white">{dbData.validPresentCount}</p>
             <p className="text-[10px] font-bold text-amber-600 dark:text-amber-400 mt-0.5">
-              {stats.totalAcademicHours}h complementares
+              {dbData.totalAccumulatedHours}h complementares
             </p>
           </div>
         </div>
@@ -614,9 +800,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             <Bell className="w-4 h-4 text-violet-500" />
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalPushDevices}</p>
+            <p className="text-2xl font-black text-slate-800 dark:text-white">{dbData.totalPushDevices}</p>
             <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
-              {stats.totalNotifications > 0 ? `${stats.totalNotifications} disparos efetuados` : 'Aparelhos conectados'}
+              {dbData.totalNotifications > 0 ? `${dbData.totalNotifications} disparos efetuados` : 'Aparelhos conectados'}
             </p>
           </div>
         </div>
@@ -628,7 +814,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             <Car className="w-4 h-4 text-rose-500" />
           </div>
           <div className="mt-2">
-            <p className="text-2xl font-black text-slate-800 dark:text-white">{stats.totalDobloLogs}</p>
+            <p className="text-2xl font-black text-slate-800 dark:text-white">{dbData.totalDobloLogs}</p>
             <p className="text-[10px] font-medium text-slate-500 dark:text-slate-400 mt-0.5">
               Viagens registradas
             </p>
@@ -876,7 +1062,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
 
       </div>
 
-      {/* --- DISTRIBUIÇÃO INSTITUCIONAL (Cargos & Seminários) --- */}
+      {/* --- DISTRIBUIÇÃO INSTITUCIONAL (Cargos, Dioceses, Seminários e Modalidades) --- */}
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
         {/* Distribuição por Cargo */}
         <motion.div 
@@ -895,18 +1081,62 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             </div>
           </div>
           <div className="h-[260px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={stats.rolesDistribution.slice(0, 8)} margin={{ top: 10, right: 30, left: -10, bottom: 25 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
-                <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={45} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <RechartsTooltip 
-                  cursor={{ fill: 'rgba(0,0,0,0.04)' }} 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                />
-                <Bar dataKey="value" name="Membros" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+            {memberMetrics.rolesDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={memberMetrics.rolesDistribution.slice(0, 8)} margin={{ top: 10, right: 30, left: -10, bottom: 25 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={45} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <RechartsTooltip 
+                    cursor={{ fill: 'rgba(0,0,0,0.04)' }} 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                  />
+                  <Bar dataKey="value" name="Membros" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
+                Nenhum cargo registrado nos cadastros.
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Distribuição por Diocese */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.52 }}
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+        >
+          <div className="flex items-center gap-3 mb-6 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
+            <div className="bg-emerald-100 dark:bg-emerald-500/20 p-2 rounded-xl text-emerald-600 dark:text-emerald-400">
+              <MapPin className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-black text-slate-800 dark:text-slate-200 tracking-tight text-sm md:text-base">Distribuição por Diocese</h3>
+              <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Top dioceses de origem</p>
+            </div>
+          </div>
+          <div className="h-[260px] w-full">
+            {memberMetrics.dioceseDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <BarChart data={memberMetrics.dioceseDistribution.slice(0, 8)} margin={{ top: 10, right: 30, left: -10, bottom: 25 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                  <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={45} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <RechartsTooltip 
+                    cursor={{ fill: 'rgba(0,0,0,0.04)' }} 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                  />
+                  <Bar dataKey="value" name="Membros" fill="#10b981" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
+                Nenhuma diocese especificada nos membros cadastrados.
+              </div>
+            )}
           </div>
         </motion.div>
 
@@ -927,44 +1157,107 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             </div>
           </div>
           <div className="h-[260px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={stats.seminaryDistribution}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={55}
-                  outerRadius={90}
-                  paddingAngle={2}
-                  dataKey="value"
-                  label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                    const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                    const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                    const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                    return percent > 0.05 ? (
-                      <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="bold">
-                        {`${(percent * 100).toFixed(0)}%`}
-                      </text>
-                    ) : null;
-                  }}
-                >
-                  {stats.seminaryDistribution.map((entry, index) => (
-                    <Cell key={`cell-sem-${index}`} fill={COLORS[index % COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                />
-                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
-              </PieChart>
-            </ResponsiveContainer>
+            {memberMetrics.seminaryDistribution.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={memberMetrics.seminaryDistribution}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={2}
+                    dataKey="value"
+                    label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                      const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                      const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                      const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                      return percent > 0.05 ? (
+                        <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="bold">
+                          {`${(percent * 100).toFixed(0)}%`}
+                        </text>
+                      ) : null;
+                    }}
+                  >
+                    {memberMetrics.seminaryDistribution.map((entry, index) => (
+                      <Cell key={`cell-sem-${index}`} fill={COLORS[index % COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
+                Nenhum seminário/casa de formação registrado.
+              </div>
+            )}
+          </div>
+        </motion.div>
+
+        {/* Modalidades de Eventos (Presencial vs Online vs Híbrido) */}
+        <motion.div 
+          initial={{ opacity: 0, scale: 0.98 }}
+          animate={{ opacity: 1, scale: 1 }}
+          transition={{ delay: 0.58 }}
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+        >
+          <div className="flex items-center gap-3 mb-6 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
+            <div className="bg-purple-100 dark:bg-purple-500/20 p-2 rounded-xl text-purple-600 dark:text-purple-400">
+               <Globe className="w-5 h-5" />
+            </div>
+            <div>
+              <h3 className="font-black text-slate-800 dark:text-slate-200 tracking-tight text-sm md:text-base">Modalidades de Eventos</h3>
+              <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Presencial / Online / Híbrido</p>
+            </div>
+          </div>
+          <div className="h-[260px] w-full">
+            {dbData.eventFormats.length > 0 ? (
+              <ResponsiveContainer width="100%" height="100%">
+                <PieChart>
+                  <Pie
+                    data={dbData.eventFormats}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={55}
+                    outerRadius={90}
+                    paddingAngle={3}
+                    dataKey="value"
+                    label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                      const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                      const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                      const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                      return percent > 0.05 ? (
+                        <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="bold">
+                          {`${(percent * 100).toFixed(0)}%`}
+                        </text>
+                      ) : null;
+                    }}
+                  >
+                    {dbData.eventFormats.map((entry, index) => (
+                      <Cell key={`cell-fmt-${index}`} fill={FORMAT_COLORS[index % FORMAT_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
+                Nenhum evento registrado ainda.
+              </div>
+            )}
           </div>
         </motion.div>
       </div>
 
       {/* Footer Info */}
       <div className="flex flex-col sm:flex-row items-center justify-between text-xs text-slate-400 dark:text-slate-500 pt-3 border-t border-slate-100 dark:border-slate-800">
-        <p>DAVVERO System Telemetry • Sincronização direta com Firestore</p>
+        <p>DAVVERO System Telemetry • Sincronização direta com Firestore (Otimizada)</p>
         <p className="mt-1 sm:mt-0">
           Última atualização: {lastRefreshedAt.toLocaleTimeString('pt-BR')}
         </p>

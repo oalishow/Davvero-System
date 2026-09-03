@@ -1,4 +1,4 @@
-import React, { useRef, useState } from "react";
+import React, { useRef, useState, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -45,6 +45,24 @@ export default function EventQrCodeModal({
 }: EventQrCodeModalProps) {
   const { settings } = useSettings();
   const { showAlert } = useDialog();
+
+  // Strict check: Cartaz with QR Code is exclusively for administrators
+  const isMasterAdmin = useMemo(() => {
+    if (typeof window !== "undefined") {
+      if (localStorage.getItem("adminMasterLogged") === "true") return true;
+      try {
+        const cached = localStorage.getItem("davveroId_cached_member");
+        if (cached) {
+          const m = JSON.parse(cached);
+          if (m.roles && m.roles.some((r: string) => ['admin', 'diretoria', 'gestão', 'comunicação', 'secretaria'].includes(r.toLowerCase()))) {
+            return true;
+          }
+        }
+      } catch {}
+    }
+    return false;
+  }, []);
+
   const [event, setEvent] = useState<Event>(initialEvent);
   const [posterType, setPosterType] = useState<"attendance" | "enrollment">(initialMode);
   const [copied, setCopied] = useState(false);
@@ -231,6 +249,32 @@ export default function EventQrCodeModal({
       setIsSavingConfig(false);
     }
   };
+
+  // Block non-administrators from accessing or generating QR code posters
+  if (!isMasterAdmin) {
+    return createPortal(
+      <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
+        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full text-center border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4 animate-in fade-in">
+          <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
+            <Lock className="w-7 h-7" />
+          </div>
+          <h3 className="text-lg font-black text-slate-800 dark:text-white">
+            Acesso Restrito a Administradores
+          </h3>
+          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+            A geração de cartazes oficiais com QR Code e controle de lista de presença é uma funcionalidade exclusiva de administradores e coordenação.
+          </p>
+          <button
+            onClick={onClose}
+            className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 active:scale-98 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
+          >
+            Fechar
+          </button>
+        </div>
+      </div>,
+      document.body
+    );
+  }
 
   return createPortal(
     <div

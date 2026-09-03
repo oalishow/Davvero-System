@@ -1,4 +1,4 @@
-import React, { useState, useEffect } from "react";
+import React, { useState, useEffect, useMemo } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -15,7 +15,13 @@ import {
   Sparkles,
   Clock,
   Shield,
-  User
+  User,
+  RotateCcw,
+  UserX,
+  AlertTriangle,
+  ArrowDownAZ,
+  ArrowUpAZ,
+  Filter
 } from "lucide-react";
 import type { Event, Attendance, Member } from "../types";
 import {
@@ -38,23 +44,55 @@ import { getDavveroSvgHtml } from "./DavveroLogo";
 
 interface EventAttendeesModalProps {
   event: Event;
+  isAdmin?: boolean;
   onClose: () => void;
 }
 
+// Global in-memory cache to prevent repeated student reads from exhausting Firebase quota
+interface CachedStudentsLookup {
+  timestamp: number;
+  membersDict: Record<string, Member>;
+  activeMembers: Member[];
+}
+let globalStudentsLookupCache: CachedStudentsLookup | null = null;
+
+const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
+
 export default function EventAttendeesModal({
   event,
+  isAdmin = false,
   onClose,
 }: EventAttendeesModalProps) {
   const { showAlert } = useDialog();
   const { settings } = useSettings();
   const [mounted, setMounted] = useState(false);
+
+  const isSystemAdmin = useMemo(() => {
+    if (isAdmin) return true;
+    if (typeof window !== "undefined") {
+      if (localStorage.getItem("adminMasterLogged") === "true") return true;
+      try {
+        const cached = localStorage.getItem("davveroId_cached_member");
+        if (cached) {
+          const m = JSON.parse(cached) as Member;
+          if (m.roles && m.roles.some(r => ['admin', 'diretoria', 'gestão', 'comunicação', 'secretaria'].includes(r.toLowerCase()))) {
+            return true;
+          }
+        }
+      } catch {}
+    }
+    return false;
+  }, [isAdmin]);
   const [attendees, setAttendees] = useState<
     (Attendance & { member?: Member })[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [isSendingEmails, setIsSendingEmails] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
-  const [activeTab, setActiveTab] = useState<"all" | "alunos" | "visitantes" | "organizacao">("all");
+  const [activeTab, setActiveTab] = useState<"all" | "alunos" | "visitantes" | "organizacao" | "inativos">("all");
+  const [sortAttendeesBy, setSortAttendeesBy] = useState<'name-asc' | 'name-desc' | 'present-first' | 'pending-first'>('name-asc');
+  const [statusFilter, setStatusFilter] = useState<'all' | 'present' | 'pending'>('all');
+  const [selectedAttendeeLetter, setSelectedAttendeeLetter] = useState<string>('');
   const [allMembers, setAllMembers] = useState<Member[]>([]);
   const [confirmModal, setConfirmModal] = useState<{
     isOpen: boolean;
@@ -95,7 +133,13 @@ export default function EventAttendeesModal({
       let currentAllM = allMembers;
       let currentMembersDict: Record<string, Member> = {};
 
-      if (currentAllM.length === 0) {
+      // Check global in-memory cache to save Firebase quota (valid for 2 minutes)
+      const nowMs = Date.now();
+      if (globalStudentsLookupCache && nowMs - globalStudentsLookupCache.timestamp < 120000) {
+        currentMembersDict = globalStudentsLookupCache.membersDict;
+        currentAllM = globalStudentsLookupCache.activeMembers;
+        setAllMembers(currentAllM);
+      } else if (currentAllM.length === 0) {
         const membersSnap = await getDocs(
           query(collection(db, `artifacts/${appId}/public/data/students`)),
         );
@@ -106,12 +150,19 @@ export default function EventAttendeesModal({
             const mbr = { id: d.id, ...d.data() } as Member;
             if (mbr.deletedAt) return; // Only ignore deleted
             membersDict[d.id] = mbr;
-            allM.push(mbr);
+            if (mbr.isActive !== false) {
+              allM.push(mbr); // Inactive members will NOT appear in the list for check-in / adding
+            }
           }
         });
         currentAllM = allM;
         currentMembersDict = membersDict;
         setAllMembers(allM);
+        globalStudentsLookupCache = {
+          timestamp: nowMs,
+          membersDict,
+          activeMembers: allM,
+        };
       } else {
         currentAllM.forEach((mbr) => {
           currentMembersDict[mbr.id!] = mbr;
@@ -136,30 +187,48 @@ export default function EventAttendeesModal({
     loadData();
   }, [event.id]);
 
-  const handleRemove = async (eventId: string, studentId: string) => {
+  const handleCancelEnrollment = (eventId: string, studentId: string, memberName: string) => {
     setConfirmModal({
       isOpen: true,
-      message: "Tem a certeza que deseja remover esta inscrição?",
+      title: "Cancelar Inscrição",
+      confirmVariant: "danger",
+      message: `Tem a certeza que deseja cancelar a inscrição de "${memberName}" neste evento? O participante será removido da lista oficial.`,
       onConfirm: async () => {
         try {
           await unsubscribeFromEvent(eventId, studentId);
-          loadData(); // Reload data to reflect change
+          await loadData();
+          showAlert(`Inscrição de "${memberName}" cancelada com sucesso.`, { type: 'success' });
         } catch (err) {
-          showAlert("Erro ao remover inscrição.", { type: 'error' });
+          showAlert("Erro ao cancelar inscrição.", { type: 'error' });
         }
       },
     });
   };
 
+  const handleCancelCheckIn = (attendanceId: string, memberName: string) => {
+    setConfirmModal({
+      isOpen: true,
+      title: "Cancelar Check-in",
+      confirmVariant: "primary",
+      message: `Deseja cancelar o check-in de "${memberName}"? A presença será desfeita e o status retornará para "Inscrito".`,
+      onConfirm: async () => {
+        try {
+          await removeAttendancePresence(attendanceId);
+          await loadData();
+          showAlert(`Check-in de "${memberName}" cancelado com sucesso. Status revertido para inscrito.`, { type: 'success' });
+        } catch (err) {
+          showAlert("Erro ao cancelar check-in.", { type: 'error' });
+        }
+      },
+    });
+  };
+
+  const handleRemove = async (eventId: string, studentId: string) => {
+    handleCancelEnrollment(eventId, studentId, "este participante");
+  };
+
   const handleRemovePresence = async (attendanceId: string) => {
-    try {
-      // Remover a presença (todas as datas ou reverter para inscrito)
-      await removeAttendancePresence(attendanceId);
-      loadData();
-      showAlert("Presença removida com sucesso.", { type: 'success' });
-    } catch (err) {
-      showAlert("Erro ao remover presença.", { type: 'error' });
-    }
+    handleCancelCheckIn(attendanceId, "este participante");
   };
 
   const handleMarkPresent = async (attendanceId: string) => {
@@ -183,9 +252,9 @@ export default function EventAttendeesModal({
   };
 
   const handleCheckInAll = async () => {
-    const unconfirmed = attendees.filter((a) => a.status !== "presente");
+    const unconfirmed = attendees.filter((a) => a.status !== "presente" && a.member?.isActive !== false);
     if (unconfirmed.length === 0) {
-      showAlert("Todos os participantes deste evento já estão com presença confirmada!", { type: "info" });
+      showAlert("Todos os participantes ativos deste evento já estão com presença confirmada!", { type: "info" });
       return;
     }
 
@@ -678,23 +747,73 @@ export default function EventAttendeesModal({
     }
   };
 
-  const filteredAttendees = attendees.filter((a) => {
-    if (activeTab === "organizacao") return false; // Handled separately below
-    let matchTab = true;
-    if (activeTab === "alunos") {
-      matchTab = !a.member?.roles?.includes("VISITANTE");
-    } else if (activeTab === "visitantes") {
-      matchTab = !!a.member?.roles?.includes("VISITANTE");
-    }
+  const inactiveAttendees = useMemo(() => {
+    return attendees.filter((a) => a.member?.isActive === false);
+  }, [attendees]);
 
-    if (!searchTerm) return matchTab;
-    const term = searchTerm.toLowerCase();
-    return matchTab && (
-      a.member?.name.toLowerCase().includes(term) ||
-      a.member?.ra?.toLowerCase().includes(term) ||
-      (a.member as any)?.cpf?.includes(term) // in case visitors use cpf
-    );
-  });
+  // Contagem por letra inicial para os botões do índice alfabético dos inscritos
+  const attendeeLetterCounts = useMemo(() => {
+    const counts: Record<string, number> = {};
+    attendees.forEach(a => {
+      const firstLetter = (a.member?.name || "").trim().charAt(0).toUpperCase();
+      if (firstLetter) {
+        counts[firstLetter] = (counts[firstLetter] || 0) + 1;
+      }
+    });
+    return counts;
+  }, [attendees]);
+
+  const filteredAttendees = useMemo(() => {
+    return attendees.filter((a) => {
+      if (activeTab === "organizacao") return false; // Handled separately below
+      
+      // Regra mandatória: Membros inativos NUNCA aparecem nas abas normais para fazer check-in
+      if (activeTab !== "inativos" && a.member?.isActive === false) return false;
+      if (activeTab === "inativos" && a.member?.isActive !== false) return false;
+
+      let matchTab = true;
+      if (activeTab === "alunos") {
+        matchTab = !a.member?.roles?.includes("VISITANTE");
+      } else if (activeTab === "visitantes") {
+        matchTab = !!a.member?.roles?.includes("VISITANTE");
+      }
+      if (!matchTab) return false;
+
+      if (statusFilter === "present" && a.status !== "presente") return false;
+      if (statusFilter === "pending" && a.status === "presente") return false;
+
+      if (selectedAttendeeLetter) {
+        const firstLetter = (a.member?.name || "").trim().charAt(0).toUpperCase();
+        if (firstLetter !== selectedAttendeeLetter) return false;
+      }
+
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        (a.member?.name || "").toLowerCase().includes(term) ||
+        (a.member?.ra || "").toLowerCase().includes(term) ||
+        (a.member as any)?.cpf?.includes(term)
+      );
+    }).sort((a, b) => {
+      if (sortAttendeesBy === 'name-asc') {
+        return (a.member?.name || '').localeCompare(b.member?.name || '', 'pt-BR', { sensitivity: 'base' });
+      }
+      if (sortAttendeesBy === 'name-desc') {
+        return (b.member?.name || '').localeCompare(a.member?.name || '', 'pt-BR', { sensitivity: 'base' });
+      }
+      if (sortAttendeesBy === 'present-first') {
+        if (a.status === 'presente' && b.status !== 'presente') return -1;
+        if (a.status !== 'presente' && b.status === 'presente') return 1;
+        return (a.member?.name || '').localeCompare(b.member?.name || '', 'pt-BR');
+      }
+      if (sortAttendeesBy === 'pending-first') {
+        if (a.status !== 'presente' && b.status === 'presente') return -1;
+        if (a.status === 'presente' && b.status !== 'presente') return 1;
+        return (a.member?.name || '').localeCompare(b.member?.name || '', 'pt-BR');
+      }
+      return 0;
+    });
+  }, [attendees, activeTab, statusFilter, selectedAttendeeLetter, searchTerm, sortAttendeesBy]);
 
   const filteredOrganization = allMembers.filter((mbr) => {
     if (activeTab !== "organizacao") return false;
@@ -779,6 +898,20 @@ export default function EventAttendeesModal({
           >
             Organização
           </button>
+          {inactiveAttendees.length > 0 && (
+            <button
+              onClick={() => setActiveTab("inativos")}
+              className={`flex-1 min-w-[110px] py-2 text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+                activeTab === "inativos"
+                  ? "bg-rose-600 text-white shadow-sm"
+                  : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
+              }`}
+              title="Participantes inscritos com cadastro inativo no sistema (check-in bloqueado)"
+            >
+              <AlertTriangle className="w-3.5 h-3.5 shrink-0" />
+              <span>Inativos ({inactiveAttendees.length})</span>
+            </button>
+          )}
         </div>
 
         <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-3">
@@ -812,14 +945,16 @@ export default function EventAttendeesModal({
                 <span>+ Adicionar Participante</span>
               </button>
 
-              <button
-                onClick={() => setShowQrModal(true)}
-                className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
-                title="Gerar cartaz com QR Code para lista de presença e configurar horários"
-              >
-                <ScanLine className="w-4 h-4" />
-                <span>Cartaz QR Code</span>
-              </button>
+              {isSystemAdmin && (
+                <button
+                  onClick={() => setShowQrModal(true)}
+                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+                  title="Gerar cartaz oficial com QR Code para lista de presença e horários (Exclusivo Administradores)"
+                >
+                  <ScanLine className="w-4 h-4" />
+                  <span>Cartaz QR Code</span>
+                </button>
+              )}
             </div>
 
             <div className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
@@ -901,6 +1036,97 @@ export default function EventAttendeesModal({
               )}
             </div>
           </div>
+
+          {/* Action Row 3: Alphabetical Sorting & Letter Filter for Attendees */}
+          {activeTab !== "organizacao" && (
+            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-2">
+              <div className="flex flex-wrap items-center justify-between gap-2">
+                <div className="flex items-center gap-2 flex-wrap">
+                  {/* Ordem Alfabética */}
+                  <div className="relative">
+                    <select
+                      value={sortAttendeesBy}
+                      onChange={(e) => setSortAttendeesBy(e.target.value as any)}
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none"
+                    >
+                      <option value="name-asc">Ordem Alfabética (A → Z)</option>
+                      <option value="name-desc">Ordem Alfabética (Z → A)</option>
+                      <option value="present-first">Presentes primeiro</option>
+                      <option value="pending-first">Pendentes primeiro</option>
+                    </select>
+                  </div>
+
+                  {/* Status Presença */}
+                  <div className="relative">
+                    <select
+                      value={statusFilter}
+                      onChange={(e) => setStatusFilter(e.target.value as any)}
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none"
+                    >
+                      <option value="all">Presença: Todos</option>
+                      <option value="present">Apenas Presentes</option>
+                      <option value="pending">Apenas Pendentes</option>
+                    </select>
+                  </div>
+
+                  {(selectedAttendeeLetter || statusFilter !== "all" || sortAttendeesBy !== "name-asc" || searchTerm) && (
+                    <button
+                      onClick={() => {
+                        setSelectedAttendeeLetter("");
+                        setStatusFilter("all");
+                        setSortAttendeesBy("name-asc");
+                        setSearchTerm("");
+                      }}
+                      className="flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-sky-600 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md"
+                    >
+                      <RotateCcw className="w-3 h-3" /> Limpar filtros
+                    </button>
+                  )}
+                </div>
+
+                <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                  Mostrando <strong>{filteredAttendees.length}</strong> de <strong>{attendees.length}</strong>
+                </div>
+              </div>
+
+              {/* Barra de Letras A-Z */}
+              <div className="flex items-center gap-1 overflow-x-auto pb-1 custom-scrollbar">
+                <button
+                  onClick={() => setSelectedAttendeeLetter("")}
+                  className={`px-2 py-0.5 rounded text-[11px] font-bold shrink-0 transition-all ${
+                    selectedAttendeeLetter === ""
+                      ? "bg-sky-600 text-white"
+                      : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
+                  }`}
+                >
+                  Todas
+                </button>
+                {ALPHABET.map((letter) => {
+                  const count = attendeeLetterCounts[letter] || 0;
+                  const isSelected = selectedAttendeeLetter === letter;
+                  const hasItems = count > 0;
+                  return (
+                    <button
+                      key={letter}
+                      disabled={!hasItems}
+                      onClick={() => setSelectedAttendeeLetter(isSelected ? "" : letter)}
+                      className={`min-w-[24px] h-6 px-1 rounded text-[11px] font-bold flex items-center justify-center gap-0.5 shrink-0 transition-all ${
+                        isSelected
+                          ? "bg-sky-600 text-white"
+                          : hasItems
+                          ? "bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-200 hover:bg-sky-50 dark:hover:bg-slate-700"
+                          : "opacity-25 text-slate-400 cursor-not-allowed"
+                      }`}
+                      title={hasItems ? `Letra ${letter}: ${count} inscrito(s)` : `Nenhum inscrito com letra ${letter}`}
+                    >
+                      <span>{letter}</span>
+                      {hasItems && <span className={`text-[8px] ${isSelected ? "text-sky-100" : "text-slate-400"}`}>{count}</span>}
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
         </div>
 
         <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/30 dark:bg-slate-900/30">
@@ -988,11 +1214,28 @@ export default function EventAttendeesModal({
             </p>
           ) : (
             <div className="space-y-3">
-              {filteredAttendees.map((a) => (
-                <div
-                  key={a.id}
-                  className="bg-white dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between sm:items-center gap-3"
-                >
+              {filteredAttendees.map((a, index) => {
+                const currentLetter = (a.member?.name || "").trim().charAt(0).toUpperCase();
+                const prevMember = index > 0 ? filteredAttendees[index - 1] : null;
+                const prevLetter = prevMember ? (prevMember.member?.name || "").trim().charAt(0).toUpperCase() : null;
+                const showLetterDivider = (sortAttendeesBy === "name-asc" || sortAttendeesBy === "name-desc") && (!selectedAttendeeLetter) && (currentLetter !== prevLetter);
+
+                return (
+                  <React.Fragment key={a.id}>
+                    {showLetterDivider && (
+                      <div className="flex items-center gap-2 pt-2.5 pb-0.5 sticky top-0 bg-slate-50/95 dark:bg-slate-900/95 backdrop-blur-xs z-10">
+                        <span className="w-5 h-5 rounded-md bg-sky-600 text-white flex items-center justify-center font-mono text-[11px] font-black shadow-xs">
+                          {currentLetter}
+                        </span>
+                        <span className="text-xs font-black text-slate-700 dark:text-slate-200 uppercase tracking-wider">
+                          Letra {currentLetter}
+                        </span>
+                        <div className="h-[1px] flex-1 bg-slate-200 dark:bg-slate-700/60" />
+                      </div>
+                    )}
+                    <div
+                      className="bg-white dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between sm:items-center gap-3"
+                    >
                   <div className="flex items-center gap-3">
                     {a.member?.photoUrl ? (
                       <img
@@ -1039,10 +1282,15 @@ export default function EventAttendeesModal({
                             Diocese: {a.member.diocese}
                           </span>
                         )}
+                        {a.member?.isActive === false && (
+                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                            <AlertTriangle className="w-3 h-3" /> Inativo
+                          </span>
+                        )}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0">
+                  <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0 flex-wrap">
                     <button
                       onClick={() => handleToggleOrganizer(event.id, a.studentId, !!a.isOrganizer)}
                       className={`p-1.5 rounded-lg border transition-colors flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold ${
@@ -1054,10 +1302,35 @@ export default function EventAttendeesModal({
                     >
                       <Star className={`w-3.5 h-3.5 ${a.isOrganizer ? "fill-amber-500" : ""}`} /> Org
                     </button>
-                    {a.status === "presente" ||
+                    {a.member?.isActive === false ? (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 text-xs font-bold rounded-lg border border-rose-300 dark:border-rose-800">
+                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                          Cadastro Inativo
+                        </span>
+                        {a.status === "presente" && (
+                          <button
+                            onClick={() => handleCancelCheckIn(a.id, a.member?.name || "Participante")}
+                            className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                            title="Cancelar Check-in: Reverte a presença deste membro inativo"
+                          >
+                            <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                            <span className="hidden sm:inline">Cancelar Check-in</span>
+                          </button>
+                        )}
+                        <button
+                          onClick={() => handleCancelEnrollment(event.id, a.studentId, a.member?.name || "Participante")}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          title="Cancelar Inscrição: Remove este membro inativo do evento"
+                        >
+                          <UserX className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                          <span className="hidden sm:inline">Cancelar Inscrição</span>
+                        </button>
+                      </div>
+                    ) : a.status === "presente" ||
                     a.status === "apto_para_certificado" ? (
                       <>
-                        <div className="flex flex-col items-end gap-1">
+                        <div className="flex flex-col items-end gap-1 mr-1">
                           <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold rounded-lg border border-emerald-200 dark:border-emerald-500/20">
                             <CheckCircle className="w-3.5 h-3.5" /> Presente
                           </span>
@@ -1071,42 +1344,48 @@ export default function EventAttendeesModal({
                           )}
                         </div>
                         <button
-                          onClick={() => handleRemovePresence(a.id)}
-                          className="p-1.5 text-amber-500 hover:bg-amber-50 dark:hover:bg-amber-500/10 rounded-lg transition-colors border border-transparent hover:border-amber-200 dark:hover:border-amber-500/20"
-                          title="Remover apenas a presença"
+                          onClick={() => handleCancelCheckIn(a.id, a.member?.name || "Participante")}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          title="Cancelar Check-in: Reverte a presença para inscrito caso tenha marcado por engano"
                         >
-                          <X className="w-4 h-4" />
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
+                          <span className="hidden sm:inline">Cancelar Check-in</span>
                         </button>
                         <button
-                          onClick={() => handleRemove(event.id, a.studentId)}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors border border-transparent hover:border-rose-200 dark:hover:border-rose-500/20"
-                          title="Remover inscrição/presença"
+                          onClick={() => handleCancelEnrollment(event.id, a.studentId, a.member?.name || "Participante")}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          title="Cancelar Inscrição: Remove o participante do evento"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <UserX className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                          <span className="hidden sm:inline">Cancelar Inscrição</span>
                         </button>
                       </>
                     ) : (
                       <>
                         <button
                           onClick={() => handleMarkPresent(a.id)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-500 hover:bg-emerald-600 text-white text-xs font-bold rounded-lg transition-colors shadow-sm"
-                          title="Marcar presença manualmente"
+                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer"
+                          title="Fazer Check-in manual / Confirmar presença"
                         >
-                          <ScanLine className="w-3.5 h-3.5" /> Fazer Check-in
+                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <span>Fazer Check-in</span>
                         </button>
                         <button
-                          onClick={() => handleRemove(event.id, a.studentId)}
-                          className="p-1.5 text-rose-500 hover:bg-rose-50 dark:hover:bg-rose-500/10 rounded-lg transition-colors border border-transparent hover:border-rose-200 dark:hover:border-rose-500/20"
-                          title="Remover inscrição"
+                          onClick={() => handleCancelEnrollment(event.id, a.studentId, a.member?.name || "Participante")}
+                          className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          title="Cancelar Inscrição: Remove o participante do evento"
                         >
-                          <Trash2 className="w-4 h-4" />
+                          <UserX className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                          <span className="hidden sm:inline">Cancelar Inscrição</span>
                         </button>
                       </>
                     )}
                   </div>
                 </div>
-              ))}
-            </div>
+              </React.Fragment>
+            );
+          })}
+        </div>
           )}
         </div>
       </div>
@@ -1256,6 +1535,7 @@ export default function EventAttendeesModal({
 
                   <div className="space-y-2 max-h-[360px] overflow-y-auto pr-1">
                     {allMembers
+                      .filter((m) => m.isActive !== false)
                       .filter((m) => {
                         if (!addSearch.trim()) return true;
                         const q = addSearch.toLowerCase();
