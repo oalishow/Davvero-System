@@ -82,16 +82,36 @@ export function extractAssetString(val: any): string | null {
 
 /**
  * Safe wrapper for localStorage.setItem that protects against QuotaExceededError.
- * Purges stale temporary / notification caches on quota errors and avoids crashing the app.
+ * Rejects oversized base64 assets (>60KB) to prevent storage exhaustion,
+ * purges stale temporary / bulky cache items, and avoids crashing the app.
  */
 export function safeLocalStorageSet(key: string, value: string): boolean {
   if (typeof window === "undefined") return false;
+
+  // Never attempt to store huge base64 assets (>60KB) in localStorage (which has a 5MB total limit)
+  if (value && value.length > 60000 && (key.includes("logo") || key.includes("signature") || key.includes("image") || key.includes("photo"))) {
+    return false;
+  }
+
   try {
     localStorage.setItem(key, value);
     return true;
   } catch (err) {
-    // Quota exceeded: clean up stale / temporary / heavy items
+    // Quota exceeded: clean up bulky asset caches first
     try {
+      const bulkyKeys = [
+        "davveroId_card_logo",
+        "davveroId_institution_logo",
+        "davveroId_director_signature",
+        "davveroId_rector_signature",
+        "davveroId_card_back_logo",
+        "davveroId_card_back_image",
+        "davveroId_card_secondary_back_logo"
+      ];
+      bulkyKeys.forEach((k) => {
+        try { localStorage.removeItem(k); } catch {}
+      });
+
       const keysToPurge: string[] = [];
       for (let i = 0; i < localStorage.length; i++) {
         const k = localStorage.key(i);
@@ -100,10 +120,7 @@ export function safeLocalStorageSet(key: string, value: string): boolean {
           k !== key &&
           (k.startsWith("notif_cache_") ||
             k.startsWith("davveroId_offline_") ||
-            k.startsWith("temp_") ||
-            k === "fajopa_settings" ||
-            k === "fajopa_dioceses_config" ||
-            k === "fajopa_seminaries_config")
+            k.startsWith("temp_"))
         ) {
           keysToPurge.push(k);
         }
@@ -114,14 +131,41 @@ export function safeLocalStorageSet(key: string, value: string): boolean {
         } catch {}
       });
 
-      // Retry setItem
-      localStorage.setItem(key, value);
-      return true;
+      // If value is small enough, retry setItem
+      if (!value || value.length <= 60000) {
+        localStorage.setItem(key, value);
+        return true;
+      }
+      return false;
     } catch {
       // If still overflowing, don't crash the app; in-memory state will continue to work
       return false;
     }
   }
+}
+
+/**
+ * Clean up legacy oversized keys from localStorage to ensure quota is healthy
+ */
+export function purgeOversizedLocalStorage(): void {
+  if (typeof window === "undefined") return;
+  const bulkyKeys = [
+    "davveroId_card_logo",
+    "davveroId_institution_logo",
+    "davveroId_director_signature",
+    "davveroId_rector_signature",
+    "davveroId_card_back_logo",
+    "davveroId_card_back_image",
+    "davveroId_card_secondary_back_logo"
+  ];
+  bulkyKeys.forEach((k) => {
+    try {
+      const val = localStorage.getItem(k);
+      if (val && val.length > 50000) {
+        localStorage.removeItem(k);
+      }
+    } catch {}
+  });
 }
 
 /**

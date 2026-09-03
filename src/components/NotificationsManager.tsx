@@ -19,7 +19,8 @@ import {
   Info,
   Terminal,
   ShieldCheck,
-  Smartphone
+  Smartphone,
+  Mail
 } from "lucide-react";
 import { createNotification, db, appId } from "../lib/firebase";
 import { collection, getDocs } from "firebase/firestore";
@@ -28,6 +29,7 @@ import { usePushNotifications } from "../hooks/usePushNotifications";
 import { useSettings } from "../context/SettingsContext";
 import { sendEmailNotification, getCompiledEmail } from "../lib/emailService";
 import type { Member } from "../types";
+import EmailResendPanel from "./EmailResendPanel";
 
 const NOTIFICATION_TEMPLATES = [
   {
@@ -69,6 +71,7 @@ const NOTIFICATION_TEMPLATES = [
 ];
 
 export default function NotificationsManager() {
+  const [activeTab, setActiveTab] = useState<"push" | "email">("push");
   const [title, setTitle] = useState("");
   const [message, setMessage] = useState("");
   const [type, setType] = useState<any>("sistema");
@@ -435,14 +438,49 @@ Retorne o resultado estritamente em um JSON no formato {"title": "...", "message
         </button>
       </div>
 
-      {/* Push Subscription Bar */}
-      <div
-        className={`border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
-          subscription
-            ? "bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/60"
-            : "bg-sky-50/80 dark:bg-sky-950/20 border-sky-200 dark:border-sky-800/60"
-        }`}
-      >
+      {/* Main Tabs: Push vs Reenvio de E-mails */}
+      <div className="flex items-center gap-2 p-1.5 bg-slate-100 dark:bg-slate-800/80 rounded-2xl border border-slate-200 dark:border-slate-700/60">
+        <button
+          type="button"
+          onClick={() => setActiveTab("push")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+            activeTab === "push"
+              ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-300 shadow-sm"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+          }`}
+        >
+          <Bell className="w-4 h-4" />
+          <span>Notificações no App & Push</span>
+        </button>
+        <button
+          type="button"
+          onClick={() => setActiveTab("email")}
+          className={`flex-1 flex items-center justify-center gap-2 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold transition-all ${
+            activeTab === "email"
+              ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-300 shadow-sm"
+              : "text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white"
+          }`}
+        >
+          <Mail className="w-4 h-4 text-indigo-500" />
+          <span>Reenvio de E-mails</span>
+          <span className="ml-1 text-[10px] px-2 py-0.5 rounded-full bg-indigo-100 text-indigo-700 dark:bg-indigo-900/60 dark:text-indigo-300 font-extrabold">
+            Secretaria
+          </span>
+        </button>
+      </div>
+
+      {activeTab === "email" ? (
+        <EmailResendPanel members={members} settings={settings} showAlert={showAlert} />
+      ) : (
+        <>
+          {/* Push Subscription Bar */}
+          <div
+            className={`border rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4 transition-all ${
+              subscription
+                ? "bg-emerald-50/80 dark:bg-emerald-950/20 border-emerald-200 dark:border-emerald-800/60"
+                : "bg-sky-50/80 dark:bg-sky-950/20 border-sky-200 dark:border-sky-800/60"
+            }`}
+          >
         <div className="flex items-center gap-3">
           <div
             className={`p-2.5 rounded-xl text-white shadow-md ${
@@ -721,6 +759,8 @@ Retorne o resultado estritamente em um JSON no formato {"title": "...", "message
           </div>
         </div>
       </div>
+      </>
+      )}
 
       {/* AI Assistant Modal */}
       {showAiModal &&

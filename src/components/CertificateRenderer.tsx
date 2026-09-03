@@ -514,9 +514,9 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           </div>
         </div>
 
-        {/* Signatures Row with strict alignment & offset controls */}
+        {/* Signatures Row with strict alignment & offset controls - leveled lines */}
         <div 
-          className={`relative z-10 flex flex-row items-end ${sigDistributionClass} w-full pb-8 shrink-0 transition-transform`}
+          className={`relative z-10 flex flex-row items-start ${sigDistributionClass} w-full pb-8 shrink-0 transition-transform`}
           style={{
             transform: `translateY(${sigOffsetY}px)`,
           }}
@@ -525,9 +525,11 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           {showFajopaDirector && (
             <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
               <div 
-                className="w-full flex items-end justify-center"
+                className="w-full flex items-end justify-center leading-none"
                 style={{ 
                   height: `${sigHeight}px`,
+                  minHeight: `${sigHeight}px`,
+                  maxHeight: `${sigHeight}px`,
                   marginBottom: `${sigLineGap}px`
                 }}
               >
@@ -535,21 +537,21 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                   <img 
                     src={fajopaSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
-                    className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                    className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
                     referrerPolicy="no-referrer"
                     loading="eager"
                     decoding="sync"
                     alt="Assinatura Diretor" 
                   />
                 ) : (
-                  <div className="w-full h-px" />
+                  <div className="w-full" style={{ height: `${sigHeight}px` }} />
                 )}
               </div>
-              <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
-              <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+              <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
+              <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
                 {fajopaName || "Diretor FAJOPA"}
               </h3>
-              <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+              <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
                 Diretor de Ensino / Acadêmico
               </p>
             </div>
@@ -559,9 +561,11 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           {showSeminarRector && (
             <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
               <div 
-                className="w-full flex items-end justify-center"
+                className="w-full flex items-end justify-center leading-none"
                 style={{ 
                   height: `${sigHeight}px`,
+                  minHeight: `${sigHeight}px`,
+                  maxHeight: `${sigHeight}px`,
                   marginBottom: `${sigLineGap}px`
                 }}
               >
@@ -569,21 +573,21 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                   <img 
                     src={rectorSigUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
-                    className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                    className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
                     referrerPolicy="no-referrer"
                     loading="eager"
                     decoding="sync"
                     alt="Assinatura Reitor" 
                   />
                 ) : (
-                  <div className="w-full h-px" />
+                  <div className="w-full" style={{ height: `${sigHeight}px` }} />
                 )}
               </div>
-              <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
-              <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+              <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
+              <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
                 {rectorName || "Reitor"}
               </h3>
-              <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+              <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
                 Reitor do Seminário
               </p>
             </div>
@@ -596,9 +600,11 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
               {showSig1 && (
                 <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
                   <div 
-                    className="w-full flex items-end justify-center"
+                    className="w-full flex items-end justify-center leading-none"
                     style={{ 
                       height: `${sigHeight}px`,
+                      minHeight: `${sigHeight}px`,
+                      maxHeight: `${sigHeight}px`,
                       marginBottom: `${sigLineGap}px`
                     }}
                   >
@@ -606,21 +612,21 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                       <img 
                         src={sig1Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                        className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
                         referrerPolicy="no-referrer"
                         loading="eager"
                         decoding="sync"
                         alt="Assinatura Responsável 1" 
                       />
                     ) : (
-                      <div className="w-full h-px" />
+                      <div className="w-full" style={{ height: `${sigHeight}px` }} />
                     )}
                   </div>
-                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
-                  <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
+                  <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
                     {sig1Name || "Nome do Responsável"}
                   </h3>
-                  <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+                  <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
                     {sig1Role || (isDioceseEvent ? "Coordenador(a) Diocesano(a)" : "Cargo / Função")}
                   </p>
                 </div>
@@ -630,9 +636,11 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
               {showSig2 && (
                 <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
                   <div 
-                    className="w-full flex items-end justify-center"
+                    className="w-full flex items-end justify-center leading-none"
                     style={{ 
                       height: `${sigHeight}px`,
+                      minHeight: `${sigHeight}px`,
+                      maxHeight: `${sigHeight}px`,
                       marginBottom: `${sigLineGap}px`
                     }}
                   >
@@ -640,21 +648,21 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                       <img 
                         src={sig2Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                        className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
                         referrerPolicy="no-referrer"
                         loading="eager"
                         decoding="sync"
                         alt="Assinatura Responsável 2" 
                       />
                     ) : (
-                      <div className="w-full h-px" />
+                      <div className="w-full" style={{ height: `${sigHeight}px` }} />
                     )}
                   </div>
-                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
-                  <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
+                  <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
                     {sig2Name || (isDioceseEvent ? "Bispo / Assessor Eclesial" : "Segundo Responsável")}
                   </h3>
-                  <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+                  <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
                     {sig2Role || (isDioceseEvent ? "Diocese / Pastoral" : "Cargo / Função")}
                   </p>
                 </div>
@@ -664,9 +672,11 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
               {showSig3 && (
                 <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
                   <div 
-                    className="w-full flex items-end justify-center"
+                    className="w-full flex items-end justify-center leading-none"
                     style={{ 
                       height: `${sigHeight}px`,
+                      minHeight: `${sigHeight}px`,
+                      maxHeight: `${sigHeight}px`,
                       marginBottom: `${sigLineGap}px`
                     }}
                   >
@@ -674,21 +684,21 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                       <img 
                         src={sig3Url} 
                         style={{ maxHeight: `${sigHeight}px` }}
-                        className="max-w-[220px] object-contain transition-all pointer-events-none select-none" 
+                        className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
                         referrerPolicy="no-referrer"
                         loading="eager"
                         decoding="sync"
                         alt="Assinatura Responsável 3" 
                       />
                     ) : (
-                      <div className="w-full h-px" />
+                      <div className="w-full" style={{ height: `${sigHeight}px` }} />
                     )}
                   </div>
-                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2`}></div>
-                  <h3 className={`text-xl font-bold leading-tight ${currentTheme.nameColor}`}>
+                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
+                  <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
                     {sig3Name || "Terceiro Responsável"}
                   </h3>
-                  <p className={`text-sm font-medium leading-tight mt-0.5 ${currentTheme.roleColor}`}>
+                  <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
                     {sig3Role || "Cargo / Função"}
                   </p>
                 </div>

@@ -105,8 +105,8 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
   };
 
   const handleUpdate = async () => {
-    if (!name || !validity || !course || !diocese || !seminary) {
-      setError('Nome, Validade, Curso, Diocese e Seminário são obrigatórios.');
+    if (!name?.trim()) {
+      setError('Por favor, informe pelo menos o nome do membro.');
       return;
     }
     
@@ -120,8 +120,18 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
     try {
       const docRef = doc(db, `artifacts/${appId}/public/data/students`, member.id);
       await updateDoc(docRef, {
-        name, ra, cpf, birthdate, email, validityDate: validity, isActive, course, diocese, seminary, roles,
-        legacyQrCode,
+        name: name.trim(),
+        ra: ra || '',
+        cpf: cpf || '',
+        birthdate: birthdate || '',
+        email: email || '',
+        validityDate: validity || '',
+        isActive,
+        course: course || '',
+        diocese: diocese || '',
+        seminary: seminary || '',
+        roles: roles || [],
+        legacyQrCode: legacyQrCode || '',
         photoUrl: photoUrl || null
       });
 

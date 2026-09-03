@@ -3,6 +3,7 @@ import { Member } from "../types";
 import { HeartHandshake, ShieldCheck, Instagram, Facebook, Users, Car, ExternalLink, Calendar as CalendarIcon, MessageCircle, BookHeart } from "lucide-react";
 import DobloControl from "./DobloControl";
 import LiturgyPanel from "./LiturgyPanel";
+import SeminarWhatsAppMural from "./SeminarWhatsAppMural";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
 import { useSettings } from "../context/SettingsContext";
 
@@ -200,24 +201,7 @@ export default function PublicAppointmentsList({ member, onNavigateToStudent }: 
       )}
 
       {activeSubTab === "grupos" && (
-        <div className="space-y-6">
-          <div className="flex flex-col sm:flex-row gap-4 justify-center">
-            <a href="https://instagram.com/seminarioprovincial.scj" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-6 py-3 bg-gradient-to-r from-pink-500 to-purple-500 hover:from-pink-400 hover:to-purple-400 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 w-full sm:w-auto">
-              <Instagram className="w-5 h-5" />
-              Siga no Instagram
-            </a>
-            <a href="https://facebook.com/seminarioprovincial.scj" target="_blank" rel="noopener noreferrer" className="flex items-center justify-center gap-2 px-6 py-3 bg-blue-600 hover:bg-blue-500 text-white rounded-xl font-bold shadow-md hover:shadow-lg transition-all transform hover:-translate-y-0.5 w-full sm:w-auto">
-              <Facebook className="w-5 h-5" />
-              Siga no Facebook
-            </a>
-          </div>
-          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 shadow-sm border border-slate-200/80 dark:border-slate-800 text-center space-y-2">
-            <h4 className="text-sm font-bold text-slate-800 dark:text-white">Canais de Comunicação do Seminário</h4>
-            <p className="text-xs text-slate-500 dark:text-slate-400 max-w-md mx-auto">
-              Acompanhe as publicações, avisos pastorais, fotos de celebrações e informações oficiais através dos canais institucionais.
-            </p>
-          </div>
-        </div>
+        <SeminarWhatsAppMural member={member} />
       )}
 
       {activeSubTab === "doblo" && (

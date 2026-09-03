@@ -391,18 +391,19 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
           {(visibleFields?.signature !== false || visibleFields?.director !== false) && (
             <div className="flex flex-col items-center min-w-[140px] max-w-[180px]">
                {visibleFields?.signature !== false && (
-                <div className="w-full h-[45px] border-b-[2px] border-slate-800 flex items-center justify-center pb-1">
+                <div className="w-full h-[45px] border-b-[2px] border-slate-800 flex items-end justify-center pb-0.5 overflow-visible relative">
                    {displayInstSignature && (
                      <img 
                        src={displayInstSignature} 
                        alt="Assinatura Diretor" 
-                       className="w-auto object-contain pointer-events-none select-none max-h-full" 
+                       className="w-auto object-contain pointer-events-none select-none" 
                        referrerPolicy="no-referrer"
                        loading="eager"
                        decoding="sync"
                        style={{ 
-                         height: `${(signatureScale / 100) * 110}%`,
-                         marginBottom: `-${(signatureScale / 100) * 6}%` 
+                         height: `${(signatureScale / 100) * 44}px`,
+                         maxHeight: `${(signatureScale / 100) * 70}px`,
+                         marginBottom: `-${(signatureScale / 100) * 4}px` 
                        }} 
                      />
                    )}
@@ -422,18 +423,19 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
           {showRector && (visibleFields?.rectorSignature !== false || visibleFields?.rector !== false) && (
             <div className="flex flex-col items-center min-w-[140px] max-w-[180px]">
                {visibleFields?.rectorSignature !== false && (
-                <div className="w-full h-[45px] border-b-[2px] border-slate-800 flex items-center justify-center pb-1">
+                <div className="w-full h-[45px] border-b-[2px] border-slate-800 flex items-end justify-center pb-0.5 overflow-visible relative">
                    {displayRectorSignature && (
                      <img 
                        src={displayRectorSignature} 
                        alt="Assinatura Reitor" 
-                       className="w-auto object-contain pointer-events-none select-none max-h-full" 
+                       className="w-auto object-contain pointer-events-none select-none" 
                        referrerPolicy="no-referrer"
                        loading="eager"
                        decoding="sync"
                        style={{ 
-                         height: `${((rectorSignatureScale || 100) / 100) * 110}%`,
-                         marginBottom: `-${((rectorSignatureScale || 100) / 100) * 6}%` 
+                         height: `${((rectorSignatureScale || 100) / 100) * 44}px`,
+                         maxHeight: `${((rectorSignatureScale || 100) / 100) * 70}px`,
+                         marginBottom: `-${((rectorSignatureScale || 100) / 100) * 4}px` 
                        }} 
                      />
                    )}

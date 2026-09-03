@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, appId, loginAnon } from '../lib/firebase';
-import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION, extractAssetString, safeLocalStorageSet, safeSessionStorageSet } from '../lib/constants';
+import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION, extractAssetString, safeLocalStorageSet, safeSessionStorageSet, purgeOversizedLocalStorage } from '../lib/constants';
 import type { DioceseInfo } from '../data/diocesesData';
 import { AVAILABLE_DIOCESES, AVAILABLE_SEMINARIES } from '../types';
 
@@ -317,6 +317,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
 
     // Direct fetch helper for critical signatures, assets, and diocese configs to eliminate race conditions
     const performDirectFetch = async () => {
+      purgeOversizedLocalStorage();
       try {
         const [
           mainSnap,
@@ -353,8 +354,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const val = extractAssetString(rawVal);
           if (val) {
             setSettings(prev => ({ ...prev, instSignature: val }));
-            safeLocalStorageSet('davveroId_director_signature', val);
-            safeSessionStorageSet('davveroId_director_signature', val);
           }
         }
 
@@ -364,8 +363,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const val = extractAssetString(rawVal);
           if (val) {
             setSettings(prev => ({ ...prev, rectorSignature: val }));
-            safeLocalStorageSet('davveroId_rector_signature', val);
-            safeSessionStorageSet('davveroId_rector_signature', val);
           }
         }
 
@@ -375,8 +372,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const val = extractAssetString(rawVal);
           if (val) {
             setSettings(prev => ({ ...prev, instLogo: val }));
-            safeLocalStorageSet('davveroId_institution_logo', val);
-            safeSessionStorageSet('davveroId_institution_logo', val);
           }
         }
 
@@ -386,8 +381,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const val = extractAssetString(rawVal);
           if (val) {
             setSettings(prev => ({ ...prev, cardLogo: val }));
-            safeLocalStorageSet('davveroId_card_logo', val);
-            safeSessionStorageSet('davveroId_card_logo', val);
           }
         }
 
@@ -397,8 +390,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const val = extractAssetString(rawVal);
           if (val) {
             setSettings(prev => ({ ...prev, cardBackLogo: val }));
-            safeLocalStorageSet('davveroId_card_back_logo', val);
-            safeSessionStorageSet('davveroId_card_back_logo', val);
           }
         }
 
@@ -516,24 +507,6 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const val = extractAssetString(rawVal);
           if (val !== undefined) {
             setSettings(prev => ({ ...prev, [field]: val }));
-            if (typeof window !== "undefined" && val) {
-              if (field === 'instSignature') {
-                safeLocalStorageSet('davveroId_director_signature', val);
-                safeSessionStorageSet('davveroId_director_signature', val);
-              } else if (field === 'rectorSignature') {
-                safeLocalStorageSet('davveroId_rector_signature', val);
-                safeSessionStorageSet('davveroId_rector_signature', val);
-              } else if (field === 'instLogo') {
-                safeLocalStorageSet('davveroId_institution_logo', val);
-                safeSessionStorageSet('davveroId_institution_logo', val);
-              } else if (field === 'cardLogo') {
-                safeLocalStorageSet('davveroId_card_logo', val);
-                safeSessionStorageSet('davveroId_card_logo', val);
-              } else if (field === 'cardBackLogo') {
-                safeLocalStorageSet('davveroId_card_back_logo', val);
-                safeSessionStorageSet('davveroId_card_back_logo', val);
-              }
-            }
           }
         }
       }, (err) => {
@@ -850,18 +823,17 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     // 3. Ativos individuais pesados (Logos e Assinaturas)
     const singleHeavyFields = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature'];
     singleHeavyFields.forEach(field => {
+      // Always delete heavy fields from main document payload to prevent 1MB limit and accidental empty string overwrites
+      delete (settingsToSave as any)[field];
+
       if (field in newSettings) {
         const val = (newSettings as any)[field];
         const assetRef = doc(db, ASSETS_DOC_PATH(appId, field));
         
-        if (val !== undefined && val !== null) {
-          const isLargeString = typeof val === 'string' && val.length > 500;
-          if (isLargeString) {
-            assetOperations.push(setDoc(assetRef, { data: val }));
-            delete (settingsToSave as any)[field];
-          }
+        if (val !== undefined && val !== null && val !== "") {
+          assetOperations.push(setDoc(assetRef, { data: val, updatedAt: new Date().toISOString() }));
         } else if (val === null) {
-          assetOperations.push(setDoc(assetRef, { data: null }));
+          assetOperations.push(setDoc(assetRef, { data: null, updatedAt: new Date().toISOString() }));
         }
       }
     });

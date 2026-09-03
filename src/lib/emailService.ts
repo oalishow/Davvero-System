@@ -22,7 +22,11 @@ export type EmailTemplateKey =
   | 'newRequestSecretariat' 
   | 'editSuggestionSecretariat'
   | 'certificateAvailableOrganizer'
-  | 'certificateAvailableAttendee';
+  | 'certificateAvailableAttendee'
+  | 'cardExpiringSoon'
+  | 'accountActivation'
+  | 'inactivityReminder'
+  | 'systemNews';
 
 export interface EmailTemplatesSettings {
   pendingStudent?: EmailTemplateConfig;
@@ -33,6 +37,10 @@ export interface EmailTemplatesSettings {
   editSuggestionSecretariat?: EmailTemplateConfig;
   certificateAvailableOrganizer?: EmailTemplateConfig;
   certificateAvailableAttendee?: EmailTemplateConfig;
+  cardExpiringSoon?: EmailTemplateConfig;
+  accountActivation?: EmailTemplateConfig;
+  inactivityReminder?: EmailTemplateConfig;
+  systemNews?: EmailTemplateConfig;
 }
 
 export const DEFAULT_EMAIL_TEMPLATES: Record<EmailTemplateKey, EmailTemplateConfig> = {
@@ -148,6 +156,61 @@ export const DEFAULT_EMAIL_TEMPLATES: Record<EmailTemplateKey, EmailTemplateConf
 </div>
 <p>Acesse o aplicativo para visualizar seu certificado com código de verificação autêntico e fazer o download do arquivo em alta definição.</p>`,
     buttonText: "Visualizar Meu Certificado"
+  },
+  cardExpiringSoon: {
+    subject: "Aviso: Sua Carteirinha Digital Vencerá em Breve ⏳ - {{headerName}}",
+    title: "Renovação de Carteirinha Digital ⏳",
+    body: `<p>Olá, <strong>{{name}}</strong>!</p>
+<p>Identificamos que a validade da sua <strong>Carteirinha Estudantil Digital</strong> no <strong>{{instName}}</strong> vencerá em <strong>{{expiryDate}}</strong> (aproximadamente 30 dias).</p>
+<div class="highlight-card" style="border-left-color: #f59e0b; background: #fffbeb;">
+  <p style="margin: 0 0 6px; font-size: 13px; color: #b45309; font-weight: 700; text-transform: uppercase;">Dados da Carteirinha:</p>
+  <p style="margin: 0 0 4px;"><strong>Titular:</strong> {{name}} (RA: {{ra}})</p>
+  <p style="margin: 0 0 4px;"><strong>Vínculo:</strong> {{roles}}</p>
+  <p style="margin: 0 0 4px;"><strong>Data de Validade Atual:</strong> {{expiryDate}}</p>
+  <p style="margin: 0; color: #b45309;"><strong>Status:</strong> Renovação Necessária</p>
+</div>
+<p>Para garantir a continuidade dos seus benefícios acadêmicos, acesso aos eventos e emissão de certificados sem interrupção, <strong>por favor procure a secretaria acadêmica</strong> para renovar seu vínculo e emitir sua nova via digital atualizada.</p>`,
+    buttonText: "Consultar Minha Carteirinha"
+  },
+  accountActivation: {
+    subject: "Ativação de Cadastro no {{headerName}} 🎓 - Bem-vindo(a)!",
+    title: "Ativação de Cadastro e Acesso ao Portal 🎓",
+    body: `<p>Olá, <strong>{{name}}</strong>!</p>
+<p>Seu cadastro no sistema institucional <strong>{{instName}}</strong> está liberado para ativação e acesso imediato.</p>
+<div class="highlight-card">
+  <p style="margin: 0 0 6px; font-size: 13px; color: #64748b; font-weight: 700; text-transform: uppercase;">Dados de Acesso:</p>
+  <p style="margin: 0 0 4px;"><strong>Nome:</strong> {{name}}</p>
+  <p style="margin: 0 0 4px;"><strong>Documento / RA:</strong> {{ra}}</p>
+  <p style="margin: 0 0 4px;"><strong>Código Identificador:</strong> {{alphaCode}}</p>
+  <p style="margin: 0;"><strong>Vínculo:</strong> {{roles}}</p>
+</div>
+<p>Acesse o portal para conferir suas informações, cadastrar sua foto oficial para a carteirinha estudantil e aproveitar os recursos acadêmicos, eventos e agendamentos.</p>`,
+    buttonText: "Ativar Meu Cadastro Agora"
+  },
+  inactivityReminder: {
+    subject: "Sentimos sua falta no {{headerName}}! 🔔 - Mantenha seu cadastro ativo",
+    title: "Lembrete de Acesso Acadêmico 🔔",
+    body: `<p>Olá, <strong>{{name}}</strong>!</p>
+<p>Notamos que você não acessa o portal do <strong>{{instName}}</strong> há algum tempo.</p>
+<div class="highlight-card" style="border-left-color: #3b82f6; background: #eff6ff;">
+  <p style="margin: 0 0 6px; font-size: 13px; color: #1d4ed8; font-weight: 700; text-transform: uppercase;">Acesso Rápido:</p>
+  <p style="margin: 0 0 4px;"><strong>RA / Identificação:</strong> {{ra}}</p>
+  <p style="margin: 0 0 4px;"><strong>Status do Perfil:</strong> Cadastrado</p>
+  <p style="margin: 0;"><strong>Eventos & Certificados:</strong> Disponíveis no painel</p>
+</div>
+<p>Novos comunicados, eventos acadêmicos e certificados foram publicados recentemente. Acesse o sistema para manter seus dados em dia e conferir a programação institucional.</p>`,
+    buttonText: "Acessar Meu Portal Acadêmico"
+  },
+  systemNews: {
+    subject: "Novidades e Comunicados Importantes - {{headerName}} 🚀",
+    title: "Comunicado Institucional 🚀",
+    body: `<p>Olá, <strong>{{name}}</strong>!</p>
+<p>Temos importantes novidades e comunicados institucionais do <strong>{{instName}}</strong> para compartilhar com você.</p>
+<div class="highlight-card">
+  <p style="margin: 0; font-size: 14px; color: #334155; line-height: 1.6; white-space: pre-wrap;">{{newsMessage}}</p>
+</div>
+<p>Acesse o portal a qualquer momento para conferir todos os detalhes, avisos e eventos em andamento.</p>`,
+    buttonText: "Acessar Portal do Aluno"
   }
 };
 
@@ -251,6 +314,19 @@ export function getCompiledEmail({
  */
 export async function sendEmailNotification(options: SendEmailOptions, customSmtp?: AppSettings['smtpConfig']): Promise<{ success: boolean; message?: string; error?: string }> {
   try {
+    let resolvedSmtp = customSmtp;
+    if (!resolvedSmtp || !resolvedSmtp.pass) {
+      try {
+        const stored = typeof window !== 'undefined' ? localStorage.getItem("davveroId_smtp_config") : null;
+        if (stored) {
+          const parsed = JSON.parse(stored);
+          if (parsed && (parsed.pass || parsed.user)) {
+            resolvedSmtp = { ...parsed, ...resolvedSmtp };
+          }
+        }
+      } catch (_) {}
+    }
+
     const res = await fetch('/api/email/send', {
       method: 'POST',
       headers: {
@@ -258,9 +334,18 @@ export async function sendEmailNotification(options: SendEmailOptions, customSmt
       },
       body: JSON.stringify({
         ...options,
-        customSmtp
+        customSmtp: resolvedSmtp
       }),
     });
+
+    const contentType = res.headers.get("content-type") || "";
+    if (!contentType.includes("application/json")) {
+      await res.text();
+      return {
+        success: false,
+        error: `O servidor retornou uma resposta inesperada (Status ${res.status}). Verifique se as credenciais de SMTP e a Senha de App do Gmail estão salvas no painel de Configurações.`
+      };
+    }
 
     const data = await res.json();
     return data;

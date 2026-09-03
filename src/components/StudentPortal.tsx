@@ -2629,9 +2629,9 @@ export default function StudentPortal({
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
                                 <ShieldCheck className="w-3.5 h-3.5" /> Erro (Bloqueado)
                               </span>
-                            ) : subscription ? (
+                            ) : subscription || (permission === "granted" && typeof window !== "undefined" && localStorage.getItem("davvero_push_subscribed") === "true") ? (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                                <ShieldCheck className="w-3.5 h-3.5" /> Conectado
+                                <ShieldCheck className="w-3.5 h-3.5" /> Conectado e Ativo
                               </span>
                             ) : (
                               <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
@@ -2640,12 +2640,16 @@ export default function StudentPortal({
                             )}
                           </div>
                           <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                            {subscription ? "Seu dispositivo está apto a receber comunicados urgentes." : permission === "denied" ? "Você bloqueou as notificações. Libere a permissão nas configurações do seu navegador para receber comunicados." : "Ative as notificações para receber avisos importantes da secretaria."}
+                            {subscription || (permission === "granted" && typeof window !== "undefined" && localStorage.getItem("davvero_push_subscribed") === "true")
+                              ? "Seu dispositivo está ativo e apto a receber comunicados urgentes e avisos em tempo real."
+                              : permission === "denied"
+                              ? "Você bloqueou as notificações. Libere a permissão nas configurações do seu navegador para receber comunicados."
+                              : "Ative as notificações para receber avisos importantes da secretaria."}
                           </p>
                         </div>
                         {isSupported && (
                           <div className="flex-shrink-0 w-full sm:w-auto">
-                            {!subscription && permission !== "denied" ? (
+                            {!(subscription || (permission === "granted" && typeof window !== "undefined" && localStorage.getItem("davvero_push_subscribed") === "true")) && permission !== "denied" ? (
                               <button
                                 type="button"
                                 disabled={isSubscribing}
@@ -2664,7 +2668,7 @@ export default function StudentPortal({
                                   <span>Ativar Notificações</span>
                                 )}
                               </button>
-                            ) : subscription ? (
+                            ) : (subscription || (permission === "granted" && typeof window !== "undefined" && localStorage.getItem("davvero_push_subscribed") === "true")) ? (
                               <button
                                 type="button"
                                 disabled={isSubscribing}

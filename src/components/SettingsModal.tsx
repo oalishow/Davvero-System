@@ -23,6 +23,9 @@ import {
   Lock,
   Type,
   Plus,
+  Minus,
+  ZoomIn,
+  ZoomOut,
   Database,
   Sparkles,
   MessageCircle,
@@ -54,6 +57,7 @@ import { useSettings } from "../context/SettingsContext";
 import { DEFAULT_EMAIL_TEMPLATES, getCompiledEmail, EmailTemplatesSettings, EmailTemplateKey, parseEmailList } from "../lib/emailService";
 import { AVAILABLE_SEMINARIES } from "../types";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
+import { compressAvatar, sanitizeProfessionalList } from "../lib/imageCompressor";
 import {
   PASSWORD_STORAGE_KEY,
   URL_STORAGE_KEY,
@@ -220,6 +224,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       appointmentLink: p.appointmentLink || ''
     }))
   );
+  const [whatsappGroups, setWhatsappGroups] = useState<any[]>(cloudSettings.whatsappGroups || []);
   const [autoApproveEnabled, setAutoApproveEnabled] = useState(cloudSettings.autoApproveEnabled ?? false);
   const [autoApproveWhitelistText, setAutoApproveWhitelistText] = useState(
     cloudSettings.autoApproveWhitelistText || (cloudSettings.autoApproveWhitelist ? cloudSettings.autoApproveWhitelist.join("\n") : "")
@@ -299,27 +304,68 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     };
   }, []);
 
+  // Sync state when cloudSettings is loaded or updated from Firestore
+  useEffect(() => {
+    if (!cloudSettings) return;
+    if (cloudSettings.directorName && !directorName) setDirectorName(cloudSettings.directorName);
+    if (cloudSettings.rectorName && !rectorName) setRectorName(cloudSettings.rectorName);
+    if (cloudSettings.instName && !instName) setInstName(cloudSettings.instName);
+    if (cloudSettings.instLogo && !instLogo) setInstLogo(cloudSettings.instLogo);
+    if (cloudSettings.cardLogo && !cardLogo) setCardLogo(cloudSettings.cardLogo);
+    if (cloudSettings.cardBackLogo && !cardBackLogo) setCardBackLogo(cloudSettings.cardBackLogo);
+    if (cloudSettings.cardSecondaryBackLogo && !cardSecondaryBackLogo) setCardSecondaryBackLogo(cloudSettings.cardSecondaryBackLogo);
+    if (cloudSettings.cardBackImage && !cardBackImage) setCardBackImage(cloudSettings.cardBackImage);
+    if (cloudSettings.instSignature && !instSignature) setInstSignature(cloudSettings.instSignature);
+    if (cloudSettings.rectorSignature && !rectorSignature) setRectorSignature(cloudSettings.rectorSignature);
+    if (cloudSettings.signatureScale && !signatureScale) setSignatureScale(cloudSettings.signatureScale);
+    if (cloudSettings.rectorSignatureScale && !rectorSignatureScale) setRectorSignatureScale(cloudSettings.rectorSignatureScale);
+    if (cloudSettings.whatsappGroups) setWhatsappGroups(cloudSettings.whatsappGroups);
+
+    // Sync SMTP settings from cloud so configurations are never lost
+    if (cloudSettings.smtpConfig) {
+      if (cloudSettings.smtpConfig.host && !smtpHost) setSmtpHost(cloudSettings.smtpConfig.host);
+      if (cloudSettings.smtpConfig.port && !smtpPort) setSmtpPort(cloudSettings.smtpConfig.port);
+      if (cloudSettings.smtpConfig.secure !== undefined) setSmtpSecure(cloudSettings.smtpConfig.secure);
+      if (cloudSettings.smtpConfig.user && !smtpUser) setSmtpUser(cloudSettings.smtpConfig.user);
+      if (cloudSettings.smtpConfig.pass && !smtpPass) setSmtpPass(cloudSettings.smtpConfig.pass);
+      if (cloudSettings.smtpConfig.fromName && (!smtpFromName || smtpFromName === 'DAVVERO System')) setSmtpFromName(cloudSettings.smtpConfig.fromName);
+      if (cloudSettings.smtpConfig.fromEmail && !smtpFromEmail) setSmtpFromEmail(cloudSettings.smtpConfig.fromEmail);
+    }
+  }, [cloudSettings]);
+
   const handleSaveGeneral = async () => {
     setStatus({ msg: "Sincronizando com a nuvem...", type: "loading" });
 
     try {
+      const sanitizedProfessionals = await sanitizeProfessionalList(professionals);
+
+      const finalSmtp = {
+        host: (smtpHost.trim() || cloudSettings.smtpConfig?.host || "smtp.gmail.com"),
+        port: Number(smtpPort) || cloudSettings.smtpConfig?.port || 465,
+        secure: smtpSecure !== undefined ? smtpSecure : (cloudSettings.smtpConfig?.secure ?? true),
+        user: (smtpUser.trim() || cloudSettings.smtpConfig?.user || ""),
+        pass: (smtpPass.replace(/\s+/g, '') || cloudSettings.smtpConfig?.pass || ""),
+        fromName: (smtpFromName.trim() || cloudSettings.smtpConfig?.fromName || "DAVVERO System"),
+        fromEmail: (smtpFromEmail.trim() || cloudSettings.smtpConfig?.fromEmail || smtpUser.trim() || ""),
+      };
+
       await updateSettings({
         url,
-        directorName,
-        rectorName,
-        instName,
+        directorName: directorName !== undefined && directorName !== "" ? directorName : (cloudSettings.directorName || ""),
+        rectorName: rectorName !== undefined && rectorName !== "" ? rectorName : (cloudSettings.rectorName || ""),
+        instName: instName !== undefined && instName !== "" ? instName : (cloudSettings.instName || ""),
         instColor,
-        instLogo,
-        cardLogo,
-        cardBackLogo,
-        cardSecondaryBackLogo,
-        cardBackImage,
+        instLogo: instLogo !== undefined ? instLogo : cloudSettings.instLogo,
+        cardLogo: cardLogo !== undefined ? cardLogo : cloudSettings.cardLogo,
+        cardBackLogo: cardBackLogo !== undefined ? cardBackLogo : cloudSettings.cardBackLogo,
+        cardSecondaryBackLogo: cardSecondaryBackLogo !== undefined ? cardSecondaryBackLogo : cloudSettings.cardSecondaryBackLogo,
+        cardBackImage: cardBackImage !== undefined ? cardBackImage : cloudSettings.cardBackImage,
         cardFrontText,
         cardBackText,
         frontLogoConfig,
         backLogoConfig,
-        instSignature,
-        rectorSignature,
+        instSignature: instSignature !== undefined ? instSignature : cloudSettings.instSignature,
+        rectorSignature: rectorSignature !== undefined ? rectorSignature : cloudSettings.rectorSignature,
         signatureScale,
         rectorSignatureScale,
         secondaryBackLogoScale,
@@ -363,7 +409,8 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         eventsEnabled,
         appointmentsEnabled,
         appointmentsExternalLink,
-        professionals,
+        professionals: sanitizedProfessionals,
+        whatsappGroups: whatsappGroups !== undefined ? whatsappGroups : (cloudSettings.whatsappGroups || []),
         autoApproveEnabled,
         autoApproveWhitelist: autoApproveWhitelistText
           .split(/[\n,;]+/)
@@ -381,15 +428,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         editSuggestionNotificationEmail,
         emailHeaderName: emailHeaderName.trim() || 'DAVVERO System',
         emailTemplates,
-        smtpConfig: {
-          host: smtpHost.trim(),
-          port: Number(smtpPort) || 587,
-          secure: smtpSecure,
-          user: smtpUser.trim(),
-          pass: smtpPass.replace(/\s+/g, ''),
-          fromName: smtpFromName.trim(),
-          fromEmail: smtpFromEmail.trim(),
-        },
+        smtpConfig: finalSmtp,
       });
 
       // Legacy fallback with quota protection
@@ -400,6 +439,7 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
       safeLocalStorageSet(INSTITUTION_COLOR_KEY, instColor);
       safeLocalStorageSet(INSTITUTION_DESCRIPTION_KEY, instDescription);
       safeLocalStorageSet(CARD_DESCRIPTION_KEY, cardDescription);
+      safeLocalStorageSet("davveroId_smtp_config", JSON.stringify(finalSmtp));
       safeLocalStorageSet(
         CARD_VISIBLE_FIELDS_KEY,
         JSON.stringify(visibleFields),
@@ -422,15 +462,6 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
         SECONDARY_BACK_LOGO_SCALE_KEY,
         secondaryBackLogoScale.toString(),
       );
-      if (instLogo) safeLocalStorageSet(INSTITUTION_LOGO_KEY, instLogo);
-      if (cardLogo) safeLocalStorageSet(CARD_LOGO_KEY, cardLogo);
-      if (cardBackLogo) safeLocalStorageSet(CARD_BACK_LOGO_KEY, cardBackLogo);
-      if (cardBackImage)
-        safeLocalStorageSet(CARD_BACK_IMAGE_KEY, cardBackImage);
-      if (instSignature)
-        safeLocalStorageSet(DIRECTOR_SIGNATURE_KEY, instSignature);
-      if (rectorSignature)
-        safeLocalStorageSet("davveroId_rector_signature", rectorSignature);
 
       showStatus("Configurações aplicadas globalmente!", "success");
     } catch (e: any) {
@@ -534,57 +565,28 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
     }
   };
 
-  const handleFileUpload = (
+  const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     setter: (val: string | null) => void,
-    maxSizeKB = 5120, // Initial check, but we will compress it down
+    maxSizeKB = 25600, // Suporta arquivos de até 25MB direto da câmera ou celular
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > maxSizeKB * 1024) {
-      showStatus(`Arquivo muito grande. Máximo ${maxSizeKB}KB.`, "error");
+      showStatus(`Arquivo muito grande. Máximo permitido: ${Math.round(maxSizeKB / 1024)}MB.`, "error");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
-
-        // Máximo 800px para redimensionamento
-        const MAX_DIM = 800;
-        if (width > height) {
-          if (width > MAX_DIM) {
-            height *= MAX_DIM / width;
-            width = MAX_DIM;
-          }
-        } else {
-          if (height > MAX_DIM) {
-            width *= MAX_DIM / height;
-            height = MAX_DIM;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          // Compress to low quality JPEG if not transparent png, otherwise use PNG
-          const dataUrl = file.type === "image/png" ? canvas.toDataURL("image/png", 0.8) : canvas.toDataURL("image/jpeg", 0.7);
-          setter(dataUrl);
-        } else {
-          setter(ev.target?.result as string);
-        }
-      };
-      img.src = ev.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    try {
+      showStatus("Otimizando imagem...", "loading");
+      const compressed = await compressAvatar(file, { maxDimension: 380, quality: 0.8 });
+      setter(compressed);
+      showStatus("Imagem otimizada com sucesso!", "success");
+    } catch (err: any) {
+      console.warn("[SettingsModal] Erro ao otimizar imagem:", err);
+      showStatus(err?.message || "Erro ao processar imagem.", "error");
+    }
   };
 
 
@@ -666,6 +668,26 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
 
   const removeGlobalProfessional = (id: string) => {
     setProfessionals(prev => prev.filter(p => p.id !== id));
+  };
+
+  const addWhatsAppGroup = () => {
+    const newGroup = {
+      id: "ws_" + Date.now().toString(36),
+      name: "Novo Grupo do WhatsApp",
+      url: "https://chat.whatsapp.com/",
+      category: "Geral",
+      type: "seminario",
+      description: "",
+    };
+    setWhatsappGroups(prev => [...prev, newGroup]);
+  };
+
+  const updateWhatsAppGroup = (id: string, field: string, val: any) => {
+    setWhatsappGroups(prev => prev.map(g => g.id === id ? { ...g, [field]: val } : g));
+  };
+
+  const removeWhatsAppGroup = (id: string) => {
+    setWhatsappGroups(prev => prev.filter(g => g.id !== id));
   };
 
   const handleSavePassword = () => {
@@ -1374,19 +1396,62 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                           />
 
                           <div className="w-full mt-2">
-                            <div className="flex justify-between text-[8px] text-slate-400 mb-1">
-                              <span>Tamanho: {signatureScale}%</span>
+                            <div className="flex justify-between items-center text-[8px] text-slate-400 mb-1">
+                              <span className="font-semibold text-slate-600 dark:text-slate-300">Tamanho: {signatureScale}%</span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setSignatureScale((prev) => Math.max(30, prev - 10))}
+                                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 transition-colors"
+                                  title="Diminuir zoom da assinatura"
+                                >
+                                  <Minus className="w-2.5 h-2.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSignatureScale(100)}
+                                  className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 transition-colors"
+                                  title="Restaurar tamanho padrão (100%)"
+                                >
+                                  100%
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setSignatureScale((prev) => Math.min(250, prev + 10))}
+                                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 transition-colors"
+                                  title="Aumentar zoom da assinatura"
+                                >
+                                  <Plus className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
                             </div>
                             <input
                               type="range"
                               min="30"
                               max="250"
+                              step="5"
                               value={signatureScale}
                               onChange={(e) =>
                                 setSignatureScale(Number(e.target.value))
                               }
-                              className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                              className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
                             />
+                            <div className="flex justify-between gap-1 mt-1.5">
+                              {[50, 80, 100, 120, 150].map((preset) => (
+                                <button
+                                  key={preset}
+                                  type="button"
+                                  onClick={() => setSignatureScale(preset)}
+                                  className={`text-[7px] px-1 py-0.5 rounded transition-all ${
+                                    signatureScale === preset
+                                      ? 'bg-sky-500 text-white font-bold'
+                                      : 'bg-slate-100 dark:bg-slate-700 text-slate-500 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  {preset}%
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         </div>
 
@@ -1429,19 +1494,62 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                           />
 
                           <div className="w-full mt-2">
-                            <div className="flex justify-between text-[8px] text-slate-400 mb-1">
-                              <span>Tamanho: {rectorSignatureScale}%</span>
+                            <div className="flex justify-between items-center text-[8px] text-slate-400 mb-1">
+                              <span className="font-semibold text-slate-600 dark:text-slate-300">Tamanho: {rectorSignatureScale}%</span>
+                              <div className="flex items-center gap-1">
+                                <button
+                                  type="button"
+                                  onClick={() => setRectorSignatureScale((prev) => Math.max(30, prev - 10))}
+                                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 transition-colors"
+                                  title="Diminuir zoom da assinatura"
+                                >
+                                  <Minus className="w-2.5 h-2.5" />
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setRectorSignatureScale(100)}
+                                  className="px-1.5 py-0.5 rounded text-[8px] font-bold bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 transition-colors"
+                                  title="Restaurar tamanho padrão (100%)"
+                                >
+                                  100%
+                                </button>
+                                <button
+                                  type="button"
+                                  onClick={() => setRectorSignatureScale((prev) => Math.min(250, prev + 10))}
+                                  className="p-1 rounded bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-600 dark:text-slate-200 transition-colors"
+                                  title="Aumentar zoom da assinatura"
+                                >
+                                  <Plus className="w-2.5 h-2.5" />
+                                </button>
+                              </div>
                             </div>
                             <input
                               type="range"
                               min="30"
                               max="250"
+                              step="5"
                               value={rectorSignatureScale}
                               onChange={(e) =>
                                 setRectorSignatureScale(Number(e.target.value))
                               }
-                              className="w-full h-1 bg-slate-200 rounded-lg appearance-none cursor-pointer"
+                              className="w-full h-1.5 bg-slate-200 dark:bg-slate-700 rounded-lg appearance-none cursor-pointer accent-sky-500"
                             />
+                            <div className="flex justify-between gap-1 mt-1.5">
+                              {[50, 80, 100, 120, 150].map((preset) => (
+                                <button
+                                  key={preset}
+                                  type="button"
+                                  onClick={() => setRectorSignatureScale(preset)}
+                                  className={`text-[7px] px-1 py-0.5 rounded transition-all ${
+                                    rectorSignatureScale === preset
+                                      ? 'bg-sky-500 text-white font-bold'
+                                      : 'bg-slate-100 dark:bg-slate-700 text-slate-500 hover:bg-slate-200'
+                                  }`}
+                                >
+                                  {preset}%
+                                </button>
+                              ))}
+                            </div>
                           </div>
                         </div>
                       </div>
@@ -2842,6 +2950,108 @@ export default function SettingsModal({ onClose }: { onClose: () => void }) {
                               <button onClick={() => removeGlobalProfessional(prof.id)} className="absolute top-2 right-2 sm:relative sm:top-0 sm:right-0 self-center p-2 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors" title="Remover Profissional">
                                 <Trash2 className="w-4 h-4" />
                               </button>
+                            </div>
+                          ))
+                        )}
+                      </div>
+                    </div>
+
+                    {/* Mural do Seminário - Grupos Oficiais do WhatsApp */}
+                    <div className="border-t border-slate-100 dark:border-slate-700 pt-6">
+                      <div className="flex justify-between items-center mb-4">
+                        <div>
+                          <label className="text-[10px] font-bold text-slate-500 uppercase tracking-widest block">
+                            Mural do Seminário - Grupos Oficiais do WhatsApp
+                          </label>
+                          <p className="text-[11px] text-slate-400">
+                            Configure os canais e grupos de WhatsApp que são exibidos na aba "Grupos Oficiais".
+                          </p>
+                        </div>
+                        <button
+                          type="button"
+                          onClick={addWhatsAppGroup}
+                          className="text-[10px] bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-400 px-3 py-1.5 rounded-full font-bold hover:bg-emerald-200 dark:hover:bg-emerald-900/50 transition-colors uppercase flex items-center gap-1"
+                        >
+                          <Plus className="w-3 h-3" /> Adicionar Grupo
+                        </button>
+                      </div>
+
+                      <div className="space-y-3">
+                        {whatsappGroups.length === 0 ? (
+                          <p className="text-xs text-slate-400 italic text-center py-4 bg-slate-50 dark:bg-slate-800/50 rounded-xl border border-dashed border-slate-200 dark:border-slate-700">
+                            Nenhum grupo customizado configurado (usando os grupos padrão do seminário).
+                          </p>
+                        ) : (
+                          whatsappGroups.map((group) => (
+                            <div
+                              key={group.id}
+                              className="p-3.5 bg-white dark:bg-slate-800 rounded-xl border border-slate-200 dark:border-slate-700 shadow-sm relative group space-y-2.5"
+                            >
+                              <div className="flex justify-between items-center">
+                                <span className="text-xs font-bold text-emerald-600 dark:text-emerald-400 flex items-center gap-1.5">
+                                  <MessageCircle className="w-3.5 h-3.5" /> Grupo de WhatsApp
+                                </span>
+                                <button
+                                  type="button"
+                                  onClick={() => removeWhatsAppGroup(group.id)}
+                                  className="p-1 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-500/10 rounded-lg transition-colors"
+                                  title="Remover Grupo"
+                                >
+                                  <Trash2 className="w-4 h-4" />
+                                </button>
+                              </div>
+
+                              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                                <div>
+                                  <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400 ml-1 block mb-1">
+                                    Nome do Grupo
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: Filosofia & Teologia"
+                                    value={group.name}
+                                    onChange={(e) => updateWhatsAppGroup(group.id, "name", e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50 font-medium"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400 ml-1 block mb-1">
+                                    Categoria
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: Geral, Comissões, Turmas"
+                                    value={group.category || ""}
+                                    onChange={(e) => updateWhatsAppGroup(group.id, "category", e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400 ml-1 block mb-1">
+                                    Link do WhatsApp
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="https://chat.whatsapp.com/..."
+                                    value={group.url || ""}
+                                    onChange={(e) => updateWhatsAppGroup(group.id, "url", e.target.value)}
+                                    className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                                  />
+                                </div>
+                              </div>
+
+                              <div>
+                                <label className="text-[9px] uppercase tracking-wider font-bold text-slate-400 ml-1 block mb-1">
+                                  Descrição / Instruções
+                                </label>
+                                <input
+                                  type="text"
+                                  placeholder="Breve resumo sobre quem deve participar deste grupo..."
+                                  value={group.description || ""}
+                                  onChange={(e) => updateWhatsAppGroup(group.id, "description", e.target.value)}
+                                  className="w-full bg-slate-50 dark:bg-slate-900/50 border border-slate-200 dark:border-slate-700 rounded-lg px-3 py-1.5 text-xs text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                                />
+                              </div>
                             </div>
                           ))
                         )}

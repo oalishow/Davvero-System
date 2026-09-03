@@ -3,6 +3,7 @@ import { useSettings } from "../context/SettingsContext";
 import { Save, Plus, Trash2, Calendar, MessageCircle, Link as LinkIcon, ShieldCheck, Upload } from "lucide-react";
 import { useDialog } from "../context/DialogContext";
 import { DEFAULT_PROFESSIONALS } from "../lib/defaultProfessionals";
+import { compressAvatar, sanitizeProfessionalList } from "../lib/imageCompressor";
 
 export default function SchedulingManager() {
   const { settings, updateSettings } = useSettings();
@@ -48,65 +49,44 @@ export default function SchedulingManager() {
   const handleSave = async () => {
     setSaving(true);
     try {
-      await updateSettings({ professionals: localProfs });
+      const sanitized = await sanitizeProfessionalList(localProfs);
+      await updateSettings({ professionals: sanitized });
+      setLocalProfs(sanitized);
       showAlert("Configurações de agendamento salvas com sucesso!", "success");
-    } catch (e) {
+    } catch (e: any) {
       console.error(e);
-      showAlert("Erro ao salvar configurações", "error");
+      if (e?.code === 'invalid-argument' || e?.message?.includes('too large')) {
+        showAlert("Erro: As fotos dos profissionais estão muito grandes. Tente remover e adicionar novamente.", "error");
+      } else {
+        showAlert("Erro ao salvar configurações", "error");
+      }
     } finally {
       setSaving(false);
     }
   };
 
-  
-  const handleFileUpload = (
+  const handleFileUpload = async (
     e: React.ChangeEvent<HTMLInputElement>,
     setter: (val: string | null) => void,
-    maxSizeKB = 5120
+    maxSizeKB = 25600 // Suporta arquivos de até 25MB
   ) => {
     const file = e.target.files?.[0];
     if (!file) return;
 
     if (file.size > maxSizeKB * 1024) {
-      showAlert(`Arquivo muito grande. Máximo ${maxSizeKB}KB.`, "error");
+      showAlert(`Arquivo muito grande. Máximo permitido: ${Math.round(maxSizeKB / 1024)}MB.`, "error");
       return;
     }
 
-    const reader = new FileReader();
-    reader.onload = (ev) => {
-      const img = new Image();
-      img.onload = () => {
-        const canvas = document.createElement("canvas");
-        let width = img.width;
-        let height = img.height;
-        const MAX_DIM = 800;
-
-        if (width > height) {
-          if (width > MAX_DIM) {
-            height *= MAX_DIM / width;
-            width = MAX_DIM;
-          }
-        } else {
-          if (height > MAX_DIM) {
-            width *= MAX_DIM / height;
-            height = MAX_DIM;
-          }
-        }
-
-        canvas.width = width;
-        canvas.height = height;
-        const ctx = canvas.getContext("2d");
-        if (ctx) {
-          ctx.drawImage(img, 0, 0, width, height);
-          const dataUrl = file.type === "image/png" ? canvas.toDataURL("image/png", 0.8) : canvas.toDataURL("image/jpeg", 0.7);
-          setter(dataUrl);
-        } else {
-          setter(ev.target?.result as string);
-        }
-      };
-      img.src = ev.target?.result as string;
-    };
-    reader.readAsDataURL(file);
+    try {
+      showAlert("Otimizando foto do profissional...", "info");
+      const compressed = await compressAvatar(file, { maxDimension: 280, quality: 0.8 });
+      setter(compressed);
+      showAlert("Foto do profissional adicionada e otimizada com sucesso!", "success");
+    } catch (err: any) {
+      console.warn("[SchedulingManager] Erro na compressão:", err);
+      showAlert(err?.message || "Erro ao processar imagem.", "error");
+    }
   };
 
   const getIcon = (type?: string) => {

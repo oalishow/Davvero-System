@@ -39,7 +39,9 @@ export interface NotificationError {
 export function usePushNotifications() {
   const [isSupported, setIsSupported] = useState(false);
   const [subscription, setSubscription] = useState<PushSubscription | null>(null);
-  const [permission, setPermission] = useState<NotificationPermission>("default");
+  const [permission, setPermission] = useState<NotificationPermission>(() => {
+    return typeof window !== "undefined" && "Notification" in window ? Notification.permission : "default";
+  });
   const [isSubscribing, setIsSubscribing] = useState(false);
   const [isDiagnosing, setIsDiagnosing] = useState(false);
   const [lastError, setLastError] = useState<NotificationError | null>(null);
@@ -68,37 +70,130 @@ export function usePushNotifications() {
     []
   );
 
-  // Check initial browser capabilities and existing subscription
-  useEffect(() => {
-    const checkSupport = async () => {
-      const env = detectMobileEnvironment();
-      setMobileEnv(env);
+  const syncSubscriptionToFirestore = useCallback(async (pushSub: PushSubscription, env: MobileEnvironmentInfo) => {
+    try {
+      const subJson = pushSub.toJSON();
+      const userId =
+        auth.currentUser?.uid ||
+        localStorage.getItem("davveroId_student_identity") ||
+        "anon_" + Date.now();
+      const subId = btoa(pushSub.endpoint).replace(/[^a-zA-Z0-9]/g, "").substring(0, 40);
 
-      const supported = env.notificationSupported && env.swSupported && env.pushSupported;
-      setIsSupported(supported);
+      const record = {
+        id: subId,
+        endpoint: pushSub.endpoint,
+        keys: subJson.keys || {},
+        subscription: subJson,
+        userId,
+        userAgent: navigator.userAgent,
+        platform: navigator.platform,
+        isMobile: env.isMobile,
+        deviceType: env.isIOS ? "iOS" : env.isAndroid ? "Android" : "Desktop",
+        active: true,
+        updatedAt: new Date().toISOString(),
+      };
 
-      if (env.notificationSupported) {
-        setPermission(Notification.permission);
-      }
+      // Save in push_subscriptions and scoped app directory
+      await setDoc(doc(db, "push_subscriptions", subId), record, { merge: true });
+      try {
+        await setDoc(doc(db, `artifacts/${appId}/public/data/push_subscriptions`, subId), record, { merge: true });
+      } catch (_) {}
+      // Also sync in fcm_tokens for backward compatibility
+      await setDoc(
+        doc(db, "fcm_tokens", subId),
+        {
+          token: pushSub.endpoint,
+          subscription: subJson,
+          userId,
+          isMobile: env.isMobile,
+          updatedAt: new Date().toISOString(),
+        },
+        { merge: true }
+      );
+    } catch (dbErr: any) {
+      console.warn("[usePushNotifications] Erro ao sincronizar subscrição no Firestore:", dbErr);
+    }
+  }, []);
 
-      if (supported) {
-        try {
-          const reg = await navigator.serviceWorker.getRegistration();
-          if (reg && reg.pushManager) {
-            const existingSub = await reg.pushManager.getSubscription();
-            if (existingSub) {
-              setSubscription(existingSub);
+  // Check initial browser capabilities and restore existing subscription
+  const verifyAndRestoreSubscription = useCallback(async () => {
+    const env = detectMobileEnvironment();
+    setMobileEnv(env);
+
+    const supported = env.notificationSupported && env.swSupported && env.pushSupported;
+    setIsSupported(supported);
+
+    if (env.notificationSupported) {
+      const currentPerm = Notification.permission;
+      setPermission(currentPerm);
+    }
+
+    if (supported) {
+      try {
+        const reg = await ensureActiveServiceWorker().catch(() => navigator.serviceWorker.getRegistration());
+        if (reg && reg.pushManager) {
+          let existingSub = await reg.pushManager.getSubscription();
+          const explicitlyDisabled = localStorage.getItem("davvero_push_subscribed") === "false";
+
+          // If permission is already granted in the browser, and the user hasn't explicitly disabled it,
+          // auto-resubscribe silently so notifications never get lost after refreshes or service worker updates
+          if (!existingSub && Notification.permission === "granted" && !explicitlyDisabled) {
+            try {
+              const vapidRes = await getVapidPublicKeySafe();
+              const convertedKey = urlBase64ToUint8Array(vapidRes.key);
+              existingSub = await reg.pushManager.subscribe({
+                userVisibleOnly: true,
+                applicationServerKey: convertedKey,
+              });
               localStorage.setItem("davvero_push_subscribed", "true");
+            } catch (autoErr) {
+              console.warn("[usePushNotifications] Auto-recuperação da subscrição pendente:", autoErr);
             }
           }
-        } catch (e) {
-          console.warn("[usePushNotifications] Erro ao checar subscrição existente:", e);
+
+          if (existingSub) {
+            setSubscription(existingSub);
+            localStorage.setItem("davvero_push_subscribed", "true");
+            // Sync to Firestore in background
+            syncSubscriptionToFirestore(existingSub, env);
+          } else if (Notification.permission === "denied") {
+            localStorage.setItem("davvero_push_subscribed", "false");
+          }
         }
+      } catch (e) {
+        console.warn("[usePushNotifications] Erro ao verificar subscrição:", e);
+      }
+    }
+  }, [syncSubscriptionToFirestore]);
+
+  useEffect(() => {
+    verifyAndRestoreSubscription();
+
+    // Auto-recheck on tab focus / visibility change / service worker controller update
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "visible") {
+        verifyAndRestoreSubscription();
       }
     };
 
-    checkSupport();
-  }, []);
+    const handleControllerChange = () => {
+      verifyAndRestoreSubscription();
+    };
+
+    window.addEventListener("focus", handleVisibilityChange);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+    if ("serviceWorker" in navigator) {
+      navigator.serviceWorker.addEventListener("controllerchange", handleControllerChange);
+    }
+
+    return () => {
+      window.removeEventListener("focus", handleVisibilityChange);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+      if ("serviceWorker" in navigator) {
+        navigator.serviceWorker.removeEventListener("controllerchange", handleControllerChange);
+      }
+    };
+  }, [verifyAndRestoreSubscription]);
 
   // Main subscription method - Optimized for Mobile Browsers & Direct Gestures
   const subscribe = async (): Promise<PushSubscription | null> => {

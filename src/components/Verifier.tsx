@@ -1272,53 +1272,54 @@ export default function Verifier({
         )}
       </div>
 
+      {/* QR Code Scanner Camera Viewport - always accessible when scanning */}
+      <div className={`relative w-full max-w-sm rounded-xl overflow-hidden shadow-2xl border-2 border-sky-400 dark:border-sky-500/30 aspect-square bg-black ${!isScanning && !scanSuccessAnim && "hidden"}`}>
+        <div id="reader" className="w-full h-full"></div>
+        
+        {/* Custom Scanning Overlay */}
+        {isScanning && !scanSuccessAnim && (
+            <div className="absolute inset-0 z-10 pointer-events-none">
+              <div className="w-full h-full relative">
+                <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-green-400 to-transparent shadow-[0_0_15px_3px_rgba(34,197,94,0.8)] animate-scan-laser" />
+                <div className="absolute top-6 left-6 w-16 h-16 border-t-4 border-l-4 border-sky-400 rounded-tl-xl transition-all duration-300" />
+                <div className="absolute top-6 right-6 w-16 h-16 border-t-4 border-r-4 border-sky-400 rounded-tr-xl transition-all duration-300" />
+                <div className="absolute bottom-6 left-6 w-16 h-16 border-b-4 border-l-4 border-sky-400 rounded-bl-xl transition-all duration-300" />
+                <div className="absolute bottom-6 right-6 w-16 h-16 border-b-4 border-r-4 border-sky-400 rounded-br-xl transition-all duration-300" />
+                <div className="absolute inset-0 bg-sky-500/10 mix-blend-overlay pointer-events-none" />
+              </div>
+            </div>
+        )}
+
+        {/* Success Checkmark Overlay */}
+        {scanSuccessAnim && (
+            <div className="absolute inset-0 z-20 flex items-center justify-center transition-all duration-500 overflow-hidden">
+              <div className="absolute inset-0 bg-emerald-500/20 backdrop-blur-md animate-pulse"></div>
+              <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/40 via-transparent to-emerald-500/40 animate-scan-laser"></div>
+              
+              <div className="relative z-30 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full p-6 transform animate-qr-success-pop shadow-[0_0_50px_10px_rgba(16,185,129,0.6)] border-4 border-white/20">
+                <svg className="w-20 h-20 text-white drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
+                  <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" className="animate-stroke [stroke-dasharray:100] [stroke-dashoffset:100]" />
+                </svg>
+              </div>
+            </div>
+        )}
+      </div>
+      {isScanning && lastScannedDebug && !scanSuccessAnim && (
+        <div className="mt-2 text-[10px] text-yellow-600 bg-yellow-50 p-2 rounded max-w-xs break-all">
+          Debug (Last Read): {lastScannedDebug}
+        </div>
+      )}
+
+      {isScanning && (
+        <div className="flex flex-col items-center">
+          <p className="mt-2 text-[10px] text-slate-500 font-medium animate-pulse text-center">
+            Dica: Aproxime ou afaste a câmera para focar no código.
+          </p>
+        </div>
+      )}
+
       {verifyMode !== "VISITOR" && verifyMode !== "CERTIFICATE" && (
         <>
-          <div className={`relative w-full max-w-sm rounded-xl overflow-hidden shadow-2xl border-2 border-sky-400 dark:border-sky-500/30 aspect-square bg-black ${!isScanning && !scanSuccessAnim && "hidden"}`}>
-            <div id="reader" className="w-full h-full"></div>
-            
-            {/* Custom Scanning Overlay */}
-            {isScanning && !scanSuccessAnim && (
-                <div className="absolute inset-0 z-10 pointer-events-none">
-                  <div className="w-full h-full relative">
-                    <div className="absolute left-0 right-0 h-1 bg-gradient-to-r from-transparent via-green-400 to-transparent shadow-[0_0_15px_3px_rgba(34,197,94,0.8)] animate-scan-laser" />
-                    <div className="absolute top-6 left-6 w-16 h-16 border-t-4 border-l-4 border-sky-400 rounded-tl-xl transition-all duration-300" />
-                    <div className="absolute top-6 right-6 w-16 h-16 border-t-4 border-r-4 border-sky-400 rounded-tr-xl transition-all duration-300" />
-                    <div className="absolute bottom-6 left-6 w-16 h-16 border-b-4 border-l-4 border-sky-400 rounded-bl-xl transition-all duration-300" />
-                    <div className="absolute bottom-6 right-6 w-16 h-16 border-b-4 border-r-4 border-sky-400 rounded-br-xl transition-all duration-300" />
-                    <div className="absolute inset-0 bg-sky-500/10 mix-blend-overlay pointer-events-none" />
-                  </div>
-                </div>
-            )}
-
-            {/* Success Checkmark Overlay */}
-            {scanSuccessAnim && (
-               <div className="absolute inset-0 z-20 flex items-center justify-center transition-all duration-500 overflow-hidden">
-                  <div className="absolute inset-0 bg-emerald-500/20 backdrop-blur-md animate-pulse"></div>
-                  <div className="absolute inset-0 bg-gradient-to-t from-emerald-500/40 via-transparent to-emerald-500/40 animate-scan-laser"></div>
-                  
-                  <div className="relative z-30 bg-gradient-to-br from-emerald-400 to-emerald-600 rounded-full p-6 transform animate-qr-success-pop shadow-[0_0_50px_10px_rgba(16,185,129,0.6)] border-4 border-white/20">
-                    <svg className="w-20 h-20 text-white drop-shadow-md" fill="none" stroke="currentColor" viewBox="0 0 24 24" xmlns="http://www.w3.org/2000/svg">
-                      <path strokeLinecap="round" strokeLinejoin="round" strokeWidth={4} d="M5 13l4 4L19 7" className="animate-stroke [stroke-dasharray:100] [stroke-dashoffset:100]" />
-                    </svg>
-                  </div>
-               </div>
-            )}
-          </div>
-          {isScanning && lastScannedDebug && !scanSuccessAnim && (
-            <div className="mt-2 text-[10px] text-yellow-600 bg-yellow-50 p-2 rounded max-w-xs break-all">
-              Debug (Last Read): {lastScannedDebug}
-            </div>
-          )}
-
-          {isScanning && (
-            <div className="flex flex-col items-center">
-              <p className="mt-2 text-[10px] text-slate-500 font-medium animate-pulse text-center">
-                Dica: Aproxime ou afaste a câmera para focar no código.
-              </p>
-            </div>
-          )}
-
           {/* Main Form Area */}
           <div className="w-full max-w-md space-y-4">
             <div className="relative flex items-center py-2 w-full max-w-md">
@@ -1567,13 +1568,26 @@ export default function Verifier({
 
               <div className="w-full space-y-3">
                 {/* Method 1: QR Scanner */}
-                <button
-                  onClick={startScanner}
-                  className="w-full py-3 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/50 dark:hover:bg-sky-900/50 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 font-bold flex items-center justify-center gap-2 text-xs sm:text-sm transition-all active:scale-95 shadow-sm"
-                >
-                  <QrCode className="w-4 h-4 text-sky-600 dark:text-sky-400" />
-                  Escanear QR Code com Câmera
-                </button>
+                {!isScanning ? (
+                  <button
+                    onClick={startScanner}
+                    className="w-full py-3 px-4 rounded-xl bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/50 dark:hover:bg-sky-900/50 border border-sky-200 dark:border-sky-800 text-sky-700 dark:text-sky-300 font-bold flex items-center justify-center gap-2 text-xs sm:text-sm transition-all active:scale-95 shadow-sm"
+                  >
+                    <QrCode className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                    Escanear QR Code com Câmera
+                  </button>
+                ) : (
+                  <button
+                    onClick={() => {
+                      scanHandledRef.current = true;
+                      setIsScanning(false);
+                    }}
+                    className="w-full py-3 px-4 rounded-xl bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/40 border border-rose-200 dark:border-rose-800/50 text-rose-600 dark:text-rose-400 font-bold flex items-center justify-center gap-2 text-xs sm:text-sm transition-all active:scale-95 shadow-sm"
+                  >
+                    <XCircle className="w-4 h-4" />
+                    Cancelar Câmera
+                  </button>
+                )}
 
                 <div className="relative text-center my-1">
                   <div className="absolute inset-0 flex items-center">
