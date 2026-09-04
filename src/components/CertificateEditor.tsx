@@ -302,7 +302,9 @@ export default function CertificateEditor({
       if (!template.bodyText || template.bodyText.includes("carga horária")) {
         const startStr = new Date(event.startDate).toLocaleDateString("pt-BR");
         const endStr = event.endDate ? new Date(event.endDate).toLocaleDateString("pt-BR") : startStr;
-        const defaultUpdatedText = `Certificamos que [NOME DO ALUNO] ${type === "organizer" ? "atuou na organização do evento" : "participou com êxito do evento"} "${event.title}", realizado de ${startStr} a ${endStr}, totalizando a carga horária de ${num} horas.`;
+        const isSingleDay = !event.endDate || startStr === endStr;
+        const datePhrase = isSingleDay ? `no dia ${startStr}` : `de ${startStr} a ${endStr}`;
+        const defaultUpdatedText = `Certificamos que [NOME DO ALUNO] ${type === "organizer" ? "atuou na organização do evento" : "participou com êxito do evento"} "${event.title}", realizado ${datePhrase}, totalizando a carga horária de ${num} horas.`;
         setTemplate((prev) => ({
           ...prev,
           bodyText: defaultUpdatedText

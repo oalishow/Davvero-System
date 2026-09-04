@@ -104,9 +104,27 @@ export default function PublicAppointmentsList({
                 ? "whatsapp"
                 : "other",
             whatsappNumber: p.whatsappNumber || "",
+            seminary: p.seminary || "SPSCJ - Seminário Provincial Sagrado Coração de Jesus",
           };
         });
       }
+
+      // Garantir que Padre Alan, Padre Altair, Padre Anderson e Dra Alessandra pertençam ao Seminário Provincial
+      const PROVINCIAL_SEMINARY = "SPSCJ - Seminário Provincial Sagrado Coração de Jesus";
+      Object.values(profMap).forEach((p) => {
+        const isProvincial =
+          p.id === "prof_altair" ||
+          p.id === "prof_anderson" ||
+          p.id === "prof_alan" ||
+          p.id === "prof_alessandra" ||
+          p.name.toLowerCase().includes("altair") ||
+          p.name.toLowerCase().includes("anderson") ||
+          p.name.toLowerCase().includes("alan") ||
+          p.name.toLowerCase().includes("alessandra");
+        if (isProvincial && (!p.seminary || p.seminary === "" || p.seminary === "Todos os Seminários")) {
+          p.seminary = PROVINCIAL_SEMINARY;
+        }
+      });
 
       setProfessionalsList(Object.values(profMap));
     } catch (e) {
@@ -120,8 +138,6 @@ export default function PublicAppointmentsList({
     const matchesProf = selectedProfId === "all" || prof.id === selectedProfId;
     const matchesSeminary =
       selectedSeminary === "all" ||
-      !prof.seminary ||
-      prof.seminary === "" ||
       prof.seminary === selectedSeminary;
     return matchesProf && matchesSeminary;
   });
@@ -323,23 +339,26 @@ export default function PublicAppointmentsList({
                           </p>
                         </div>
 
-                        {/* Links de Atendimento Específicos: Filosofia & Teologia */}
+                        {/* Grupos de WhatsApp para Escalas: Filosofia & Teologia */}
                         {(hasFilo || hasTeol) && (
-                          <div className="mb-4 bg-slate-50 dark:bg-slate-900/50 p-3 rounded-2xl border border-slate-200/70 dark:border-slate-700/60 space-y-2">
-                            <span className="text-[9px] font-black text-slate-400 uppercase tracking-widest block text-center">
-                              Salas de Atendimento Virtual
-                            </span>
+                          <div className="mb-4 bg-emerald-50/50 dark:bg-emerald-950/30 p-3 rounded-2xl border border-emerald-200/60 dark:border-emerald-800/40 space-y-2">
+                            <div className="flex items-center justify-center gap-1.5 text-center">
+                              <MessageCircle className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                              <span className="text-[9px] font-black text-emerald-700 dark:text-emerald-300 uppercase tracking-widest">
+                                Grupos de WhatsApp • Escalas
+                              </span>
+                            </div>
 
                             {hasFilo && (
                               <a
                                 href={prof.meetingLinkFilosofia}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="w-full py-2 px-3 bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/40 dark:hover:bg-sky-900/40 text-sky-700 dark:text-sky-300 border border-sky-200 dark:border-sky-800/60 rounded-xl text-xs font-bold flex items-center justify-between transition-colors"
+                                className="w-full py-2 px-3 bg-white hover:bg-emerald-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/70 rounded-xl text-xs font-bold flex items-center justify-between transition-all hover:scale-[1.01] active:scale-95 shadow-xs"
                               >
                                 <span className="flex items-center gap-1.5">
-                                  <Video className="w-3.5 h-3.5 text-sky-500" />
-                                  🎓 Atendimento Filosofia
+                                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  🎓 Escalas Filosofia (WhatsApp)
                                 </span>
                                 <ExternalLink className="w-3 h-3 opacity-60" />
                               </a>
@@ -350,11 +369,11 @@ export default function PublicAppointmentsList({
                                 href={prof.meetingLinkTeologia}
                                 target="_blank"
                                 rel="noopener noreferrer"
-                                className="w-full py-2 px-3 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-950/40 dark:hover:bg-indigo-900/40 text-indigo-700 dark:text-indigo-300 border border-indigo-200 dark:border-indigo-800/60 rounded-xl text-xs font-bold flex items-center justify-between transition-colors"
+                                className="w-full py-2 px-3 bg-white hover:bg-emerald-50 dark:bg-slate-900 dark:hover:bg-slate-800 text-emerald-700 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-700/70 rounded-xl text-xs font-bold flex items-center justify-between transition-all hover:scale-[1.01] active:scale-95 shadow-xs"
                               >
                                 <span className="flex items-center gap-1.5">
-                                  <Video className="w-3.5 h-3.5 text-indigo-500" />
-                                  📖 Atendimento Teologia
+                                  <MessageCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                  📖 Escalas Teologia (WhatsApp)
                                 </span>
                                 <ExternalLink className="w-3 h-3 opacity-60" />
                               </a>

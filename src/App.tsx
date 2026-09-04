@@ -38,6 +38,7 @@ import { lazyWithRetry } from "./lib/lazyWithRetry";
 import Verifier from "./components/Verifier";
 import YouTubeLiveButton from "./components/YouTubeLiveButton";
 import HomePollsWidget from "./components/HomePollsWidget";
+import { useYouTubeLive } from "./hooks/useYouTubeLive";
 
 const Admin = lazyWithRetry(() => import("./components/Admin"));
 const StudentPortal = lazyWithRetry(() => import("./components/StudentPortal"));
@@ -49,6 +50,11 @@ const WelcomeModal = lazyWithRetry(() => import("./components/WelcomeModal"));
 export default function App() {
   const { settings } = useSettings();
   const { showAlert } = useDialog();
+  const youtubeLive = useYouTubeLive();
+  const isFacultyLive = youtubeLive.isLive || Boolean(settings.liveBadgeEnabled);
+  const liveTargetUrl = youtubeLive.videoId
+    ? `https://www.youtube.com/watch?v=${youtubeLive.videoId}`
+    : (youtubeLive.liveUrl || settings.liveBadgeUrl || "https://www.youtube.com/@fajopademarilia/live");
   const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -153,6 +159,21 @@ export default function App() {
       setUpdateProgress(100);
       await safeReloadApp(targetVer || APP_VERSION);
     }, 300);
+  };
+
+  const handleOpenAdmin = () => {
+    playSound('pop');
+    if (activeTab !== "admin") {
+      setActiveTab("admin");
+    }
+    // Redireciona na tela para as opções (dashboard, membros, eventos, agendamentos, etc.)
+    setTimeout(() => {
+      window.dispatchEvent(new CustomEvent("focus-admin-options"));
+      const target = document.getElementById("admin-tabs-nav") || document.getElementById("admin-section");
+      if (target) {
+        target.scrollIntoView({ behavior: "smooth", block: "start" });
+      }
+    }, 80);
   };
 
   const handleInteractiveUpdateCheck = async () => {
@@ -624,23 +645,48 @@ export default function App() {
         </AnimatePresence>
 
         <div className="relative z-10 space-y-6 sm:space-y-8 print:space-y-4">
-          <Header onOpenAdmin={() => setActiveTab("admin")} />
+          <Header onOpenAdmin={handleOpenAdmin} />
 
           {settings.headerLogoEnabled && settings.headerLogoUrl && (
             <div className="flex flex-col items-center justify-center gap-4 mb-4 mt-2 sm:mt-0 no-print print:hidden">
               <a 
-                href={settings.liveBadgeEnabled && settings.liveBadgeUrl ? settings.liveBadgeUrl : (settings.headerLogoLink || "#")} 
+                href={isFacultyLive ? liveTargetUrl : (settings.headerLogoLink || "#")} 
                 target="_blank" 
                 rel="noopener noreferrer" 
-                className="relative block max-w-[200px] hover:opacity-90 transition-opacity"
+                className={`relative group inline-block transition-all duration-300 ${
+                  isFacultyLive 
+                    ? "cursor-pointer hover:scale-105 active:scale-95" 
+                    : "max-w-[200px] hover:opacity-90 transition-opacity"
+                }`}
+                title={isFacultyLive ? `🔴 FAJOPA está AO VIVO! Clique para assistir à transmissão` : undefined}
               >
-                {settings.liveBadgeEnabled && (
-                  <div className="absolute -top-3 -right-6 sm:-right-8 z-10 flex items-center gap-1.5 bg-red-600 outline outline-2 outline-white dark:outline-slate-900 text-white px-2 py-0.5 rounded-full shadow-lg shadow-red-500/30 animate-pulse">
-                    <span className="w-1.5 h-1.5 rounded-full bg-white animate-[ping_1.5s_cubic-bezier(0,0,0.2,1)_infinite]" />
-                    <span className="text-[10px] font-bold uppercase tracking-widest whitespace-nowrap">Ao Vivo</span>
+                {isFacultyLive ? (
+                  /* Instagram-style LIVE ring around FAJOPA logo */
+                  <div className="relative inline-flex items-center justify-center p-[3.5px] rounded-3xl sm:rounded-[28px] bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] shadow-lg shadow-rose-500/30">
+                    {/* Pulsing ring aura */}
+                    <div className="absolute -inset-1 rounded-3xl sm:rounded-[30px] bg-gradient-to-tr from-[#f09433] via-[#dc2743] to-[#bc1888] opacity-60 blur-xs animate-pulse -z-10" />
+
+                    {/* Inner image container */}
+                    <div className="relative bg-white dark:bg-slate-900 rounded-[22px] sm:rounded-[24px] p-2.5 sm:p-3 overflow-hidden flex items-center justify-center max-w-[200px] sm:max-w-[220px]">
+                      <img 
+                        src={settings.headerLogoUrl} 
+                        alt="FAJOPA Ao Vivo" 
+                        className="w-full h-auto object-contain drop-shadow-sm" 
+                      />
+                    </div>
+
+                    {/* Instagram-style "LIVE" badge overlapping the bottom border */}
+                    <div className="absolute -bottom-2.5 left-1/2 -translate-x-1/2 z-20 flex items-center gap-1.5 px-3 py-0.5 rounded-full bg-gradient-to-r from-red-600 via-rose-600 to-pink-600 text-white font-black text-[10px] sm:text-[11px] tracking-widest uppercase shadow-md shadow-red-600/40 border-2 border-white dark:border-slate-900 whitespace-nowrap">
+                      <span className="relative flex h-2 w-2">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-white" />
+                      </span>
+                      <span>LIVE</span>
+                    </div>
                   </div>
+                ) : (
+                  <img src={settings.headerLogoUrl} alt="Logo" className="w-full h-auto object-contain drop-shadow-sm" />
                 )}
-                <img src={settings.headerLogoUrl} alt="Logo" className="w-full h-auto object-contain drop-shadow-sm" />
               </a>
 
               {(settings.socialFacebookEnabled || settings.socialInstagramEnabled || settings.socialYoutubeEnabled || settings.socialWhatsappEnabled || settings.socialEmailEnabled) && (
@@ -674,11 +720,6 @@ export default function App() {
               )}
             </div>
           )}
-
-          {/* YouTube Live Banner (Ativado quando canal estiver ao vivo / Desativando quando offline) */}
-          <div className="flex justify-center mb-4 mt-2 px-2 no-print print:hidden">
-            <YouTubeLiveButton variant="banner" className="w-full max-w-sm" />
-          </div>
 
           {settings.fajopaPlusEnabled && (
             <div className="flex justify-center mb-6 mt-2 no-print print:hidden">
@@ -845,7 +886,11 @@ export default function App() {
                       />
                     </div>
                   )}
-                  {activeTab === "admin" && <Admin />}
+                  {activeTab === "admin" && (
+                    <div id="admin-section" className="scroll-mt-20">
+                      <Admin />
+                    </div>
+                  )}
                   {activeTab === "events" && <EventsPage onNavigateToStudent={() => setActiveTab("student")} />}
                   {activeTab === "appointments" && <PublicAppointmentsList member={null} onNavigateToStudent={() => setActiveTab("student")} />}
                   {activeTab === "diocese" && (

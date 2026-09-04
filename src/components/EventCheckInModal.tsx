@@ -189,7 +189,10 @@ export default function EventCheckInModal({
         if (!snap.empty) {
           const att = { id: snap.docs[0].id, ...snap.docs[0].data() } as Attendance;
           setExistingAttendance(att);
-          if (att.status === "presente" || att.status === "apto_para_certificado") {
+          const todayStr = new Date().toISOString().split("T")[0];
+          const hasCheckedInToday = Boolean(att.checkInDates && att.checkInDates.includes(todayStr));
+
+          if ((att.status === "presente" || att.status === "apto_para_certificado") && hasCheckedInToday) {
             setAlreadyPresent(true);
             setDigitalSignatureProtocol(
               generateProtocol(activeMember.id)
@@ -197,8 +200,7 @@ export default function EventCheckInModal({
             setSignatureTimestamp(new Date().toLocaleString("pt-BR"));
             return;
           } else if (isFromQrScan && activeMember.isActive !== false && presenceStatus.isOpen) {
-            // Auto-check-in when redirected from QR code
-            const todayStr = new Date().toISOString().split("T")[0];
+            // Auto-check-in when redirected from QR code for today
             const nowStr = new Date().toLocaleString("pt-BR");
             const protocol = generateProtocol(activeMember.id);
             await updateAttendanceStatus(att.id, "presente", todayStr);
@@ -208,7 +210,7 @@ export default function EventCheckInModal({
             if (typeof navigator !== "undefined" && typeof navigator.vibrate === "function") {
               try { navigator.vibrate([40, 40, 80]); } catch {}
             }
-            showAlert("Check-in e Assinatura Digital realizados com sucesso!", { type: "success" });
+            showAlert("Check-in e Assinatura Digital do dia realizados com sucesso!", { type: "success" });
             if (onSuccess) onSuccess();
             return;
           }

@@ -111,6 +111,33 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [adminAccessLevel, setAdminAccessLevel] = useState<"ADMIN" | "GERENTE" | "LEITOR">("ADMIN");
 
   useEffect(() => {
+    const handleFocusAdminOptions = () => {
+      // Close overlay panels if open so user returns to the primary options
+      setShowList(false);
+      setShowSettings(false);
+      setShowBin(false);
+      setShowBackup(false);
+      setShowRequests(false);
+      setShowPrintReport(false);
+      setShowMyCard(false);
+
+      requestAnimationFrame(() => {
+        const el = document.getElementById("admin-tabs-nav");
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "start" });
+          el.classList.add("ring-2", "ring-sky-500", "ring-offset-2", "rounded-2xl");
+          setTimeout(() => {
+            el.classList.remove("ring-2", "ring-sky-500", "ring-offset-2", "rounded-2xl");
+          }, 1500);
+        }
+      });
+    };
+
+    window.addEventListener("focus-admin-options", handleFocusAdminOptions);
+    return () => window.removeEventListener("focus-admin-options", handleFocusAdminOptions);
+  }, []);
+
+  useEffect(() => {
     const fetchAdminRoleAndMember = async () => {
       const currentRole: "ADMIN" | "GERENTE" | "LEITOR" = "ADMIN";
       
@@ -557,7 +584,10 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
         </div>
       </div>
 
-      <div className="flex flex-wrap items-center gap-2 mb-6 pb-4 border-b border-slate-200 dark:border-slate-700/60 print:hidden w-full">
+      <div 
+        id="admin-tabs-nav"
+        className="flex flex-wrap items-center gap-2 mb-6 pb-4 border-b border-slate-200 dark:border-slate-700/60 print:hidden w-full scroll-mt-24 transition-all duration-300"
+      >
         <button
           onClick={() => setActiveTab("dashboard")}
           className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:py-2.5 rounded-lg sm:rounded-full font-bold text-xs sm:text-sm transition-all whitespace-nowrap border flex-grow sm:flex-grow-0 ${

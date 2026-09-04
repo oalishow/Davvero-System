@@ -25,8 +25,10 @@ import {
   Award,
   Mail,
   MailCheck,
-  MailX
+  MailX,
+  AlertTriangle,
 } from "lucide-react";
+import { isEventCertificateReleased } from "../lib/certificateAuth";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
@@ -414,7 +416,8 @@ export default function StudentPortal({
   const [isEnrollingInProgress, setIsEnrollingInProgress] = useState<
     string | null
   >(null);
-  const [isDownloading, setIsDownloading] = useState(false);
+  const [downloadingCertKey, setDownloadingCertKey] = useState<string | null>(null);
+  const isDownloading = Boolean(downloadingCertKey);
 
   useEffect(() => {
     let unsubEvents: any;
@@ -661,7 +664,7 @@ export default function StudentPortal({
   ) => {
     if (!member) return;
 
-    setIsDownloading(true);
+    setDownloadingCertKey(`${event.id}_${type}`);
 
     try {
       // Find the node
@@ -764,7 +767,7 @@ export default function StudentPortal({
         { type: 'error' }
       );
     } finally {
-      setIsDownloading(false);
+      setDownloadingCertKey(null);
     }
   };
 
@@ -2149,6 +2152,29 @@ export default function StudentPortal({
                                   </span>
                                 )}
                               </div>
+                              {(() => {
+                                const att = myAttendances.find((a) => a.eventId === event.id);
+                                if (att?.checkInDates && att.checkInDates.length > 0) {
+                                  return (
+                                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
+                                      <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">Assinaturas:</span>
+                                      {att.checkInDates.map((dateStr) => {
+                                        const parts = dateStr.split("-");
+                                        const dFormatted = parts.length === 3 ? `${parts[2]}/${parts[1]}` : dateStr;
+                                        return (
+                                          <span
+                                            key={dateStr}
+                                            className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 flex items-center gap-1"
+                                          >
+                                            <CheckCircle className="w-2.5 h-2.5" /> Dia {dFormatted}
+                                          </span>
+                                        );
+                                      })}
+                                    </div>
+                                  );
+                                }
+                                return null;
+                              })()}
                               {/* Event Links Section */}
                               {(event.schedulePdfUrl || event.link || event.locationOrLink) && (
                                 <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 text-xs font-bold uppercase mt-5 pt-4 border-t border-slate-200 dark:border-slate-700/80">
@@ -2273,20 +2299,32 @@ export default function StudentPortal({
                       </h3>
                     </div>
 
+                    {/* Aviso de Armazenamento Temporário de Certificados */}
+                    <div className="mb-4 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-3 text-amber-900 dark:text-amber-200">
+                      <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                      <div className="text-xs leading-relaxed space-y-1">
+                        <p className="font-bold">Aviso Importante sobre Armazenamento:</p>
+                        <p className="text-amber-800 dark:text-amber-300">
+                          Os certificados ficam temporariamente no painel, por isso é responsabilidade do aluno baixar e armazenar em seu dispositivo. O Davvero não se responsabilizará em emitir uma segunda via, ficando sob responsabilidade da instituição se fará ou não a produção da segunda via.
+                        </p>
+                      </div>
+                    </div>
+
                     {allEvents.filter((e) => {
                       const attendance = myAttendances.find((a) => a.eventId === e.id);
                       if (!attendance) return false;
-                      const hasPartCert = (e.status === "encerrado" || e.status === "aberto") && e.certificateTemplate?.isApproved === true && (attendance.status === "presente" || attendance.status === "apto_para_certificado");
-                      const hasOrgCert = (e.status === "encerrado" || e.status === "aberto") && e.organizationCertificateTemplate?.isApproved === true && attendance.isOrganizer === true;
+                      const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
+                      const hasPartCert = isReleased && e.certificateTemplate?.isApproved === true && (attendance.status === "presente" || attendance.status === "apto_para_certificado");
+                      const hasOrgCert = isReleased && e.organizationCertificateTemplate?.isApproved === true && attendance.isOrganizer === true;
                       return hasPartCert || hasOrgCert;
                     }).length > 0 ? (
                       <div className="space-y-4">
                         {allEvents.filter((e) => {
-                            if (e.status !== "encerrado" && e.status !== "aberto") return false;
                             const attendance = myAttendances.find((a) => a.eventId === e.id);
                             if (!attendance) return false;
-                            const hasPartCert = e.certificateTemplate?.isApproved === true && (attendance.status === "presente" || attendance.status === "apto_para_certificado");
-                            const hasOrgCert = e.organizationCertificateTemplate?.isApproved === true && attendance.isOrganizer === true;
+                            const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
+                            const hasPartCert = isReleased && e.certificateTemplate?.isApproved === true && (attendance.status === "presente" || attendance.status === "apto_para_certificado");
+                            const hasOrgCert = isReleased && e.organizationCertificateTemplate?.isApproved === true && attendance.isOrganizer === true;
                             return hasPartCert || hasOrgCert;
                           })
                           .map((event) => {
@@ -2309,19 +2347,24 @@ export default function StudentPortal({
                                   </div>
                                 </div>
 
-                                <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex flex-col sm:flex-row gap-2">
+                                 <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex flex-col sm:flex-row gap-2">
                                   {hasPartCert && (
                                     <div className="flex-1 flex gap-2">
                                       <button 
-                                        onClick={() => handleDownloadCertificate(event, "participant")} 
-                                        disabled={isDownloading}
-                                        className="flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                                        onClick={() => {
+                                          if (downloadingCertKey) return;
+                                          handleDownloadCertificate(event, "participant");
+                                        }} 
+                                        disabled={downloadingCertKey === `${event.id}_participant`}
+                                        className={`flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                                          downloadingCertKey === `${event.id}_participant` ? "opacity-75 pointer-events-none" : ""
+                                        }`}
                                       >
-                                        {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Certificado (PDF)</>}
+                                        {downloadingCertKey === `${event.id}_participant` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Certificado (PDF)</>}
                                       </button>
                                       <button 
                                         onClick={() => setPreviewCertEvent({ event, type: "participant" })}
-                                        className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                        className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                                         title="Visualizar Certificado"
                                       >
                                         <Eye className="w-4 h-4" /> Visualizar
@@ -2331,15 +2374,20 @@ export default function StudentPortal({
                                   {hasOrgCert && (
                                     <div className="flex-1 flex gap-2">
                                       <button 
-                                        onClick={() => handleDownloadCertificate(event, "organizer")} 
-                                        disabled={isDownloading}
-                                        className="flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-400 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                                        onClick={() => {
+                                          if (downloadingCertKey) return;
+                                          handleDownloadCertificate(event, "organizer");
+                                        }} 
+                                        disabled={downloadingCertKey === `${event.id}_organizer`}
+                                        className={`flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-400 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                                          downloadingCertKey === `${event.id}_organizer` ? "opacity-75 pointer-events-none" : ""
+                                        }`}
                                       >
-                                        {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Organização (PDF)</>}
+                                        {downloadingCertKey === `${event.id}_organizer` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Organização (PDF)</>}
                                       </button>
                                       <button 
                                         onClick={() => setPreviewCertEvent({ event, type: "organizer" })}
-                                        className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5"
+                                        className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
                                         title="Visualizar Certificado de Organização"
                                       >
                                         <Eye className="w-4 h-4" /> Visualizar
@@ -2845,9 +2893,13 @@ export default function StudentPortal({
                     handleDownloadCertificate(previewCertEvent.event, previewCertEvent.type);
                   }}
                   disabled={isDownloading}
-                  className="py-3 px-6 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50"
+                  className="py-3 px-6 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
                 >
-                  {isDownloading ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Certificado em PDF</>}
+                  {downloadingCertKey === `${previewCertEvent.event.id}_${previewCertEvent.type}` ? (
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                  ) : (
+                    <><Download className="w-4 h-4" /> Baixar Certificado em PDF</>
+                  )}
                 </button>
               </div>
             </div>

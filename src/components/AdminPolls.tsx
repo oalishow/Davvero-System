@@ -61,7 +61,7 @@ export default function AdminPolls() {
 
   const handleRemoveOption = (index: number) => {
     if (newOptions.length <= 2) {
-      showAlert("A enquete precisa ter pelo menos 2 opções de resposta.", "warning");
+      showAlert("A enquete precisa ter pelo menos 2 opções de resposta.", { type: "warning" });
       return;
     }
     setNewOptions(newOptions.filter((_, i) => i !== index));
@@ -76,13 +76,13 @@ export default function AdminPolls() {
   const handleCreatePoll = async (e: React.FormEvent) => {
     e.preventDefault();
     if (!newTitle.trim()) {
-      showAlert("Informe o título ou pergunta da enquete.", "warning");
+      showAlert("Informe o título ou pergunta da enquete.", { type: "warning" });
       return;
     }
 
     const validOptions = newOptions.map((o) => o.trim()).filter(Boolean);
     if (validOptions.length < 2) {
-      showAlert("Adicione pelo menos 2 opções de resposta válidas.", "warning");
+      showAlert("Adicione pelo menos 2 opções de resposta válidas.", { type: "warning" });
       return;
     }
 
@@ -106,7 +106,7 @@ export default function AdminPolls() {
         options: formattedOptions,
       });
 
-      showAlert("Enquete criada e publicada com sucesso!", "success");
+      showAlert("Enquete criada e publicada com sucesso!", { type: "success" });
       setShowCreateModal(false);
       setNewTitle("");
       setNewDesc("");
@@ -117,7 +117,7 @@ export default function AdminPolls() {
         "🔧 Precisa melhorar",
       ]);
     } catch {
-      showAlert("Erro ao criar enquete.", "error");
+      showAlert("Erro ao criar enquete.", { type: "error" });
     }
   };
 
@@ -126,40 +126,40 @@ export default function AdminPolls() {
       await updatePoll(poll.id, { active: !poll.active });
       showAlert(
         `Enquete ${!poll.active ? "ativada" : "desativada"} com sucesso!`,
-        "success"
+        { type: "success" }
       );
     } catch {
-      showAlert("Erro ao alterar status da enquete.", "error");
+      showAlert("Erro ao alterar status da enquete.", { type: "error" });
     }
   };
 
   const handleResetVotes = async (pollId: string) => {
     const confirmed = await showConfirm(
       "Deseja realmente zerar todos os votos desta enquete?",
-      { type: "danger" }
+      { type: "warning" }
     );
     if (!confirmed) return;
 
     try {
       await resetPollVotes(pollId);
-      showAlert("Contagem de votos zerada com sucesso!", "success");
+      showAlert("Contagem de votos zerada com sucesso!", { type: "success" });
     } catch {
-      showAlert("Erro ao zerar votos.", "error");
+      showAlert("Erro ao zerar votos.", { type: "error" });
     }
   };
 
   const handleDelete = async (pollId: string) => {
     const confirmed = await showConfirm(
       "Deseja excluir permanentemente esta enquete?",
-      { type: "danger" }
+      { type: "error" }
     );
     if (!confirmed) return;
 
     try {
       await deletePoll(pollId);
-      showAlert("Enquete removida com sucesso.", "success");
+      showAlert("Enquete removida com sucesso.", { type: "success" });
     } catch {
-      showAlert("Erro ao remover enquete.", "error");
+      showAlert("Erro ao remover enquete.", { type: "error" });
     }
   };
 

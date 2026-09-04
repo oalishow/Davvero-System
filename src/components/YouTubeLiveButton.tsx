@@ -150,18 +150,18 @@ export default function YouTubeLiveButton({
             whileHover={{ scale: 1.04 }}
             whileTap={{ scale: 0.96 }}
             onClick={() => setIsModalOpen(true)}
-            className="group relative flex items-center gap-2 px-3 py-1.5 rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs shadow-md shadow-red-500/30 border border-red-400/50 cursor-pointer overflow-hidden transition-all"
+            className="group relative flex items-center gap-1.5 sm:gap-2 px-2 py-1 sm:px-3 sm:py-1.5 rounded-lg sm:rounded-xl bg-gradient-to-r from-red-600 via-rose-600 to-red-600 hover:from-red-500 hover:to-rose-500 text-white font-black text-xs shadow-md shadow-red-500/30 border border-red-400/50 cursor-pointer overflow-hidden transition-all shrink-0"
             title={`Canal FAJOPA está AO VIVO: ${title || "Clique para assistir"}`}
           >
             {/* Live ripple pulse */}
-            <span className="relative flex h-2.5 w-2.5 shrink-0">
+            <span className="relative flex h-2 w-2 sm:h-2.5 sm:w-2.5 shrink-0">
               <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-white opacity-75" />
-              <span className="relative inline-flex rounded-full h-2.5 w-2.5 bg-white" />
+              <span className="relative inline-flex rounded-full h-2 w-2 sm:h-2.5 sm:w-2.5 bg-white" />
             </span>
 
-            <Youtube className="w-4 h-4 fill-white shrink-0" />
+            <Youtube className="w-3.5 h-3.5 sm:w-4 sm:h-4 fill-white shrink-0" />
 
-            <span className="tracking-wide uppercase text-[11px] font-black drop-shadow-xs">
+            <span className="tracking-wide uppercase text-[10px] sm:text-[11px] font-black drop-shadow-xs whitespace-nowrap">
               AO VIVO
             </span>
 
@@ -170,17 +170,17 @@ export default function YouTubeLiveButton({
           </motion.button>
         ) : (
           // --- ESTADO DESATIVADO (CANAL OFFLINE) ---
-          <div className="relative">
+          <div className="relative shrink-0">
             <button
               onClick={() => setShowOfflinePopover(!showOfflinePopover)}
-              className="group flex items-center gap-1.5 px-2.5 py-1.5 rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:border-slate-300 dark:hover:border-slate-600 font-bold text-xs transition-all cursor-pointer"
+              className="group flex items-center gap-1 sm:gap-1.5 px-2 py-1 sm:px-2.5 sm:py-1.5 rounded-lg sm:rounded-xl bg-slate-100 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-red-500 dark:hover:text-red-400 hover:border-slate-300 dark:hover:border-slate-600 font-bold text-xs transition-all cursor-pointer shrink-0"
               title="Status da Live YouTube: Canal Offline (Clique para opções)"
             >
-              <div className="relative">
+              <div className="relative shrink-0">
                 <Youtube className="w-3.5 h-3.5 text-slate-400 group-hover:text-red-500 transition-colors" />
                 <span className="absolute -bottom-0.5 -right-0.5 w-1.5 h-1.5 rounded-full bg-slate-400 dark:bg-slate-500" />
               </div>
-              <span className="text-[11px] font-medium hidden sm:inline text-slate-500 dark:text-slate-400">
+              <span className="text-[11px] font-medium hidden md:inline text-slate-500 dark:text-slate-400">
                 Live
               </span>
               <span className="text-[9px] px-1 py-0.2 rounded bg-slate-200 dark:bg-slate-700 text-slate-500 dark:text-slate-400 font-bold">

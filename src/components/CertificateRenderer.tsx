@@ -79,7 +79,9 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     const hoursText = hasValidHours ? `, com carga horária total de ${rawHours} horas` : "";
 
     const certCode = generateCertificateCode(event, member, isOrganizer);
-    const certVerificationUrl = `${typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}?cert=` : ''}${certCode}`;
+    const rawBaseUrl = settings.certificateValidationUrl || settings.url || (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : '');
+    const cleanBaseUrl = rawBaseUrl.replace(/\/+$/, '');
+    const certVerificationUrl = `${cleanBaseUrl}${cleanBaseUrl.includes('?') ? '&' : '?'}cert=${encodeURIComponent(certCode)}`;
 
     useEffect(() => {
       if (event?.id && member?.id) {
@@ -92,16 +94,34 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
       }
     }, [certCode, event, member, isOrganizer]);
 
-    const defaultBodyText = isOrganizer
-      ? `Certificamos que [NOME DO ALUNO], atuou com distinção como membro da Equipe de Organização do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado entre ${new Date(event.startDate).toLocaleDateString('pt-BR')} e ${new Date(event.endDate || event.startDate).toLocaleDateString('pt-BR')}${hoursText}.`
-      : `Certificamos que [NOME DO ALUNO], participou com êxito e assiduidade do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado entre ${new Date(event.startDate).toLocaleDateString('pt-BR')} e ${new Date(event.endDate || event.startDate).toLocaleDateString('pt-BR')}${hoursText}.`;
+    const startObj = new Date(event.startDate);
+    const endObj = event.endDate ? new Date(event.endDate) : startObj;
+    const startStr = !isNaN(startObj.getTime()) ? startObj.toLocaleDateString('pt-BR') : '';
+    const endStr = !isNaN(endObj.getTime()) ? endObj.toLocaleDateString('pt-BR') : startStr;
+    const isSingleDay = !event.endDate || startStr === endStr;
+    const datePhrase = isSingleDay ? `no dia ${startStr}` : `entre ${startStr} e ${endStr}`;
 
-    // Clean body text (strip any literal "null horas" or "undefined horas" from user edits)
-    const bodyText = (template.bodyText || defaultBodyText)
+    const defaultBodyText = isOrganizer
+      ? `Certificamos que [NOME DO ALUNO], atuou com distinção como membro da Equipe de Organização do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado ${datePhrase}${hoursText}.`
+      : `Certificamos que [NOME DO ALUNO], participou com êxito e assiduidade do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado ${datePhrase}${hoursText}.`;
+
+    // Clean body text (strip any literal "null horas" or "undefined horas" and fix duplicated single-day dates)
+    let cleanedText = (template.bodyText || defaultBodyText)
       .replace(/\[NOME DO ALUNO\]/g, member.name || 'NOME DO PARTICIPANTE')
       .replace(/\[RA DO ALUNO\]/g, member.ra || 'RA DO ALUNO')
       .replace(/null horas/gi, '')
       .replace(/undefined horas/gi, '');
+
+    if (isSingleDay && startStr) {
+      cleanedText = cleanedText
+        .replace(new RegExp(`entre\\s+${startStr}\\s+e\\s+${startStr}`, 'gi'), `no dia ${startStr}`)
+        .replace(new RegExp(`de\\s+${startStr}\\s+a\\s+${startStr}`, 'gi'), `no dia ${startStr}`)
+        .replace(new RegExp(`de\\s+${startStr}\\s+até\\s+${startStr}`, 'gi'), `no dia ${startStr}`)
+        .replace(new RegExp(`${startStr}\\s+a\\s+${startStr}`, 'gi'), `no dia ${startStr}`)
+        .replace(new RegExp(`${startStr}\\s+e\\s+${startStr}`, 'gi'), `${startStr}`);
+    }
+
+    const bodyText = cleanedText;
 
     // Typography customization styles
     const customFontSize = template.fontSize ? `${template.fontSize}px` : undefined;

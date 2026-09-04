@@ -26,8 +26,8 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "8.0b";
-export const APP_BUILD = "02.09.2026";
+export const APP_VERSION = "8.1b";
+export const APP_BUILD = "04.09.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
@@ -182,6 +182,8 @@ export function safeSessionStorageSet(key: string, value: string): boolean {
 }
 
 export const CHANGELOG = [
+  "Versão 8.1b - Gestão de Enquetes, Correção de Autenticidade de Certificados & Presença Multi-Dias",
+  "Novo gerenciador de enquetes com imagens, votos anônimos, múltipla escolha e duração; correção total dos códigos e QR Code de autenticidade dos certificados (retroativo a certificados já emitidos); auto-liberação de certificados pós-evento; correção do download individual (PDF); presença diária para eventos de múltiplos dias; carteirinha dinâmica conforme cadastro (Doc. Universitário / Estudantil / Profissional da Educação); painel Novo Evento retrátil; visualização pública de cartazes de eventos.",
   "Versão 8.0b - Correção Geral de Assinaturas, Remoção do Mural & Atualização Sob Demanda",
   "Remoção definitiva e completa do módulo de Mural descontinuado, correção no carregamento e renderização de assinaturas (diretor, reitor e bispos/responsáveis) em dispositivos móveis (iOS/Safari/Android), e nova ferramenta de sincronização profunda e atualização sob demanda sem travar ou deixar o app desatualizado.",
   "Versão 7.9b - Check-in em Lote, Cartaz QR Code de Presença & Otimizações",

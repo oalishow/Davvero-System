@@ -1,4 +1,4 @@
-import React, { useRef, useState, useMemo } from "react";
+import React, { useRef, useState, useMemo, useEffect } from "react";
 import { createPortal } from "react-dom";
 import {
   X,
@@ -64,11 +64,20 @@ export default function EventQrCodeModal({
   }, []);
 
   const [event, setEvent] = useState<Event>(initialEvent);
-  const [posterType, setPosterType] = useState<"attendance" | "enrollment">(initialMode);
+  const [posterType, setPosterType] = useState<"attendance" | "enrollment">(
+    isMasterAdmin ? initialMode : "enrollment"
+  );
   const [copied, setCopied] = useState(false);
   const [showConfigPanel, setShowConfigPanel] = useState(false);
   const [isSavingConfig, setIsSavingConfig] = useState(false);
   const qrCanvasRef = useRef<HTMLDivElement>(null);
+
+  // Force non-admins to always see enrollment poster
+  useEffect(() => {
+    if (!isMasterAdmin && posterType !== "enrollment") {
+      setPosterType("enrollment");
+    }
+  }, [isMasterAdmin, posterType]);
 
   // Presence Config Local Form State
   const defaultPresenceConfig: EventPresenceConfig = {
@@ -250,32 +259,7 @@ export default function EventQrCodeModal({
     }
   };
 
-  // Block non-administrators from accessing or generating QR code posters
-  if (!isMasterAdmin) {
-    return createPortal(
-      <div className="fixed inset-0 z-[250] flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm">
-        <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full text-center border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4 animate-in fade-in">
-          <div className="w-14 h-14 rounded-2xl bg-rose-100 dark:bg-rose-950/60 text-rose-600 dark:text-rose-400 flex items-center justify-center mx-auto">
-            <Lock className="w-7 h-7" />
-          </div>
-          <h3 className="text-lg font-black text-slate-800 dark:text-white">
-            Acesso Restrito a Administradores
-          </h3>
-          <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
-            A geração de cartazes oficiais com QR Code e controle de lista de presença é uma funcionalidade exclusiva de administradores e coordenação.
-          </p>
-          <button
-            onClick={onClose}
-            className="w-full py-2.5 px-4 bg-slate-800 hover:bg-slate-700 active:scale-98 text-white rounded-xl text-xs font-bold uppercase tracking-wider transition-all cursor-pointer"
-          >
-            Fechar
-          </button>
-        </div>
-      </div>,
-      document.body
-    );
-  }
-
+  // Render modal
   return createPortal(
     <div
       id="event-qr-modal-overlay"
@@ -296,13 +280,13 @@ export default function EventQrCodeModal({
                 Cartaz & QR Code do Evento
               </h3>
               <p className="text-xs text-slate-500 dark:text-slate-400">
-                Gere cartazes para divulgação ou lista de presença digital
+                {isMasterAdmin ? "Gere cartazes para divulgação ou lista de presença digital" : "Visualize ou imprima o cartaz de divulgação oficial"}
               </p>
             </div>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors cursor-pointer"
             title="Fechar"
           >
             <X className="w-5 h-5" />
@@ -311,66 +295,78 @@ export default function EventQrCodeModal({
 
         {/* Modal Body */}
         <div className="p-4 sm:p-6 overflow-y-auto flex-1 custom-scrollbar space-y-4 print:p-0 print:overflow-visible">
-          {/* Mode Switcher Tabs (Hidden on Print) */}
-          <div className="flex bg-slate-100 dark:bg-slate-800/70 p-1 rounded-2xl no-print gap-1">
-            <button
-              onClick={() => setPosterType("attendance")}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                posterType === "attendance"
-                  ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
-              }`}
-            >
-              <CheckCircle2 className="w-4 h-4" />
-              <span>Lista de Presença (Check-in)</span>
-            </button>
-            <button
-              onClick={() => setPosterType("enrollment")}
-              className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 ${
-                posterType === "enrollment"
-                  ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm"
-                  : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
-              }`}
-            >
-              <QrCode className="w-4 h-4" />
-              <span>Cartaz de Inscrição</span>
-            </button>
-          </div>
-
-          {/* Configuration Trigger Bar (Admin Presence Timing Controls) */}
-          <div className="no-print bg-slate-50 dark:bg-slate-800/50 p-3 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-2.5">
-            <div className="flex items-center gap-2">
-              <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
-                <Clock className="w-4 h-4" />
-              </div>
-              <div>
-                <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
-                  Regras de Liberação do QR Code
-                </p>
-                <p className="text-[11px] text-slate-500 dark:text-slate-400">
-                  {configState.openMode === "always"
-                    ? "Sempre liberado para assinatura"
-                    : configState.openMode === "manual"
-                    ? configState.isManualUnlocked
-                      ? "Liberado manualmente agora"
-                      : "Bloqueado (Aguardando liberação manual)"
-                    : configState.openMode === "custom"
-                    ? `Abre em: ${configState.customOpenTime || "Horário definido"}`
-                    : "Abre 30 min antes do evento"}
-                </p>
-              </div>
+          {/* Mode Switcher Tabs (Only for Admins; Non-admins only see Enrollment poster) */}
+          {isMasterAdmin ? (
+            <div className="flex bg-slate-100 dark:bg-slate-800/70 p-1 rounded-2xl no-print gap-1">
+              <button
+                onClick={() => setPosterType("attendance")}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  posterType === "attendance"
+                    ? "bg-white dark:bg-slate-700 text-emerald-600 dark:text-emerald-400 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
+                }`}
+              >
+                <CheckCircle2 className="w-4 h-4" />
+                <span>Lista de Presença (Check-in)</span>
+              </button>
+              <button
+                onClick={() => setPosterType("enrollment")}
+                className={`flex-1 py-2.5 px-3 rounded-xl text-xs font-black transition-all flex items-center justify-center gap-1.5 cursor-pointer ${
+                  posterType === "enrollment"
+                    ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm"
+                    : "text-slate-500 hover:text-slate-800 dark:text-slate-400"
+                }`}
+              >
+                <QrCode className="w-4 h-4" />
+                <span>Cartaz de Divulgação</span>
+              </button>
             </div>
-            <button
-              onClick={() => setShowConfigPanel(!showConfigPanel)}
-              className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer"
-            >
-              <Settings2 className="w-3.5 h-3.5" />
-              <span>{showConfigPanel ? "Ocultar Ajustes" : "Configurar Liberação"}</span>
-            </button>
-          </div>
+          ) : (
+            <div className="no-print flex items-center justify-between px-3 py-2 bg-sky-50 dark:bg-sky-950/40 rounded-xl border border-sky-100 dark:border-sky-900/50 text-sky-700 dark:text-sky-300 text-xs font-bold">
+              <div className="flex items-center gap-2">
+                <QrCode className="w-4 h-4" />
+                <span>Cartaz Oficial de Divulgação do Evento</span>
+              </div>
+              <span className="text-[10px] font-normal opacity-80">Pronto para impressão ou download</span>
+            </div>
+          )}
+
+          {/* Configuration Trigger Bar (Admin Presence Timing Controls only on Attendance poster) */}
+          {isMasterAdmin && posterType === "attendance" && (
+            <div className="no-print p-3 rounded-2xl bg-indigo-50/50 dark:bg-indigo-950/20 border border-indigo-100 dark:border-indigo-900/40 flex items-center justify-between gap-3">
+              <div className="flex items-center gap-2">
+                <div className="w-7 h-7 rounded-lg bg-indigo-100 dark:bg-indigo-950/60 text-indigo-600 dark:text-indigo-400 flex items-center justify-center">
+                  <Clock className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="text-xs font-bold text-slate-800 dark:text-slate-200">
+                    Regras de Liberação do QR Code
+                  </p>
+                  <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                    {configState.openMode === "always"
+                      ? "Sempre liberado para assinatura"
+                      : configState.openMode === "manual"
+                      ? configState.isManualUnlocked
+                        ? "Liberado manualmente agora"
+                        : "Bloqueado (Aguardando liberação manual)"
+                      : configState.openMode === "custom"
+                      ? `Abre em: ${configState.customOpenTime || "Horário definido"}`
+                      : "Abre 30 min antes do evento"}
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => setShowConfigPanel(!showConfigPanel)}
+                className="flex items-center gap-1.5 px-3 py-1.5 bg-indigo-50 hover:bg-indigo-100 dark:bg-indigo-900/40 dark:hover:bg-indigo-900/60 text-indigo-600 dark:text-indigo-300 rounded-xl text-xs font-bold transition-all shrink-0 cursor-pointer"
+              >
+                <Settings2 className="w-3.5 h-3.5" />
+                <span>{showConfigPanel ? "Ocultar Ajustes" : "Configurar Liberação"}</span>
+              </button>
+            </div>
+          )}
 
           {/* Expanded Config Panel */}
-          {showConfigPanel && (
+          {isMasterAdmin && showConfigPanel && (
             <div className="no-print bg-white dark:bg-slate-800/90 p-4 rounded-2xl border border-indigo-200 dark:border-indigo-800 space-y-4 animate-in fade-in duration-150">
               <div className="flex items-center justify-between border-b border-slate-100 dark:border-slate-700 pb-2">
                 <h4 className="text-xs font-black uppercase tracking-wider text-indigo-600 dark:text-indigo-400 flex items-center gap-1.5">

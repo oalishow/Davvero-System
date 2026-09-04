@@ -11,16 +11,20 @@ export function getCardDocumentTitle(member?: Partial<Member> | null, customFron
   if (!member) return customFrontText || "DOCUMENTO ESTUDANTIL";
 
   const roles = (member.roles || []).map((r) => (r || "").trim().toUpperCase());
+  const course = (member.course || "").trim().toUpperCase();
 
-  // 1. Professor (Docente)
+  // 1. Professor (Docente) -> DOCUMENTO UNIVERSITÁRIO
   const isProfessor = roles.some(
     (r) => r.includes("PROFESSOR") || r.includes("DOCENTE")
-  );
+  ) || course.includes("PROFESSOR") || course.includes("DOCENTE");
   if (isProfessor) {
     return "DOCUMENTO UNIVERSITÁRIO";
   }
 
-  // 2. Funcionários e Colaboradores da Educação
+  // 2. Seminarista -> DOCUMENTO ESTUDANTIL E VOCACIONAL
+  const isSeminarista = roles.some((r) => r.includes("SEMINARISTA")) || Boolean(member.seminary);
+
+  // 3. Funcionários e Colaboradores da Educação -> DOCUMENTO DO PROFISSIONAL DA EDUCAÇÃO
   const isFuncionarioOrColaborador = roles.some(
     (r) =>
       r.includes("COLABORADOR") ||
@@ -30,21 +34,22 @@ export function getCardDocumentTitle(member?: Partial<Member> | null, customFron
       r.includes("SECRETARI") ||
       r.includes("COORDENAD") ||
       r.includes("DIRETO") ||
-      r.includes("ADMIN")
+      r.includes("ADMIN") ||
+      r.includes("EDUCAÇÃO") ||
+      r.includes("EDUCACAO") ||
+      r.includes("PROFISSIONAL")
   );
-  const isSeminarista = roles.some((r) => r.includes("SEMINARISTA"));
 
   if (isFuncionarioOrColaborador && !isSeminarista) {
     return "DOCUMENTO DO PROFISSIONAL DA EDUCAÇÃO";
   }
 
-  // 3. Seminarista
   if (isSeminarista) {
     return "DOCUMENTO ESTUDANTIL E VOCACIONAL";
   }
 
-  // 4. Alunos sem ser seminarista (and default student)
-  return customFrontText || "DOCUMENTO ESTUDANTIL";
+  // 4. Alunos sem ser seminarista -> DOCUMENTO ESTUDANTIL
+  return "DOCUMENTO ESTUDANTIL";
 }
 
 /**

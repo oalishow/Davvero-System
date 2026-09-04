@@ -72,12 +72,12 @@ export default function HomePollsWidget({
       });
 
       if (res.success) {
-        showAlert("Voto registrado com sucesso! Obrigado pela participação.", "success");
+        showAlert("Voto registrado com sucesso! Obrigado pela participação.", { type: "success" });
       } else {
-        showAlert(res.message || "Erro ao registrar voto", "error");
+        showAlert(res.message || "Erro ao registrar voto", { type: "error" });
       }
     } catch (e: any) {
-      showAlert("Não foi possível registrar o voto.", "error");
+      showAlert("Não foi possível registrar o voto.", { type: "error" });
     } finally {
       setVotingId(null);
     }
@@ -85,12 +85,12 @@ export default function HomePollsWidget({
 
   const handleSendFeedback = async () => {
     if (!feedbackText.trim()) {
-      showAlert("Por favor, escreva uma mensagem antes de enviar.", "warning");
+      showAlert("Por favor, escreva uma mensagem antes de enviar.", { type: "warning" });
       return;
     }
 
     if (!userVotedOptionId) {
-      showAlert("Por favor, selecione uma opção de voto antes de enviar seu comentário.", "warning");
+      showAlert("Por favor, selecione uma opção de voto antes de enviar seu comentário.", { type: "warning" });
       return;
     }
 
@@ -104,9 +104,9 @@ export default function HomePollsWidget({
 
       setFeedbackSubmitted((prev) => ({ ...prev, [poll.id]: true }));
       setFeedbackText("");
-      showAlert("Seu comentário foi enviado com sucesso! Agradecemos o feedback.", "success");
+      showAlert("Seu comentário foi enviado com sucesso! Agradecemos o feedback.", { type: "success" });
     } catch {
-      showAlert("Erro ao enviar comentário.", "error");
+      showAlert("Erro ao enviar comentário.", { type: "error" });
     }
   };
 

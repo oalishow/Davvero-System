@@ -165,6 +165,9 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
   
   const avatarUrl = member.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(safeName)}&background=e2e8f0&color=475569`;
 
+  const cardDocTitle = getCardDocumentTitle(member, cardFrontText);
+  const cardTitleFontSize = cardDocTitle.length > 32 ? '13px' : cardDocTitle.length > 24 ? '15px' : '18px';
+
   const frontSide = (
     <div 
       className={`absolute w-[600px] h-[378px] print-card bg-gradient-to-br from-indigo-50 via-sky-50 to-cyan-100 overflow-hidden shadow-2xl shrink-0`} 
@@ -185,8 +188,8 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
           borderBottomColor: instColor 
         }}
       >
-         <h1 className="text-white font-black tracking-tighter whitespace-nowrap" style={{ fontSize: '18px' }}>
-            {getCardDocumentTitle(member, cardFrontText)}
+         <h1 className="text-white font-black tracking-tighter whitespace-nowrap" style={{ fontSize: cardTitleFontSize }}>
+            {cardDocTitle}
          </h1>
          <span className="text-white opacity-80 text-[9px] font-bold tracking-widest bg-white/10 px-2 py-0.5 rounded-full uppercase ml-1">
            {displayInstNameForCard}

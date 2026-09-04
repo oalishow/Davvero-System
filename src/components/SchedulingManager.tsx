@@ -30,36 +30,53 @@ export default function SchedulingManager() {
     profName?: string;
   } | null>(null);
 
-  const [localProfs, setLocalProfs] = useState<ProfessionalConfig[]>(
-    settings.professionals && settings.professionals.length > 0
-      ? settings.professionals
-      : DEFAULT_PROFESSIONALS.map((p) => ({
-          id: p.id,
-          name: p.name,
-          role: p.roles?.[0] || "PROFISSIONAL",
-          photoUrl: null,
-          appointmentLink:
-            p.id === "prof_anderson"
-              ? "https://calendar.app.google/shVAPdZTNeDs2PaGA"
-              : p.id === "prof_altair"
-              ? "https://chat.whatsapp.com/GzB9sD90aW09kPndbI38uP"
-              : "",
-          appointmentType:
-            p.id === "prof_anderson"
-              ? "google_calendar"
-              : p.id === "prof_altair"
-              ? "whatsapp"
-              : "other",
-          whatsappNumber: "",
-          seminary: "",
-          meetingLinkFilosofia: "",
-          meetingLinkTeologia: "",
-          formationDocUrl: null,
-          formationDocName: "",
-          formationDocType: "pdf",
-          formationDocDescription: "",
-        }))
-  );
+  const [localProfs, setLocalProfs] = useState<ProfessionalConfig[]>(() => {
+    const initial =
+      settings.professionals && settings.professionals.length > 0
+        ? settings.professionals
+        : DEFAULT_PROFESSIONALS.map((p) => ({
+            id: p.id,
+            name: p.name,
+            role: p.roles?.[0] || "PROFISSIONAL",
+            photoUrl: null,
+            appointmentLink:
+              p.id === "prof_anderson"
+                ? "https://calendar.app.google/shVAPdZTNeDs2PaGA"
+                : p.id === "prof_altair"
+                ? "https://chat.whatsapp.com/GzB9sD90aW09kPndbI38uP"
+                : "",
+            appointmentType:
+              p.id === "prof_anderson"
+                ? "google_calendar"
+                : p.id === "prof_altair"
+                ? "whatsapp"
+                : "other",
+            whatsappNumber: "",
+            seminary: p.seminary || "SPSCJ - Seminário Provincial Sagrado Coração de Jesus",
+            meetingLinkFilosofia: "",
+            meetingLinkTeologia: "",
+            formationDocUrl: null,
+            formationDocName: "",
+            formationDocType: "pdf",
+            formationDocDescription: "",
+          }));
+
+    return initial.map((p) => {
+      const isProvincial =
+        p.id === "prof_altair" ||
+        p.id === "prof_anderson" ||
+        p.id === "prof_alan" ||
+        p.id === "prof_alessandra" ||
+        p.name.toLowerCase().includes("altair") ||
+        p.name.toLowerCase().includes("anderson") ||
+        p.name.toLowerCase().includes("alan") ||
+        p.name.toLowerCase().includes("alessandra");
+      if (isProvincial && (!p.seminary || p.seminary === "" || p.seminary === "Todos os Seminários")) {
+        return { ...p, seminary: "SPSCJ - Seminário Provincial Sagrado Coração de Jesus" };
+      }
+      return p;
+    });
+  });
 
   const handleAdd = () => {
     setLocalProfs([
@@ -318,42 +335,58 @@ export default function SchedulingManager() {
                 </button>
               </div>
 
-              {/* Links de Atendimento Específicos: Filosofia & Teologia */}
-              <div className="bg-white dark:bg-slate-800/80 p-4 rounded-2xl border border-slate-200/80 dark:border-slate-700/80 grid grid-cols-1 sm:grid-cols-2 gap-4">
-                <div>
-                  <label className="text-[10px] font-bold text-sky-600 dark:text-sky-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                    <Video className="w-3.5 h-3.5" /> Link de Atendimento — Filosofia
-                  </label>
-                  <input
-                    type="text"
-                    value={prof.meetingLinkFilosofia || ""}
-                    onChange={(e) =>
-                      handleUpdate(prof.id, "meetingLinkFilosofia", e.target.value)
-                    }
-                    placeholder="Ex: Google Meet, Zoom ou Sala para Filosofia"
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500/50"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Link de atendimento virtual para os seminaristas de Filosofia
-                  </p>
+              {/* Grupos de WhatsApp com Escalas: Filosofia & Teologia */}
+              <div className="bg-emerald-50/40 dark:bg-emerald-950/20 p-4 rounded-2xl border border-emerald-200/60 dark:border-emerald-900/40 flex flex-col gap-3">
+                <div className="flex items-center gap-2">
+                  <div className="p-1.5 rounded-lg bg-emerald-500 text-white">
+                    <MessageCircle className="w-4 h-4" />
+                  </div>
+                  <div>
+                    <h4 className="text-xs font-black text-slate-800 dark:text-slate-200 uppercase tracking-wide">
+                      Grupos de WhatsApp com Escalas de Atendimento
+                    </h4>
+                    <p className="text-[10px] text-slate-500 dark:text-slate-400">
+                      Links dos grupos de WhatsApp onde o profissional divulga as escalas de atendimento para os seminaristas
+                    </p>
+                  </div>
                 </div>
 
-                <div>
-                  <label className="text-[10px] font-bold text-indigo-600 dark:text-indigo-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
-                    <Video className="w-3.5 h-3.5" /> Link de Atendimento — Teologia
-                  </label>
-                  <input
-                    type="text"
-                    value={prof.meetingLinkTeologia || ""}
-                    onChange={(e) =>
-                      handleUpdate(prof.id, "meetingLinkTeologia", e.target.value)
-                    }
-                    placeholder="Ex: Google Meet, Zoom ou Sala para Teologia"
-                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-indigo-500/50"
-                  />
-                  <p className="text-[10px] text-slate-400 mt-1">
-                    Link de atendimento virtual para os seminaristas de Teologia
-                  </p>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                  <div>
+                    <label className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                      <MessageCircle className="w-3.5 h-3.5" /> Grupo WhatsApp — Filosofia (Escalas)
+                    </label>
+                    <input
+                      type="text"
+                      value={prof.meetingLinkFilosofia || ""}
+                      onChange={(e) =>
+                        handleUpdate(prof.id, "meetingLinkFilosofia", e.target.value)
+                      }
+                      placeholder="Ex: https://chat.whatsapp.com/... (Escalas Filosofia)"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Grupo de WhatsApp com as escalas para seminaristas de Filosofia
+                    </p>
+                  </div>
+
+                  <div>
+                    <label className="text-[10px] font-bold text-emerald-700 dark:text-emerald-400 uppercase tracking-widest mb-1 flex items-center gap-1.5">
+                      <MessageCircle className="w-3.5 h-3.5" /> Grupo WhatsApp — Teologia (Escalas)
+                    </label>
+                    <input
+                      type="text"
+                      value={prof.meetingLinkTeologia || ""}
+                      onChange={(e) =>
+                        handleUpdate(prof.id, "meetingLinkTeologia", e.target.value)
+                      }
+                      placeholder="Ex: https://chat.whatsapp.com/... (Escalas Teologia)"
+                      className="w-full bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-xl px-3.5 py-2 text-xs font-mono text-slate-800 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-emerald-500/50"
+                    />
+                    <p className="text-[10px] text-slate-400 mt-1">
+                      Grupo de WhatsApp com as escalas para seminaristas de Teologia
+                    </p>
+                  </div>
                 </div>
               </div>
 

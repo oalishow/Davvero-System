@@ -21,7 +21,10 @@ import {
   AlertTriangle,
   ArrowDownAZ,
   ArrowUpAZ,
-  Filter
+  Filter,
+  Printer,
+  Download,
+  FileText
 } from "lucide-react";
 import type { Event, Attendance, Member } from "../types";
 import {
@@ -442,36 +445,49 @@ export default function EventAttendeesModal({
     // We update the DOM directly before printing inside the invisible area, or just dynamically build HTML
     const printWindow = window.open("", "_blank");
     if (printWindow) {
-      let daysHeader = `<th class="border border-black p-2 w-48 text-center">ASSINATURA DO INSCRITO</th>`;
-      let evaluateDaysRow = () => `<td class="border border-black p-2 align-bottom"><div class="w-full h-8 border-b border-black border-dashed opacity-50"></div></td>`;
-
+      const parsedDaysList: { dateIso: string; displayStr: string }[] = [];
       if (event?.startDate && event?.endDate) {
         const start = new Date(event.startDate).getTime();
         const end = new Date(event.endDate).getTime();
-        // If event spans more than 1 day
         if (end > start) {
-          // Normalize to handle timezones slightly better by using simple math on ms, rough estimate:
           const numDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
           if (numDays > 1 && numDays <= 30) {
-            daysHeader = "";
-            let daysDataTemplate = "";
             for (let i = 0; i < numDays; i++) {
-              const d = new Date(start + i * (1000 * 60 * 60 * 24));
-              const dayStr = `${String(d.getDate() + 1).padStart(2,'0')}/${String(d.getMonth()+1).padStart(2,'0')}`;
-              // +1 to date conceptually, but wait, `new Date(event.startDate)` parses YYYY-MM-DD as UTC midnight.
-              // So `d` will be the correct dates UTC. To be safe with `getDate()`, we can just use setUTCDate or similar, actually let's just parse properly.
-              // For simplicity:
-              const realD = new Date(event.startDate);
+              const realD = new Date(event.startDate + "T12:00:00");
               realD.setDate(realD.getDate() + i);
-              const properDayStr = `${String(realD.getDate()).padStart(2,'0')}/${String(realD.getMonth()+1).padStart(2,'0')}`;
-              
-              daysHeader += `<th class="border border-black p-2 w-28 text-center text-[10px]">ASSINATURA DO INSCRITO<br/>${properDayStr}</th>`;
-              daysDataTemplate += `<td class="border border-black p-2 align-bottom"><div class="w-full h-8 border-b border-black border-dashed opacity-50"></div></td>`;
+              const dateIso = realD.toISOString().split("T")[0];
+              const properDayStr = `${String(realD.getDate()).padStart(2, '0')}/${String(realD.getMonth() + 1).padStart(2, '0')}`;
+              parsedDaysList.push({ dateIso, displayStr: properDayStr });
             }
-            evaluateDaysRow = () => daysDataTemplate;
           }
         }
       }
+
+      let daysHeader = `<th class="border border-black p-2 w-48 text-center">ASSINATURA DO INSCRITO</th>`;
+      if (parsedDaysList.length > 1) {
+        daysHeader = parsedDaysList
+          .map((d) => `<th class="border border-black p-2 w-28 text-center text-[10px]">ASSINATURA<br/>${d.displayStr}</th>`)
+          .join("");
+      }
+
+      const evaluateDaysRow = (sub: typeof toPrint[0]) => {
+        if (parsedDaysList.length > 1) {
+          return parsedDaysList
+            .map((d) => {
+              const hasSigned = (sub.checkInDates || []).includes(d.dateIso);
+              if (hasSigned) {
+                return `<td class="border border-black p-1 text-center bg-emerald-50"><div class="text-[9px] font-bold text-emerald-800">✓ PRESENTE</div><div class="text-[7px] text-gray-500">QR Code</div></td>`;
+              }
+              return `<td class="border border-black p-2 align-bottom"><div class="w-full h-8 border-b border-black border-dashed opacity-50"></div></td>`;
+            })
+            .join("");
+        }
+        const isPresent = sub.status === "presente" || sub.status === "apto_para_certificado";
+        if (isPresent) {
+          return `<td class="border border-black p-1 text-center bg-emerald-50"><div class="text-[9px] font-bold text-emerald-800">✓ ASSINATURA DIGITAL</div><div class="text-[8px] text-gray-500">Presença Confirmada</div></td>`;
+        }
+        return `<td class="border border-black p-2 align-bottom"><div class="w-full h-8 border-b border-black border-dashed opacity-50"></div></td>`;
+      };
 
       let trs = "";
       toPrint.forEach((sub, idx) => {
@@ -486,7 +502,7 @@ export default function EventAttendeesModal({
             <td class="border border-black p-2 uppercase font-semibold">${sub.member?.name || "Desconhecido"}</td>
             <td class="border border-black p-2 text-center">${sub.member?.ra || (sub.member as any)?.cpf || "-"}</td>
             <td class="border border-black p-2 text-[10px] uppercase">${rolesText}</td>
-            ${evaluateDaysRow()}
+            ${evaluateDaysRow(sub)}
           </tr>
         `;
       });
@@ -837,39 +853,39 @@ export default function EventAttendeesModal({
   if (!mounted) return null;
 
   return createPortal(
-    <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm px-4 print:static print:bg-transparent print:p-0 overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl shadow-2xl w-full max-w-3xl overflow-hidden border border-slate-200 dark:border-slate-700/50 flex flex-col max-h-[95vh] print:hidden my-auto">
-        <div className="p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/20">
+    <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm print:static print:bg-transparent print:p-0 overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-3xl border border-slate-200 dark:border-slate-700/50 flex flex-col h-[94dvh] sm:h-auto sm:max-h-[92vh] print:hidden overflow-hidden">
+        <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/20 shrink-0">
           <div>
-            <h3 className="text-xl font-black text-slate-800 dark:text-white">
-              Inscritos
+            <h3 className="text-lg sm:text-xl font-black text-slate-800 dark:text-white">
+              Inscritos & Presença
             </h3>
-            <p className="text-sm font-medium text-slate-500 dark:text-slate-400 mt-1">
+            <p className="text-xs sm:text-sm font-medium text-slate-500 dark:text-slate-400 mt-0.5 line-clamp-1">
               {event.title}
             </p>
           </div>
           <button
             onClick={onClose}
-            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors"
+            className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-full transition-colors shrink-0"
           >
-            <X className="w-6 h-6" />
+            <X className="w-5 h-5 sm:w-6 sm:h-6" />
           </button>
         </div>
 
-        <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 mx-4 mt-4 rounded-xl flex-wrap">
+        <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 mx-3 sm:mx-4 mt-3 rounded-xl overflow-x-auto no-scrollbar shrink-0 gap-1">
           <button
             onClick={() => setActiveTab("all")}
-            className={`flex-1 min-w-[100px] py-2 text-sm font-bold rounded-lg transition-colors ${
+            className={`shrink-0 sm:flex-1 whitespace-nowrap px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors ${
               activeTab === "all"
                 ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm"
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
             }`}
           >
-            Todos
+            Todos ({attendees.length})
           </button>
           <button
             onClick={() => setActiveTab("alunos")}
-            className={`flex-1 min-w-[100px] py-2 text-sm font-bold rounded-lg transition-colors ${
+            className={`shrink-0 sm:flex-1 whitespace-nowrap px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors ${
               activeTab === "alunos"
                 ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm"
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
@@ -879,7 +895,7 @@ export default function EventAttendeesModal({
           </button>
           <button
             onClick={() => setActiveTab("visitantes")}
-            className={`flex-1 min-w-[100px] py-2 text-sm font-bold rounded-lg transition-colors ${
+            className={`shrink-0 sm:flex-1 whitespace-nowrap px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors ${
               activeTab === "visitantes"
                 ? "bg-white dark:bg-slate-700 text-sky-600 dark:text-sky-400 shadow-sm"
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
@@ -889,7 +905,7 @@ export default function EventAttendeesModal({
           </button>
           <button
             onClick={() => setActiveTab("organizacao")}
-            className={`flex-1 min-w-[100px] py-2 text-sm font-bold rounded-lg transition-colors ${
+            className={`shrink-0 sm:flex-1 whitespace-nowrap px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors ${
               activeTab === "organizacao"
                 ? "bg-white dark:bg-slate-700 text-amber-600 dark:text-amber-400 shadow-sm"
                 : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
@@ -901,7 +917,7 @@ export default function EventAttendeesModal({
           {inactiveAttendees.length > 0 && (
             <button
               onClick={() => setActiveTab("inativos")}
-              className={`flex-1 min-w-[110px] py-2 text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
+              className={`shrink-0 sm:flex-1 whitespace-nowrap px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors flex items-center justify-center gap-1.5 ${
                 activeTab === "inativos"
                   ? "bg-rose-600 text-white shadow-sm"
                   : "text-rose-600 dark:text-rose-400 hover:bg-rose-50 dark:hover:bg-rose-950/40"
@@ -914,21 +930,21 @@ export default function EventAttendeesModal({
           )}
         </div>
 
-        <div className="px-4 py-3 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-3">
+        <div className="px-3 sm:px-4 py-2 sm:py-3 border-b border-slate-200 dark:border-slate-800 flex flex-col gap-2 shrink-0">
           {/* Action Row 1: Check-in de Todos & Adicionar Participante */}
-          <div className="flex flex-wrap items-center justify-between gap-2.5 pb-2 border-b border-slate-100 dark:border-slate-800/60">
-            <div className="flex items-center gap-2 flex-wrap">
+          <div className="flex flex-wrap items-center justify-between gap-2 pb-1.5 border-b border-slate-100 dark:border-slate-800/60">
+            <div className="flex items-center gap-1.5 sm:gap-2 flex-wrap">
               <button
                 onClick={handleCheckInAll}
                 disabled={loading || attendees.length === 0}
-                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 disabled:opacity-50 cursor-pointer"
+                className="flex items-center gap-1.5 bg-emerald-600 hover:bg-emerald-500 active:scale-95 text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 disabled:opacity-50 cursor-pointer"
                 title="Confirmar presença de todos os inscritos com 1 clique"
               >
-                <CheckCircle2 className="w-4 h-4" />
-                <span>Check-in de Todos</span>
+                <CheckCircle2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>Check-in Todos</span>
                 {attendees.filter((a) => a.status !== "presente").length > 0 && (
                   <span className="bg-emerald-800 text-emerald-100 text-[10px] px-1.5 py-0.5 rounded-full font-black ml-0.5">
-                    {attendees.filter((a) => a.status !== "presente").length} pendente(s)
+                    {attendees.filter((a) => a.status !== "presente").length}
                   </span>
                 )}
               </button>
@@ -938,27 +954,28 @@ export default function EventAttendeesModal({
                   setAddSearch("");
                   setShowAddModal(true);
                 }}
-                className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+                className="flex items-center gap-1.5 bg-sky-600 hover:bg-sky-500 active:scale-95 text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
                 title="Adicionar alunos ou participantes ao evento mesmo com prazo encerrado"
               >
-                <UserPlus className="w-4 h-4" />
-                <span>+ Adicionar Participante</span>
+                <UserPlus className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                <span>+ Adicionar</span>
               </button>
 
               {isSystemAdmin && (
                 <button
                   onClick={() => setShowQrModal(true)}
-                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white px-3.5 py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
+                  className="flex items-center gap-1.5 bg-indigo-600 hover:bg-indigo-500 active:scale-95 text-white px-2.5 sm:px-3.5 py-1.5 sm:py-2 rounded-xl text-xs font-bold transition-all shadow-sm shrink-0 cursor-pointer"
                   title="Gerar cartaz oficial com QR Code para lista de presença e horários (Exclusivo Administradores)"
                 >
-                  <ScanLine className="w-4 h-4" />
-                  <span>Cartaz QR Code</span>
+                  <ScanLine className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+                  <span className="hidden sm:inline">Cartaz QR Code</span>
+                  <span className="sm:hidden">QR</span>
                 </button>
               )}
             </div>
 
-            <div className="text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-              <span>Total: <strong className="text-slate-800 dark:text-white font-bold">{attendees.length}</strong> inscritos</span>
+            <div className="text-[11px] sm:text-xs font-medium text-slate-500 dark:text-slate-400 flex items-center gap-1.5 shrink-0">
+              <span>Total: <strong className="text-slate-800 dark:text-white font-bold">{attendees.length}</strong></span>
               <span>•</span>
               <span className="text-emerald-600 dark:text-emerald-400 font-bold">
                 {attendees.filter((a) => a.status === "presente").length} presentes
@@ -967,7 +984,7 @@ export default function EventAttendeesModal({
           </div>
 
           {/* Action Row 2: Search and Print/Report Buttons */}
-          <div className="flex flex-col sm:flex-row items-center justify-between gap-3">
+          <div className="flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 sm:gap-3">
             <div className="relative w-full sm:flex-1">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
               <input
@@ -975,62 +992,60 @@ export default function EventAttendeesModal({
                 placeholder="Pesquisar por nome, RA ou CPF..."
                 value={searchTerm}
                 onChange={(e) => setSearchTerm(e.target.value)}
-                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-10 pr-4 py-2 text-sm outline-none focus:border-sky-500 dark:focus:border-sky-500 text-slate-700 dark:text-slate-200"
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-1.5 sm:py-2 text-xs sm:text-sm outline-none focus:border-sky-500 dark:focus:border-sky-500 text-slate-700 dark:text-slate-200"
               />
             </div>
-            <div className="flex flex-col sm:flex-row items-start sm:items-center gap-3 sm:gap-6 w-full sm:w-auto overflow-x-auto pb-1 sm:pb-0">
-              <div className="flex items-center gap-2">
-                <div className="text-[10px] font-bold text-slate-400 uppercase mr-1 whitespace-nowrap">Listas:</div>
+            <div className="flex items-center gap-1.5 overflow-x-auto no-scrollbar pb-0.5 sm:pb-0 shrink-0">
+              <div className="flex items-center gap-1 shrink-0">
                 <button
                   onClick={() => handlePrint("all")}
-                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
+                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1 bg-slate-800 text-white px-2 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
                   title="Lista de Presença Completa (Assinatura)"
                 >
-                  Tudo
+                  <Printer className="w-3 h-3 sm:w-3.5 sm:h-3.5" /> Tudo
                 </button>
                 <button
                   onClick={() => handlePrint("alunos")}
-                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
+                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1 bg-slate-800 text-white px-2 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
                   title="Apenas Alunos e Seminaristas (Assinatura)"
                 >
                   Alunos
                 </button>
                 <button
                   onClick={() => handlePrint("visitantes")}
-                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-slate-800 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
+                  className="print:hidden whitespace-nowrap flex items-center justify-center gap-1 bg-slate-800 text-white px-2 py-1.5 rounded-lg text-xs font-bold hover:bg-slate-700 transition-colors shrink-0"
                   title="Apenas Visitantes (Assinatura)"
                 >
                   Visitantes
                 </button>
               </div>
               {activeTab !== "organizacao" ? (
-                <div className="flex items-center gap-2 pl-0 sm:pl-3 sm:border-l border-slate-200 dark:border-slate-700">
-                  <div className="text-[10px] font-bold text-slate-400 uppercase mr-1 whitespace-nowrap">Relatórios:</div>
+                <div className="flex items-center gap-1 pl-1 border-l border-slate-200 dark:border-slate-700 shrink-0">
                   <button
                     onClick={handleExportCSV}
-                    className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-emerald-600 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors shrink-0"
+                    className="print:hidden whitespace-nowrap flex items-center justify-center gap-1 bg-emerald-600 text-white px-2 py-1.5 rounded-lg text-xs font-bold hover:bg-emerald-700 transition-colors shrink-0"
                     title="Exportar Relatório em CSV"
                   >
-                    <span className="hidden sm:inline">Normal</span> CSV
+                    <Download className="w-3 h-3" /> CSV
                   </button>
                   <button
                     onClick={handlePrintReport}
-                    className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-sky-600 text-white px-3 py-2 rounded-lg text-xs font-bold hover:bg-sky-700 transition-colors shrink-0"
+                    className="print:hidden whitespace-nowrap flex items-center justify-center gap-1 bg-sky-600 text-white px-2 py-1.5 rounded-lg text-xs font-bold hover:bg-sky-700 transition-colors shrink-0"
                     title="Imprimir Relatório de Presenças"
                   >
-                    Imprimir
+                    <FileText className="w-3 h-3" /> Relatório
                   </button>
                 </div>
               ) : (
-                <div className="flex items-center gap-2 pl-0 sm:pl-3 sm:border-l border-slate-200 dark:border-slate-700">
+                <div className="flex items-center gap-1 pl-1 border-l border-slate-200 dark:border-slate-700 shrink-0">
                   <button
                     onClick={handleNotifyOrganizersEmail}
                     disabled={isSendingEmails}
-                    className="print:hidden whitespace-nowrap flex items-center justify-center gap-1.5 bg-amber-600 hover:bg-amber-700 text-white px-3 py-2 rounded-lg text-xs font-bold transition-colors shrink-0 disabled:opacity-50 shadow-xs"
+                    className="print:hidden whitespace-nowrap flex items-center justify-center gap-1 bg-amber-600 hover:bg-amber-700 text-white px-2.5 py-1.5 rounded-lg text-xs font-bold transition-colors shrink-0 disabled:opacity-50 shadow-xs"
                     title="Enviar e-mail para todos os membros da organização informando que o certificado está disponível"
                   >
-                    <Mail className="w-3.5 h-3.5" />
-                    {isSendingEmails ? "Enviando..." : "Avisar Certificado (E-mail)"}
+                    <Mail className="w-3 h-3" />
+                    {isSendingEmails ? "Enviando..." : "Avisar (E-mail)"}
                   </button>
                 </div>
               )}
@@ -1039,20 +1054,20 @@ export default function EventAttendeesModal({
 
           {/* Action Row 3: Alphabetical Sorting & Letter Filter for Attendees */}
           {activeTab !== "organizacao" && (
-            <div className="pt-2 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-2">
-              <div className="flex flex-wrap items-center justify-between gap-2">
-                <div className="flex items-center gap-2 flex-wrap">
+            <div className="pt-1.5 border-t border-slate-100 dark:border-slate-800/60 flex flex-col gap-1.5 shrink-0">
+              <div className="flex flex-wrap items-center justify-between gap-1.5">
+                <div className="flex items-center gap-1.5 flex-wrap">
                   {/* Ordem Alfabética */}
                   <div className="relative">
                     <select
                       value={sortAttendeesBy}
                       onChange={(e) => setSortAttendeesBy(e.target.value as any)}
-                      className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none"
                     >
-                      <option value="name-asc">Ordem Alfabética (A → Z)</option>
-                      <option value="name-desc">Ordem Alfabética (Z → A)</option>
-                      <option value="present-first">Presentes primeiro</option>
-                      <option value="pending-first">Pendentes primeiro</option>
+                      <option value="name-asc">A → Z</option>
+                      <option value="name-desc">Z → A</option>
+                      <option value="present-first">Presentes 1º</option>
+                      <option value="pending-first">Pendentes 1º</option>
                     </select>
                   </div>
 
@@ -1061,11 +1076,11 @@ export default function EventAttendeesModal({
                     <select
                       value={statusFilter}
                       onChange={(e) => setStatusFilter(e.target.value as any)}
-                      className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2.5 py-1.5 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none"
+                      className="bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-lg px-2 py-1 text-xs font-semibold text-slate-700 dark:text-slate-200 outline-none"
                     >
                       <option value="all">Presença: Todos</option>
-                      <option value="present">Apenas Presentes</option>
-                      <option value="pending">Apenas Pendentes</option>
+                      <option value="present">Presentes</option>
+                      <option value="pending">Pendentes</option>
                     </select>
                   </div>
 
@@ -1079,21 +1094,21 @@ export default function EventAttendeesModal({
                       }}
                       className="flex items-center gap-1 text-[11px] font-bold text-slate-500 hover:text-sky-600 bg-slate-100 dark:bg-slate-800 px-2 py-1 rounded-md"
                     >
-                      <RotateCcw className="w-3 h-3" /> Limpar filtros
+                      <RotateCcw className="w-3 h-3" /> Limpar
                     </button>
                   )}
                 </div>
 
-                <div className="text-[11px] font-medium text-slate-500 dark:text-slate-400">
+                <div className="text-[10px] sm:text-[11px] font-medium text-slate-500 dark:text-slate-400">
                   Mostrando <strong>{filteredAttendees.length}</strong> de <strong>{attendees.length}</strong>
                 </div>
               </div>
 
               {/* Barra de Letras A-Z */}
-              <div className="flex items-center gap-1 overflow-x-auto pb-1 custom-scrollbar">
+              <div className="flex items-center gap-1 overflow-x-auto pb-0.5 no-scrollbar shrink-0">
                 <button
                   onClick={() => setSelectedAttendeeLetter("")}
-                  className={`px-2 py-0.5 rounded text-[11px] font-bold shrink-0 transition-all ${
+                  className={`px-2 py-0.5 rounded text-[10px] sm:text-[11px] font-bold shrink-0 transition-all ${
                     selectedAttendeeLetter === ""
                       ? "bg-sky-600 text-white"
                       : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-700"
@@ -1110,7 +1125,7 @@ export default function EventAttendeesModal({
                       key={letter}
                       disabled={!hasItems}
                       onClick={() => setSelectedAttendeeLetter(isSelected ? "" : letter)}
-                      className={`min-w-[24px] h-6 px-1 rounded text-[11px] font-bold flex items-center justify-center gap-0.5 shrink-0 transition-all ${
+                      className={`min-w-[22px] h-5 sm:h-6 px-1 rounded text-[10px] sm:text-[11px] font-bold flex items-center justify-center gap-0.5 shrink-0 transition-all ${
                         isSelected
                           ? "bg-sky-600 text-white"
                           : hasItems
@@ -1129,7 +1144,7 @@ export default function EventAttendeesModal({
           )}
         </div>
 
-        <div className="flex-1 overflow-y-auto p-4 sm:p-6 bg-slate-50/30 dark:bg-slate-900/30">
+        <div className="flex-1 min-h-0 overflow-y-auto p-3 sm:p-6 bg-slate-50/30 dark:bg-slate-900/30">
           {loading ? (
             <div className="flex justify-center p-8">
               <div className="w-8 h-8 rounded-full border-4 border-sky-500 border-t-transparent animate-spin"></div>

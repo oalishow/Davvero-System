@@ -13,6 +13,36 @@ export const sanitizeDocKey = (key: string): string => {
     .replace(/[^A-Z0-9_\-]/gi, '_');
 };
 
+export const PROVINCIAL_SEMINARY = "SPSCJ - Seminário Provincial Sagrado Coração de Jesus";
+
+export const normalizeProfessionals = (profs?: ProfessionalConfig[]): ProfessionalConfig[] => {
+  if (!profs || profs.length === 0) {
+    return [
+      { id: "prof_altair", name: "Padre Altair", role: "REITOR", photoUrl: null, appointmentLink: "https://chat.whatsapp.com/GzB9sD90aW09kPndbI38uP", appointmentType: "whatsapp", whatsappNumber: "", seminary: PROVINCIAL_SEMINARY },
+      { id: "prof_anderson", name: "Padre Anderson", role: "VICE-REITOR", photoUrl: null, appointmentLink: "https://calendar.app.google/shVAPdZTNeDs2PaGA", appointmentType: "google_calendar", whatsappNumber: "", seminary: PROVINCIAL_SEMINARY },
+      { id: "prof_alan", name: "Padre Alan", role: "DIRETOR ESPIRITUAL", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "", seminary: PROVINCIAL_SEMINARY },
+      { id: "prof_alessandra", name: "Dra. Alessandra", role: "PSICÓLOGA", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "", seminary: PROVINCIAL_SEMINARY }
+    ];
+  }
+
+  return profs.map(p => {
+    const isProvincial = 
+      p.id === "prof_altair" || 
+      p.id === "prof_anderson" || 
+      p.id === "prof_alan" || 
+      p.id === "prof_alessandra" ||
+      p.name.toLowerCase().includes("altair") || 
+      p.name.toLowerCase().includes("anderson") || 
+      p.name.toLowerCase().includes("alan") || 
+      p.name.toLowerCase().includes("alessandra");
+
+    if (isProvincial && (!p.seminary || p.seminary === "" || p.seminary === "Todos os Seminários")) {
+      return { ...p, seminary: PROVINCIAL_SEMINARY };
+    }
+    return p;
+  });
+};
+
 export interface AppSettings {
   url: string;
   directorName: string;
@@ -205,10 +235,10 @@ const DEFAULT_SETTINGS: AppSettings = {
   appointmentsEnabled: true,
   appointmentsExternalLink: '',
   professionals: [
-    { id: "prof_altair", name: "Padre Altair", role: "REITOR", photoUrl: null, appointmentLink: "https://chat.whatsapp.com/GzB9sD90aW09kPndbI38uP", appointmentType: "whatsapp", whatsappNumber: "" },
-    { id: "prof_anderson", name: "Padre Anderson", role: "VICE-REITOR", photoUrl: null, appointmentLink: "https://calendar.app.google/shVAPdZTNeDs2PaGA", appointmentType: "google_calendar", whatsappNumber: "" },
-    { id: "prof_braz", name: "Padre Bráz", role: "DIRETOR ESPIRITUAL", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "" },
-    { id: "prof_alessandra", name: "Dra. Alessandra", role: "PSICÓLOGA", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "" }
+    { id: "prof_altair", name: "Padre Altair", role: "REITOR", photoUrl: null, appointmentLink: "https://chat.whatsapp.com/GzB9sD90aW09kPndbI38uP", appointmentType: "whatsapp", whatsappNumber: "", seminary: PROVINCIAL_SEMINARY },
+    { id: "prof_anderson", name: "Padre Anderson", role: "VICE-REITOR", photoUrl: null, appointmentLink: "https://calendar.app.google/shVAPdZTNeDs2PaGA", appointmentType: "google_calendar", whatsappNumber: "", seminary: PROVINCIAL_SEMINARY },
+    { id: "prof_alan", name: "Padre Alan", role: "DIRETOR ESPIRITUAL", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "", seminary: PROVINCIAL_SEMINARY },
+    { id: "prof_alessandra", name: "Dra. Alessandra", role: "PSICÓLOGA", photoUrl: null, appointmentLink: "", appointmentType: "whatsapp", whatsappNumber: "", seminary: PROVINCIAL_SEMINARY }
   ],
   autoApproveEnabled: false,
   autoApproveWhitelist: [],
@@ -344,6 +374,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         if (mainSnap && mainSnap.exists()) {
           const mainData = mainSnap.data();
           if (mainData) {
+            if (mainData.professionals) {
+              mainData.professionals = normalizeProfessionals(mainData.professionals);
+            }
             setSettings(prev => ({ ...prev, ...mainData }));
           }
         }
@@ -480,6 +513,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             delete data[field];
           }
         });
+
+        if (data.professionals) {
+          data.professionals = normalizeProfessionals(data.professionals);
+        }
 
         setSettings(prev => ({ 
           ...prev, 

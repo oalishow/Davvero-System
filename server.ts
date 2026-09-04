@@ -145,6 +145,14 @@ async function startServer() {
         expiresAt: now + 60 * 1000,
       };
 
+      if (isLive) {
+        try {
+          db.doc("artifacts/7bf482b0-c099-4dfc-8645-a54be12375c4/public/data/system_live_status/youtube")
+            .set(liveData, { merge: true })
+            .catch((e: any) => console.warn("[Firestore Live Sync] error:", e.message));
+        } catch (_) {}
+      }
+
       return res.json({
         ...liveData,
         cached: false,

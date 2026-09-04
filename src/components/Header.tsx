@@ -187,55 +187,61 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
 
   return (
     <div className="text-center relative print:hidden no-print pt-14">
-      <div className="absolute top-0 left-0 flex items-center gap-2 z-50 no-print print:hidden">
-        {onOpenAdmin && (
-          <button
-            onClick={onOpenAdmin}
-            className="relative p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors hover:scale-110 active:scale-95"
-            title="Gestão"
+      {/* Top Header Controls Bar - Unified flex layout preventing any overlapping on mobile */}
+      <div className="absolute top-0 left-0 right-0 w-full flex items-center justify-between gap-1 sm:gap-2 z-50 no-print print:hidden px-1 sm:px-0">
+        {/* Left Side: Gestão, Theme Toggle, Version */}
+        <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 shrink">
+          {onOpenAdmin && (
+            <button
+              onClick={onOpenAdmin}
+              className="relative p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors hover:scale-110 active:scale-95 shrink-0"
+              title="Gestão"
+            >
+              <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+            </button>
+          )}
+          <button 
+            onClick={toggleTheme}
+            className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors no-print hover:scale-110 active:scale-95 shrink-0"
+            title={isDark ? "Mudar para Claro" : "Mudar para Escuro"}
           >
-            <Lock className="w-4 h-4" />
+            {isDark ? <Sun className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Moon className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
           </button>
-        )}
-        <button 
-          onClick={toggleTheme}
-          className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors no-print hover:scale-110 active:scale-95"
-          title={isDark ? "Mudar para Claro" : "Mudar para Escuro"}
-        >
-          {isDark ? <Sun className="w-4 h-4" /> : <Moon className="w-4 h-4" />}
-        </button>
-        <button 
-          onClick={() => setShowChangelog(true)}
-          className="flex items-center justify-center px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-xs text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap hover:text-sky-500 dark:hover:text-sky-400 hover:scale-105 active:scale-95 transition-all cursor-pointer"
-          title="Ver Novidades da Versão"
-        >
-          v{APP_VERSION} <span className="opacity-50 ml-1">({APP_BUILD})</span>
-        </button>
-      </div>
-      <div className="absolute top-0 right-0 flex items-center gap-2 z-50 no-print print:hidden">
-        <YouTubeLiveButton />
-        <button 
-          onClick={() => {
-             if ((window as any).triggerCheckUpdates) {
-               (window as any).triggerCheckUpdates();
-             } else {
-               safeReloadApp();
-             }
-          }}
-          className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors no-print hover:scale-110 active:scale-95"
-          title="Buscar Atualizações do Sistema"
-        >
-          <RefreshCw className="w-4 h-4" />
-        </button>
-        <div className="relative" ref={volumeDropdownRef}>
-          <button
-            onClick={() => setShowVolumeDropdown(!showVolumeDropdown)}
-            className="relative p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors no-print hover:scale-110 active:scale-95"
-            title="Configurações de Som"
+          <button 
+            onClick={() => setShowChangelog(true)}
+            className="flex items-center justify-center px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap hover:text-sky-500 dark:hover:text-sky-400 hover:scale-105 active:scale-95 transition-all cursor-pointer truncate"
+            title={`Ver Novidades da Versão (v${APP_VERSION} - Build: ${APP_BUILD})`}
           >
-            {currentVolume === 0 ? <VolumeX className="w-4 h-4 text-rose-500" /> : currentVolume < 0.1 ? <Volume1 className="w-4 h-4" /> : <Volume2 className="w-4 h-4" />}
+            <span>v{APP_VERSION}</span>
+            <span className="opacity-50 ml-1 hidden md:inline">({APP_BUILD})</span>
           </button>
-          <AnimatePresence>
+        </div>
+
+        {/* Right Side: YouTube Live, Update Check, Sound Controls */}
+        <div className="flex items-center gap-1 sm:gap-1.5 shrink-0">
+          <YouTubeLiveButton />
+          <button 
+            onClick={() => {
+               if ((window as any).triggerCheckUpdates) {
+                 (window as any).triggerCheckUpdates();
+               } else {
+                 safeReloadApp();
+               }
+            }}
+            className="p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors no-print hover:scale-110 active:scale-95 shrink-0"
+            title="Buscar Atualizações do Sistema"
+          >
+            <RefreshCw className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
+          </button>
+          <div className="relative shrink-0" ref={volumeDropdownRef}>
+            <button
+              onClick={() => setShowVolumeDropdown(!showVolumeDropdown)}
+              className="relative p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors no-print hover:scale-110 active:scale-95"
+              title="Configurações de Som"
+            >
+              {currentVolume === 0 ? <VolumeX className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-rose-500" /> : currentVolume < 0.1 ? <Volume1 className="w-3.5 h-3.5 sm:w-4 sm:h-4" /> : <Volume2 className="w-3.5 h-3.5 sm:w-4 sm:h-4" />}
+            </button>
+            <AnimatePresence>
             {showVolumeDropdown && (
               <motion.div
                 initial={{ opacity: 0, y: 10, scale: 0.95 }}
@@ -433,6 +439,7 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
         >
           <Share2 className="w-4 h-4" />
         </button>
+      </div>
       </div>
       <div className="flex flex-col justify-center mb-5 no-print min-h-[140px] items-center relative">
         <motion.div

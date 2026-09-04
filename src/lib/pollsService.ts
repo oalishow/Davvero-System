@@ -19,25 +19,43 @@ const POLLS_COLLECTION = `artifacts/${appId}/public/data/polls`;
 const VOTES_COLLECTION = `artifacts/${appId}/public/data/poll_votes`;
 
 /**
- * Retorna a chave do voto salvo no localStorage para evitar votos duplicados no dispositivo
+ * Retorna os IDs das opções votadas salvas no localStorage
  */
-export function getStoredVote(pollId: string): string | null {
+export function getStoredVotes(pollId: string): string[] {
   try {
-    return localStorage.getItem(`davvero_poll_voted_${pollId}`);
+    const raw = localStorage.getItem(`davvero_poll_voted_${pollId}`);
+    if (!raw) return [];
+    try {
+      const parsed = JSON.parse(raw);
+      if (Array.isArray(parsed)) return parsed;
+      return [raw];
+    } catch {
+      return [raw];
+    }
   } catch {
-    return null;
+    return [];
   }
+}
+
+export function getStoredVote(pollId: string): string | null {
+  const list = getStoredVotes(pollId);
+  return list.length > 0 ? list[0] : null;
 }
 
 /**
  * Salva a escolha do usuário no localStorage
  */
-export function setStoredVote(pollId: string, optionId: string): void {
+export function setStoredVotes(pollId: string, optionIds: string[] | string): void {
   try {
-    localStorage.setItem(`davvero_poll_voted_${pollId}`, optionId);
+    const val = Array.isArray(optionIds) ? JSON.stringify(optionIds) : JSON.stringify([optionIds]);
+    localStorage.setItem(`davvero_poll_voted_${pollId}`, val);
   } catch {
     // Ignorar falha de quota
   }
+}
+
+export function setStoredVote(pollId: string, optionId: string): void {
+  setStoredVotes(pollId, [optionId]);
 }
 
 /**
@@ -100,19 +118,25 @@ export function subscribeAllPolls(callback: (polls: Poll[]) => void): () => void
 }
 
 /**
- * Registra um voto na enquete
+ * Registra voto(s) na enquete (suporta opção única ou múltipla escolha)
  */
 export async function submitVote(
   pollId: string,
-  optionId: string,
+  optionIds: string | string[],
   voterInfo: {
     voterId?: string;
     voterName?: string;
+    isAnonymous?: boolean;
     feedback?: string;
     rating?: number;
   } = {}
 ): Promise<{ success: boolean; message?: string }> {
   try {
+    const selectedOptionIds = Array.isArray(optionIds) ? optionIds : [optionIds];
+    if (selectedOptionIds.length === 0) {
+      return { success: false, message: "Nenhuma opção selecionada." };
+    }
+
     const pollRef = doc(db, POLLS_COLLECTION, pollId);
 
     await runTransaction(db, async (transaction) => {
@@ -126,15 +150,21 @@ export async function submitVote(
         throw new Error("Esta enquete já foi encerrada");
       }
 
-      const previousVoteOptionId = getStoredVote(pollId);
+      // Verifica expiração por duração
+      if (pollData.expiresAt && new Date(pollData.expiresAt).getTime() <= Date.now()) {
+        throw new Error("O prazo de votação desta enquete expirou");
+      }
+
+      const previousVoteOptionIds = getStoredVotes(pollId);
 
       const updatedOptions = (pollData.options || []).map((opt) => {
         let newCount = opt.votesCount || 0;
-        // Se o usuário está alterando o voto anterior
-        if (previousVoteOptionId && opt.id === previousVoteOptionId && opt.id !== optionId) {
+        // Se já havia votado nesta opção anteriormente e agora não está nela, subtrai
+        if (previousVoteOptionIds.includes(opt.id) && !selectedOptionIds.includes(opt.id)) {
           newCount = Math.max(0, newCount - 1);
         }
-        if (opt.id === optionId) {
+        // Se é uma opção recém selecionada
+        if (selectedOptionIds.includes(opt.id) && !previousVoteOptionIds.includes(opt.id)) {
           newCount += 1;
         }
         return {
@@ -150,14 +180,22 @@ export async function submitVote(
         totalVotes: newTotalVotes,
       };
 
+      const voterDisplayName = voterInfo.isAnonymous
+        ? "Anônimo"
+        : (voterInfo.voterName?.trim() || "Anônimo");
+
       // Se enviou feedback opcional, armazena no histórico da enquete
       if (voterInfo.feedback && voterInfo.feedback.trim()) {
-        const selectedOpt = updatedOptions.find((o) => o.id === optionId);
+        const selectedOptNames = updatedOptions
+          .filter((o) => selectedOptionIds.includes(o.id))
+          .map((o) => o.text)
+          .join(", ");
+
         const existingFeedbacks = pollData.feedbacks || [];
         const newFeedbackEntry = {
           id: `fb_${Date.now()}_${Math.random().toString(36).substr(2, 6)}`,
-          voterName: voterInfo.voterName?.trim() || "Anônimo",
-          optionText: selectedOpt?.text || "Opção selecionada",
+          voterName: voterDisplayName,
+          optionText: selectedOptNames || "Opções selecionadas",
           feedback: voterInfo.feedback.trim(),
           rating: voterInfo.rating || 5,
           timestamp: new Date().toISOString(),
@@ -170,7 +208,7 @@ export async function submitVote(
     });
 
     // Salva localmente
-    setStoredVote(pollId, optionId);
+    setStoredVotes(pollId, selectedOptionIds);
 
     // Opcional: salva na coleção de votos auditados
     const voteRef = doc(
@@ -180,9 +218,11 @@ export async function submitVote(
     );
     await setDoc(voteRef, {
       pollId,
-      optionId,
+      optionId: selectedOptionIds[0],
+      optionIds: selectedOptionIds,
       voterId: voterInfo.voterId || "guest",
-      voterName: voterInfo.voterName || "Anônimo",
+      voterName: voterInfo.isAnonymous ? "Anônimo" : (voterInfo.voterName || "Anônimo"),
+      isAnonymous: !!voterInfo.isAnonymous,
       feedback: voterInfo.feedback || "",
       rating: voterInfo.rating || null,
       timestamp: new Date().toISOString(),

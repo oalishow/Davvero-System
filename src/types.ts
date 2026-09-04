@@ -225,8 +225,8 @@ export interface ProfessionalConfig {
   appointmentType?: "whatsapp" | "google_calendar" | "other";
   whatsappNumber?: string;
   seminary?: string; // Seminário específico ou vazio para todos
-  meetingLinkFilosofia?: string; // Link de atendimento para Filosofia
-  meetingLinkTeologia?: string; // Link de atendimento para Teologia
+  meetingLinkFilosofia?: string; // Link do Grupo de WhatsApp com escalas de Filosofia
+  meetingLinkTeologia?: string; // Link do Grupo de WhatsApp com escalas de Teologia
   formationDocUrl?: string | null; // URL ou data base64 do PDF ou Imagem
   formationDocName?: string; // Nome do documento (ex: "Diretrizes_Formacao.pdf")
   formationDocType?: "pdf" | "image" | "link";
@@ -282,13 +282,16 @@ export interface PollOption {
   text: string;
   votesCount: number;
   color?: string;
+  imageUrl?: string;
 }
 
 export interface PollVote {
   pollId: string;
   optionId: string;
+  optionIds?: string[];
   voterId?: string; // memberId or client device ID
   voterName?: string;
+  isAnonymous?: boolean;
   feedback?: string;
   rating?: number;
   timestamp: string;
@@ -304,8 +307,13 @@ export interface Poll {
   allowFeedback?: boolean;
   feedbackPlaceholder?: string;
   active: boolean;
+  voteType?: "single" | "multiple"; // votar unicamente ou votar em mais opções
+  allowAnonymous?: boolean; // votar anonimamente
+  requireIdentification?: boolean; // exigir identificação
+  durationHours?: number; // duração em horas
+  expiresAt?: string; // data/hora de expiração ISO
+  imageUrl?: string; // imagem destacada da enquete
   createdAt: string;
-  expiresAt?: string;
   createdBy?: string;
   feedbacks?: Array<{
     id: string;

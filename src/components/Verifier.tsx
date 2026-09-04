@@ -17,6 +17,7 @@ import PublicRequestModal from "./PublicRequestModal";
 import SuggestEditModal from "./SuggestEditModal";
 import Modal from "./Modal";
 import RegistrationSuccessModal from "./RegistrationSuccessModal";
+import HomePollsWidget from "./HomePollsWidget";
 import { useDialog } from "../context/DialogContext";
 import { playSound } from '../lib/sounds';
 import { recordQRScan } from "../lib/telemetry";
@@ -586,17 +587,30 @@ export default function Verifier({
     if (cacheLoaded && !initialVerifyChecked) {
       const params = new URLSearchParams(window.location.search);
       const verifyCode = params.get("verify");
+      const certCode = params.get("cert");
 
-      // Ignore URL parsing for verification if the query params are only internal system params
-      if (verifyCode) {
-        runVerification(verifyCode, false, window.location.href);
+      if (certCode) {
+        setVerifyMode("CERTIFICATE");
+        handleVerifyCertificate(certCode);
+      } else if (verifyCode) {
+        if (
+          verifyCode.startsWith("FAJ-") ||
+          verifyCode.startsWith("CERT-") ||
+          verifyCode.includes("-PAR") ||
+          verifyCode.includes("-ORG") ||
+          verifyCode.includes("cert=")
+        ) {
+          setVerifyMode("CERTIFICATE");
+          handleVerifyCertificate(verifyCode);
+        } else {
+          runVerification(verifyCode, false, window.location.href);
+        }
       } else if (
         window.location.pathname.length > 1 &&
         window.location.pathname !== "/index.html" &&
         !window.location.pathname.includes("admin")
       ) {
         // Fallback for native camera opening legacy URL formats redirected to this domain
-        // Only run if there is a real path segment (e.g. /XYZ123)
         runVerification(window.location.href, false, window.location.href);
       }
       setInitialVerifyChecked(true);
@@ -608,6 +622,13 @@ export default function Verifier({
     setScanSuccessAnim(false);
     setIsScanning(true);
     setValidationResult(null);
+
+    setTimeout(() => {
+      const readerBox = document.getElementById("reader-container");
+      if (readerBox) {
+        readerBox.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 80);
   };
 
   useEffect(() => {
@@ -672,32 +693,61 @@ export default function Verifier({
                 config,
                 (decodedText: string) => {
                   console.log("Scanner: Detected code:", decodedText);
-                  let memberId = decodedText;
+                  let memberId = decodedText.trim();
                   let isCertCode = false;
                   try {
-                    console.log("Scanner: Attempting parsing...");
-                    if (decodedText.includes("cert=")) {
-                      const parts = decodedText.split("cert=");
-                      if (parts.length > 1) {
-                        memberId = parts[1].split("&")[0].split("#")[0];
+                    try {
+                      memberId = decodeURIComponent(memberId);
+                    } catch (_) {}
+
+                    if (memberId.includes("cert=")) {
+                      const parts = memberId.split("cert=");
+                      if (parts[1]) {
+                        memberId = decodeURIComponent(parts[1].split("&")[0].split("#")[0].trim());
                         isCertCode = true;
                       }
-                    } else if (decodedText.includes("verify=")) {
-                      const parts = decodedText.split("verify=");
-                      if (parts.length > 1) {
-                        memberId = parts[1].split("&")[0].split("#")[0];
+                    } else if (memberId.includes("CERT=")) {
+                      const parts = memberId.split("CERT=");
+                      if (parts[1]) {
+                        memberId = decodeURIComponent(parts[1].split("&")[0].split("#")[0].trim());
+                        isCertCode = true;
                       }
-                    } else if (decodedText.startsWith("http")) {
-                      const url = new URL(decodedText);
+                    } else if (memberId.includes("verify=")) {
+                      const parts = memberId.split("verify=");
+                      if (parts[1]) {
+                        memberId = decodeURIComponent(parts[1].split("&")[0].split("#")[0].trim());
+                      }
+                    } else if (memberId.includes("VERIFY=")) {
+                      const parts = memberId.split("VERIFY=");
+                      if (parts[1]) {
+                        memberId = decodeURIComponent(parts[1].split("&")[0].split("#")[0].trim());
+                      }
+                    } else if (memberId.startsWith("http://") || memberId.startsWith("https://")) {
+                      const url = new URL(memberId);
                       const cert = url.searchParams.get("cert");
                       const verify = url.searchParams.get("verify");
                       if (cert) {
-                        memberId = cert;
+                        memberId = decodeURIComponent(cert.trim());
                         isCertCode = true;
                       } else if (verify) {
-                        memberId = verify;
+                        memberId = decodeURIComponent(verify.trim());
+                      } else {
+                        const segs = url.pathname.split("/").filter(Boolean);
+                        if (segs.length > 0) {
+                          memberId = decodeURIComponent(segs[segs.length - 1].trim());
+                        }
                       }
-                    } else if (verifyMode === "CERTIFICATE" || decodedText.includes("-")) {
+                    }
+
+                    if (
+                      verifyMode === "CERTIFICATE" ||
+                      isCertCode ||
+                      memberId.startsWith("FAJ-") ||
+                      memberId.startsWith("CERT-") ||
+                      memberId.includes("-PAR") ||
+                      memberId.includes("-ORG") ||
+                      (memberId.includes("-") && memberId.length >= 8)
+                    ) {
                       isCertCode = true;
                     }
                     console.log("Scanner: Extracted ID:", memberId, "isCertCode:", isCertCode);
@@ -717,6 +767,7 @@ export default function Verifier({
                     setIsScanning(false);
                     setScanSuccessAnim(false);
                     if (isCertCode || verifyMode === "CERTIFICATE") {
+                      setVerifyMode("CERTIFICATE");
                       handleVerifyCertificate(memberId);
                     } else {
                       runVerification(memberId, false, decodedText);
@@ -728,7 +779,7 @@ export default function Verifier({
                       .catch((e: any) =>
                         console.error("Scanner: Error stopping camera:", e),
                       );
-                  }, 1200);
+                  }, 1000);
                 },
                 (errorMessage: string) => {
                   // silent
@@ -754,17 +805,32 @@ export default function Verifier({
                 { facingMode: "environment" },
                 config,
                 (decodedText: string) => {
-                  let memberId = decodedText;
+                  let memberId = decodedText.trim();
                   let isCertCode = false;
-                  if (decodedText.includes("cert=")) {
-                    memberId = decodedText.split("cert=")[1].split("&")[0].split("#")[0];
-                    isCertCode = true;
-                  } else if (decodedText.includes("verify=")) {
-                    memberId = decodedText.split("verify=")[1].split("&")[0].split("#")[0];
-                  } else if (verifyMode === "CERTIFICATE" || decodedText.includes("-")) {
-                    isCertCode = true;
-                  }
-                  
+                  try {
+                    try {
+                      memberId = decodeURIComponent(memberId);
+                    } catch (_) {}
+
+                    if (memberId.includes("cert=")) {
+                      const parts = memberId.split("cert=");
+                      if (parts[1]) memberId = decodeURIComponent(parts[1].split("&")[0].split("#")[0].trim());
+                      isCertCode = true;
+                    } else if (memberId.includes("verify=")) {
+                      const parts = memberId.split("verify=");
+                      if (parts[1]) memberId = decodeURIComponent(parts[1].split("&")[0].split("#")[0].trim());
+                    } else if (
+                      verifyMode === "CERTIFICATE" ||
+                      memberId.startsWith("FAJ-") ||
+                      memberId.startsWith("CERT-") ||
+                      memberId.includes("-PAR") ||
+                      memberId.includes("-ORG") ||
+                      (memberId.includes("-") && memberId.length >= 8)
+                    ) {
+                      isCertCode = true;
+                    }
+                  } catch (e) {}
+
                   if (scanHandledRef.current) return;
                   scanHandledRef.current = true;
                   
@@ -774,12 +840,13 @@ export default function Verifier({
                     setIsScanning(false);
                     setScanSuccessAnim(false);
                     if (isCertCode || verifyMode === "CERTIFICATE") {
+                      setVerifyMode("CERTIFICATE");
                       handleVerifyCertificate(memberId);
                     } else {
                       runVerification(memberId, false, decodedText);
                     }
-                    ht5Qrcode?.stop().catch();
-                  }, 1200);
+                    ht5Qrcode?.stop().catch(() => {});
+                  }, 1000);
                 },
                 () => {}
               )
@@ -808,7 +875,22 @@ export default function Verifier({
 
   const handleVerifyManual = () => {
     if (!codeInput) return;
-    runVerification(codeInput.toUpperCase(), true);
+    const clean = codeInput.trim();
+    if (
+      verifyMode === "CERTIFICATE" ||
+      clean.startsWith("FAJ-") ||
+      clean.startsWith("CERT-") ||
+      clean.includes("-PAR") ||
+      clean.includes("-ORG") ||
+      clean.includes("cert=") ||
+      clean.includes("verify=") ||
+      (clean.includes("-") && clean.length >= 8)
+    ) {
+      setVerifyMode("CERTIFICATE");
+      handleVerifyCertificate(clean);
+    } else {
+      runVerification(codeInput.toUpperCase(), true);
+    }
   };
 
   const runVerification = async (
@@ -898,6 +980,20 @@ export default function Verifier({
       }
 
       if (!finalMember) {
+        if (
+          targetId.startsWith("FAJ-") ||
+          targetId.startsWith("CERT-") ||
+          targetId.includes("-PAR") ||
+          targetId.includes("-ORG") ||
+          targetId.includes("cert=") ||
+          targetId.includes("verify=") ||
+          (targetId.includes("-") && targetId.length >= 8)
+        ) {
+          setVerifyMode("CERTIFICATE");
+          handleVerifyCertificate(idOrCode);
+          return;
+        }
+
         setValidationResult({ member: null, status: "NOT_FOUND" });
         setIsProcessing(false);
         return;
@@ -1306,7 +1402,7 @@ export default function Verifier({
       </div>
 
       {/* QR Code Scanner Camera Viewport - always accessible when scanning */}
-      <div className={`relative w-full max-w-sm rounded-xl overflow-hidden shadow-2xl border-2 border-sky-400 dark:border-sky-500/30 aspect-square bg-black ${!isScanning && !scanSuccessAnim && "hidden"}`}>
+      <div id="reader-container" className={`relative w-full max-w-sm rounded-xl overflow-hidden shadow-2xl border-2 border-sky-400 dark:border-sky-500/30 aspect-square bg-black ${!isScanning && !scanSuccessAnim && "hidden"}`}>
         <div id="reader" className="w-full h-full"></div>
         
         {/* Custom Scanning Overlay */}
@@ -1805,6 +1901,11 @@ export default function Verifier({
             aceitação sujeita aos critérios dos organizadores de eventos.
           </p>
         </div>
+      </div>
+
+      {/* Enquetes para votações na página inicial abaixo de Garantia de Meia-Entrada */}
+      <div className="w-full max-w-md px-4 mt-6 no-print">
+        <HomePollsWidget />
       </div>
     </div>
   );

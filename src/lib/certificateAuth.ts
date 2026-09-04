@@ -76,26 +76,56 @@ export function getLegacyCertificateCodes(
   const codes: string[] = [];
   const eventIdRaw = (event.id || "").trim();
   const eventIdSlice8 = eventIdRaw.slice(0, 8).toUpperCase();
+  const eventIdClean = cleanAlphaNum(eventIdRaw);
+  const eventIdTail8 = eventIdClean.length >= 8 ? eventIdClean.slice(-8) : eventIdClean;
+  const eventIdWithoutEvt = eventIdClean.replace(/^EVT/, "");
+  const eventIdWithoutEvtTail8 = eventIdWithoutEvt.length >= 6 ? eventIdWithoutEvt.slice(-8) : eventIdWithoutEvt;
 
   // Legacy format 1: event.id.slice(0,8) - member.id.slice(0,8)
   if (member.id) {
-    codes.push(`${eventIdSlice8}-${member.id.slice(0, 8).toUpperCase()}`);
-    codes.push(`${eventIdSlice8}-${cleanAlphaNum(member.id).slice(0, 8)}`);
+    const mIdRaw = member.id.trim();
+    const mIdSlice8 = mIdRaw.slice(0, 8).toUpperCase();
+    const mIdClean = cleanAlphaNum(mIdRaw);
+    const mIdTail8 = mIdClean.length >= 8 ? mIdClean.slice(-8) : mIdClean;
+    const mIdWithoutPrefix = mIdClean.replace(/^STD|^MEM/, "");
+    const mIdWithoutPrefixTail8 = mIdWithoutPrefix.length >= 4 ? mIdWithoutPrefix.slice(-8) : mIdWithoutPrefix;
+
+    codes.push(`${eventIdSlice8}-${mIdSlice8}`);
+    codes.push(`${eventIdSlice8}-${mIdClean.slice(0, 8)}`);
+    codes.push(`${eventIdClean.slice(0, 8)}-${mIdClean.slice(0, 8)}`);
+    codes.push(`${eventIdRaw.toUpperCase()}-${mIdRaw.toUpperCase()}`);
+    codes.push(`CERT-${eventIdSlice8}-${mIdClean.slice(0, 8)}`);
+    codes.push(`FAJ-${eventIdSlice8}-${mIdClean.slice(0, 8)}`);
+    codes.push(`FAJ-${eventIdTail8}-${mIdTail8}`);
+    codes.push(`FAJ-${eventIdWithoutEvtTail8}-${mIdWithoutPrefixTail8}`);
+    codes.push(`FAJ-${eventIdWithoutEvtTail8}-${mIdWithoutPrefixTail8}-PAR`);
+    codes.push(`FAJ-${eventIdWithoutEvtTail8}-${mIdWithoutPrefixTail8}-ORG`);
   }
 
   // Legacy format 2: event.id.slice(0,8) - member.ra.slice(0,8)
   if (member.ra) {
-    codes.push(`${eventIdSlice8}-${member.ra.slice(0, 8).toUpperCase()}`);
-    codes.push(`${eventIdSlice8}-${cleanAlphaNum(member.ra).slice(0, 8)}`);
+    const mRaRaw = member.ra.trim();
+    const mRaSlice8 = mRaRaw.slice(0, 8).toUpperCase();
+    const mRaClean = cleanAlphaNum(mRaRaw);
+    const mRaTail8 = mRaClean.length >= 8 ? mRaClean.slice(-8) : mRaClean;
+
+    codes.push(`${eventIdSlice8}-${mRaSlice8}`);
+    codes.push(`${eventIdSlice8}-${mRaClean.slice(0, 8)}`);
+    codes.push(`${eventIdClean.slice(0, 8)}-${mRaClean.slice(0, 8)}`);
+    codes.push(`${eventIdRaw.toUpperCase()}-${mRaRaw.toUpperCase()}`);
+    codes.push(`CERT-${eventIdSlice8}-${mRaClean.slice(0, 8)}`);
+    codes.push(`FAJ-${eventIdSlice8}-${mRaClean.slice(0, 8)}`);
+    codes.push(`FAJ-${eventIdTail8}-${mRaTail8}`);
+    codes.push(`FAJ-${eventIdWithoutEvtTail8}-${mRaTail8}`);
+    codes.push(`FAJ-${eventIdWithoutEvtTail8}-${mRaTail8}-PAR`);
+    codes.push(`FAJ-${eventIdWithoutEvtTail8}-${mRaTail8}-ORG`);
   }
 
   // Legacy format 3: event.id.slice(0,8) - DOC
   codes.push(`${eventIdSlice8}-DOC`);
-
-  // Legacy full ID format
-  if (member.id && event.id) {
-    codes.push(`${event.id.toUpperCase()}-${member.id.toUpperCase()}`);
-  }
+  codes.push(`${eventIdClean.slice(0, 8)}-DOC`);
+  codes.push(`CERT-${eventIdSlice8}-DOC`);
+  codes.push(`FAJ-${eventIdSlice8}-DOC`);
 
   return Array.from(new Set(codes.filter(Boolean)));
 }
@@ -190,8 +220,16 @@ export async function syncAllExistingCertificates(): Promise<number> {
       const student = studentsMap.get(att.studentId);
       if (!event || !student) continue;
 
-      const hasPart = Boolean(event.certificateTemplate?.isApproved && (att.status === "presente" || att.status === "apto_para_certificado" || event.allowAllRegisteredCertificates));
-      const hasOrg = Boolean(event.organizationCertificateTemplate?.isApproved && att.isOrganizer);
+      // Broaden eligibility to cover any certificate that was released, attended, or has template
+      const hasPart = Boolean(
+        att.status === "presente" ||
+        att.status === "apto_para_certificado" ||
+        event.allowAllRegisteredCertificates ||
+        (event as any).isCertificateReleased ||
+        event.status === "encerrado" ||
+        event.certificateTemplate
+      );
+      const hasOrg = Boolean(att.isOrganizer);
 
       // Register Participant Certificate
       if (hasPart) {
@@ -219,7 +257,7 @@ export async function syncAllExistingCertificates(): Promise<number> {
         currentBatch.set(certRef, record, { merge: true });
         batchOperations++;
 
-        // Legacy codes
+        // Legacy codes and aliases
         const legacyCodes = getLegacyCertificateCodes(event, student);
         for (const lCode of legacyCodes) {
           if (batchOperations >= 450) {
@@ -257,6 +295,17 @@ export async function syncAllExistingCertificates(): Promise<number> {
         const certRef = doc(db, `artifacts/${appId}/public/data/certificates`, code);
         currentBatch.set(certRef, record, { merge: true });
         batchOperations++;
+
+        const legacyCodes = getLegacyCertificateCodes(event, student);
+        for (const lCode of legacyCodes) {
+          const orgCode = lCode.endsWith("-ORG") ? lCode : `${lCode}-ORG`;
+          if (batchOperations >= 450) {
+            await commitAndRenewBatch();
+          }
+          const legacyRef = doc(db, `artifacts/${appId}/public/data/certificates`, orgCode);
+          currentBatch.set(legacyRef, { ...record, legacyCode: orgCode }, { merge: true });
+          batchOperations++;
+        }
         count++;
       }
     }
@@ -288,51 +337,90 @@ export async function resolveCertificate(
 } | null> {
   if (!rawCode || !rawCode.trim()) return null;
 
-  let code = rawCode.trim().toUpperCase();
+  let code = rawCode.trim();
 
-  // Extract from URL parameters if full URL was passed
-  if (code.includes("CERT=")) {
-    code = code.split("CERT=")[1].split("&")[0].split("#")[0].trim();
-  } else if (code.includes("VERIFY=")) {
-    code = code.split("VERIFY=")[1].split("&")[0].split("#")[0].trim();
-  }
-  code = code.replace(/["']/g, "").trim();
-
-  // -------------------------------------------------------------
-  // TIER 1: Exact lookup in Firestore `certificates` collection
-  // -------------------------------------------------------------
+  // 0. Decode any URL encodings
   try {
-    const certSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/certificates`, code));
-    if (certSnap.exists()) {
-      const data = certSnap.data() as CertificateRecord;
-      
-      let foundEvent = eventsCache.find((e) => e.id === data.eventId);
-      if (!foundEvent) {
-        const eSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/events`, data.eventId));
-        if (eSnap.exists()) {
-          foundEvent = { id: eSnap.id, ...eSnap.data() } as Event;
+    code = decodeURIComponent(code);
+  } catch (_) {}
+  code = code.trim();
+
+  // Extract from URL parameters or full URL
+  if (code.includes("cert=")) {
+    const parts = code.split("cert=");
+    if (parts[1]) code = parts[1].split("&")[0].split("#")[0].trim();
+  } else if (code.includes("CERT=")) {
+    const parts = code.split("CERT=");
+    if (parts[1]) code = parts[1].split("&")[0].split("#")[0].trim();
+  } else if (code.includes("verify=")) {
+    const parts = code.split("verify=");
+    if (parts[1]) code = parts[1].split("&")[0].split("#")[0].trim();
+  } else if (code.includes("VERIFY=")) {
+    const parts = code.split("VERIFY=");
+    if (parts[1]) code = parts[1].split("&")[0].split("#")[0].trim();
+  } else if (code.startsWith("http://") || code.startsWith("https://")) {
+    try {
+      const url = new URL(code);
+      const param = url.searchParams.get("cert") || url.searchParams.get("verify");
+      if (param) {
+        code = param.trim();
+      } else {
+        const segs = url.pathname.split("/").filter(Boolean);
+        if (segs.length > 0) code = segs[segs.length - 1];
+      }
+    } catch (_) {}
+  }
+
+  try {
+    code = decodeURIComponent(code);
+  } catch (_) {}
+
+  code = code.replace(/["']/g, "").trim().toUpperCase();
+
+  // -------------------------------------------------------------
+  // TIER 1: Exact and alias lookup in Firestore `certificates` collection
+  // -------------------------------------------------------------
+  const lookupKeys = [
+    code,
+    code.replace(/^FAJ-|^CERT-/, ""),
+    cleanAlphaNum(code),
+    `FAJ-${code.replace(/^FAJ-|^CERT-/, "")}`,
+  ];
+
+  for (const key of Array.from(new Set(lookupKeys))) {
+    try {
+      const certSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/certificates`, key));
+      if (certSnap.exists()) {
+        const data = certSnap.data() as CertificateRecord;
+        
+        let foundEvent = eventsCache.find((e) => e.id === data.eventId);
+        if (!foundEvent) {
+          const eSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/events`, data.eventId));
+          if (eSnap.exists()) {
+            foundEvent = { id: eSnap.id, ...eSnap.data() } as Event;
+          }
+        }
+
+        let foundMember = membersCache.find((m) => m.id === data.studentId);
+        if (!foundMember) {
+          const mSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/students`, data.studentId));
+          if (mSnap.exists()) {
+            foundMember = { id: mSnap.id, ...mSnap.data() } as Member;
+          }
+        }
+
+        if (foundEvent && foundMember) {
+          return {
+            event: foundEvent,
+            member: foundMember,
+            isOrganizer: Boolean(data.isOrganizer),
+            certCode: code,
+          };
         }
       }
-
-      let foundMember = membersCache.find((m) => m.id === data.studentId);
-      if (!foundMember) {
-        const mSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/students`, data.studentId));
-        if (mSnap.exists()) {
-          foundMember = { id: mSnap.id, ...mSnap.data() } as Member;
-        }
-      }
-
-      if (foundEvent && foundMember) {
-        return {
-          event: foundEvent,
-          member: foundMember,
-          isOrganizer: Boolean(data.isOrganizer),
-          certCode: code,
-        };
-      }
+    } catch (e) {
+      console.warn("Direct certificate registry lookup fallback:", e);
     }
-  } catch (e) {
-    console.warn("Direct certificate registry lookup fallback:", e);
   }
 
   // -------------------------------------------------------------
@@ -390,20 +478,59 @@ export async function resolveCertificate(
     }
   }
 
-  // 3. Find candidate members
-  const candidateMembers = allMembers.filter((m) => {
+  const isMemberMatch = (m: Member): boolean => {
     if (!m) return false;
     const mId = cleanAlphaNum(m.id || "");
+    const mIdTail8 = mId.length >= 8 ? mId.slice(-8) : mId;
+    const mIdWithoutPrefix = mId.replace(/^STD|^MEM/, "");
+    const mIdWithoutPrefixTail8 = mIdWithoutPrefix.length >= 4 ? mIdWithoutPrefix.slice(-8) : mIdWithoutPrefix;
+
     const mRa = cleanAlphaNum(m.ra || "");
+    const mRaTail8 = mRa.length >= 8 ? mRa.slice(-8) : mRa;
+
     const mAlpha = cleanAlphaNum(m.alphaCode || "");
     const mCpf = cleanAlphaNum(m.cpf || "");
+    const mCpfTail8 = mCpf.length >= 6 ? mCpf.slice(-8) : mCpf;
 
-    if (mId && (mId === cleanMemberSearch || mId.endsWith(cleanMemberSearch) || (cleanMemberSearch.length >= 6 && mId.startsWith(cleanMemberSearch)))) return true;
-    if (mRa && (mRa === cleanMemberSearch || mRa.includes(cleanMemberSearch) || (cleanMemberSearch.length >= 4 && mRa.endsWith(cleanMemberSearch)))) return true;
-    if (mAlpha && mAlpha === cleanMemberSearch) return true;
-    if (mCpf && cleanMemberSearch.length >= 6 && mCpf.endsWith(cleanMemberSearch)) return true;
-    return false;
-  });
+    return (
+      mId === cleanMemberSearch ||
+      mId.endsWith(cleanMemberSearch) ||
+      mId.slice(0, 8) === cleanMemberSearch ||
+      mIdTail8 === cleanMemberSearch ||
+      mIdWithoutPrefixTail8 === cleanMemberSearch ||
+      mRa === cleanMemberSearch ||
+      mRa.endsWith(cleanMemberSearch) ||
+      mRa.slice(0, 8) === cleanMemberSearch ||
+      mRaTail8 === cleanMemberSearch ||
+      (cleanMemberSearch.length >= 4 && mRa.includes(cleanMemberSearch)) ||
+      mAlpha === cleanMemberSearch ||
+      (cleanMemberSearch.length >= 6 && (mCpf.endsWith(cleanMemberSearch) || mCpfTail8 === cleanMemberSearch)) ||
+      (cleanMemberSearch.length >= 5 && cleanAlphaNum(m.name || "").includes(cleanMemberSearch))
+    );
+  };
+
+  const isEventMatch = (ev: Event): boolean => {
+    if (!ev) return false;
+    const evClean = cleanAlphaNum(ev.id || "");
+    const evTitleClean = cleanAlphaNum(ev.title || "");
+    const evTail8 = evClean.length >= 8 ? evClean.slice(-8) : evClean;
+    const evWithoutEvt = evClean.replace(/^EVT/, "");
+    const evWithoutEvtTail8 = evWithoutEvt.length >= 6 ? evWithoutEvt.slice(-8) : evWithoutEvt;
+
+    return (
+      evClean === cleanEventSearch ||
+      evClean.endsWith(cleanEventSearch) ||
+      evClean.slice(0, 8) === cleanEventSearch ||
+      evTail8 === cleanEventSearch ||
+      evWithoutEvtTail8 === cleanEventSearch ||
+      evWithoutEvt.endsWith(cleanEventSearch) ||
+      evClean.includes(cleanEventSearch) ||
+      (cleanEventSearch.length >= 4 && evTitleClean.includes(cleanEventSearch))
+    );
+  };
+
+  // 3. Find candidate members
+  const candidateMembers = allMembers.filter(isMemberMatch);
 
   // 4. Gather attendances
   let allAttendances = [...attendancesCache];
@@ -424,18 +551,7 @@ export async function resolveCertificate(
       const ev = allEvents.find((e) => e.id === att.eventId);
       if (!ev) continue;
 
-      const evClean = cleanAlphaNum(ev.id);
-      const evTitleClean = cleanAlphaNum(ev.title || "");
-
-      // Match event: exact, unique tail, legacy slice(0,8), or title
-      const matchesEvent =
-        evClean === cleanEventSearch ||
-        evClean.endsWith(cleanEventSearch) ||
-        evClean.slice(0, 8) === cleanEventSearch ||
-        evClean.includes(cleanEventSearch) ||
-        (cleanEventSearch.length >= 5 && evTitleClean.includes(cleanEventSearch));
-
-      if (matchesEvent) {
+      if (isEventMatch(ev)) {
         const isOrganizer = isExplicitOrg ? true : isExplicitPar ? false : Boolean(att.isOrganizer);
         
         // Auto-register so future lookups are instant
@@ -449,6 +565,34 @@ export async function resolveCertificate(
         return {
           event: ev,
           member: candMember,
+          isOrganizer,
+          certCode: code,
+        };
+      }
+    }
+  }
+
+  // 5b. Cross-reference candidate events with attendances & members (bidirectional match)
+  const candidateEvents = allEvents.filter(isEventMatch);
+
+  for (const candEvent of candidateEvents) {
+    const eventAtts = allAttendances.filter((a) => a.eventId === candEvent.id && a.status !== "cancelado");
+    for (const att of eventAtts) {
+      const mem = allMembers.find((m) => m.id === att.studentId);
+      if (!mem) continue;
+
+      if (isMemberMatch(mem)) {
+        const isOrganizer = isExplicitOrg ? true : isExplicitPar ? false : Boolean(att.isOrganizer);
+        registerCertificateRecord({
+          code,
+          event: candEvent,
+          member: mem,
+          isOrganizer,
+        }).catch(() => null);
+
+        return {
+          event: candEvent,
+          member: mem,
           isOrganizer,
           certCode: code,
         };

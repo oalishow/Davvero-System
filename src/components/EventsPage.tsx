@@ -1212,16 +1212,14 @@ END:VCALENDAR`;
                         <Share2 className="w-3.5 h-3.5" /> Compartilhar
                       </button>
 
-                      {isSystemAdmin && (
-                        <button
-                          onClick={() => setSelectedQrEvent(event)}
-                          className="flex items-center justify-center sm:justify-start gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max cursor-pointer"
-                          title="Gerar Cartaz com Foto e QR Code para Impressão (Exclusivo Administradores)"
-                        >
-                          <QrCode className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
-                          <span>Cartaz / QR Code</span>
-                        </button>
-                      )}
+                      <button
+                        onClick={() => setSelectedQrEvent(event)}
+                        className="flex items-center justify-center sm:justify-start gap-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-700 px-3 py-1.5 rounded-lg text-[10px] font-bold uppercase transition-all shadow-sm w-max cursor-pointer"
+                        title={isSystemAdmin ? "Gerar Cartaz com Foto e QR Code para Impressão" : "Visualizar e Imprimir Cartaz de Divulgação do Evento"}
+                      >
+                        <QrCode className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                        <span>Cartaz / QR Code</span>
+                      </button>
                     </div>
                   </div>
 

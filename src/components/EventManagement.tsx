@@ -18,6 +18,9 @@ import {
   Pin,
   QrCode,
   Globe,
+  ChevronUp,
+  ChevronDown,
+  Plus,
 } from "lucide-react";
 import ImageCropperModal from "./ImageCropperModal";
 import EventQrCodeModal from "./EventQrCodeModal";
@@ -72,6 +75,7 @@ export default function EventManagement({
   } | null>(null);
 
   const [editingEventId, setEditingEventId] = useState<string | null>(null);
+  const [isEventFormOpen, setIsEventFormOpen] = useState(false);
   const [showAttendeesEvent, setShowAttendeesEvent] = useState<Event | null>(
     null,
   );
@@ -183,6 +187,7 @@ export default function EventManagement({
 
   const handleEditClick = (event: Event) => {
     setEditingEventId(event.id);
+    setIsEventFormOpen(true);
     setTitle(event.title);
     setStartDate(event.startDate);
     setEndDate(event.endDate || "");
@@ -227,6 +232,7 @@ export default function EventManagement({
 
   const handleCancelEdit = () => {
     setEditingEventId(null);
+    setIsEventFormOpen(false);
     setTitle("");
     setStartDate("");
     setEndDate("");
@@ -392,21 +398,72 @@ export default function EventManagement({
       )}
 
       {adminAccessLevel !== "LEITOR" && (
-      <div className="bg-white dark:bg-slate-800/40 p-4 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-700/50">
-        <h3 className="text-base sm:text-lg font-medium text-slate-800 dark:text-slate-200 mb-4 flex items-center gap-2">
-          {editingEventId ? (
-            <>
-              <Edit className="w-5 h-5 text-sky-600 dark:text-sky-400" /> Editar
-              Evento
-            </>
-          ) : (
-            <>
-              <Calendar className="w-5 h-5 text-sky-600 dark:text-sky-400" />{" "}
-              Novo Evento
-            </>
-          )}
-        </h3>
+      <div className="bg-white dark:bg-slate-800/40 p-4 sm:p-6 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-sm transition-all">
+        <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-xl bg-sky-50 dark:bg-sky-950/60 text-sky-600 dark:text-sky-400 flex items-center justify-center border border-sky-100 dark:border-sky-900/40 shrink-0">
+              {editingEventId ? (
+                <Edit className="w-5 h-5" />
+              ) : (
+                <Calendar className="w-5 h-5" />
+              )}
+            </div>
+            <div>
+              <h3 className="text-base font-bold text-slate-800 dark:text-slate-200 flex items-center gap-2">
+                {editingEventId ? "Editar Evento" : "Novo Evento"}
+                {editingEventId && (
+                  <span className="text-[10px] bg-amber-100 dark:bg-amber-950/60 text-amber-700 dark:text-amber-400 px-2 py-0.5 rounded-full font-bold">
+                    Editando
+                  </span>
+                )}
+              </h3>
+              <p className="text-xs text-slate-500 dark:text-slate-400">
+                {isEventFormOpen
+                  ? (editingEventId ? "Altere os dados do evento e clique em Salvar Alterações." : "Preencha os campos abaixo para cadastrar o novo evento.")
+                  : (editingEventId ? "Formulário minimizado para edição. Clique para expandir." : "Painel minimizado. Clique no botão ao lado ou em 'Editar' em qualquer evento.")}
+              </p>
+            </div>
+          </div>
 
+          <div className="flex items-center gap-2 self-end sm:self-auto">
+            {editingEventId && !isEventFormOpen && (
+              <button
+                type="button"
+                onClick={handleCancelEdit}
+                className="px-3 py-2 text-xs font-bold text-slate-500 hover:text-slate-700 dark:text-slate-400 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-700 transition-all cursor-pointer"
+              >
+                Cancelar Edição
+              </button>
+            )}
+            <button
+              type="button"
+              onClick={() => {
+                if (isEventFormOpen) {
+                  if (editingEventId) handleCancelEdit();
+                  else setIsEventFormOpen(false);
+                } else {
+                  setIsEventFormOpen(true);
+                }
+              }}
+              className="flex items-center gap-2 px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-xs cursor-pointer"
+            >
+              {isEventFormOpen ? (
+                <>
+                  <ChevronUp className="w-4 h-4" />
+                  <span>Minimizar</span>
+                </>
+              ) : (
+                <>
+                  {editingEventId ? <Edit className="w-4 h-4" /> : <Plus className="w-4 h-4" />}
+                  <span>{editingEventId ? "Abrir Edição" : "Novo Evento"}</span>
+                </>
+              )}
+            </button>
+          </div>
+        </div>
+
+        {isEventFormOpen && (
+        <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-700/60">
         {statusMsg && (
           <div
             className={`p-3 rounded-xl mb-4 text-xs sm:text-sm font-medium ${
@@ -967,6 +1024,8 @@ export default function EventManagement({
             </button>
           )}
         </div>
+        </div>
+      )}
       </div>
       )}
 

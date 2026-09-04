@@ -624,7 +624,7 @@ export const unsubscribeFromEvent = async (
 
 export const getEventSubscribers = async (
   eventId: string,
-): Promise<{ name: string; photoUrl: string | null; roles?: string[] }[]> => {
+): Promise<{ name: string; photoUrl: string | null; roles?: string[]; status?: string }[]> => {
   try {
     const { collection, query, where, getDocs } = await import("firebase/firestore");
     const q = query(
@@ -635,27 +635,52 @@ export const getEventSubscribers = async (
     
     if (snap.empty) return [];
     
-    const validStatuses = ["inscrito", "presente", "apto_para_certificado"];
-    const validDocs = snap.docs.filter(d => validStatuses.includes(d.data().status));
+    // Filter out canceled attendances
+    const validDocs = snap.docs.filter(d => {
+      const st = String(d.data().status || "inscrito").toLowerCase().trim();
+      return st !== "cancelado";
+    });
     
     if (validDocs.length === 0) return [];
     
-    const studentIds = validDocs.map(d => d.data().studentId);
+    // Fetch students list for full profile details
+    let membersDict: Record<string, any> = {};
+    try {
+      const membersSnap = await getDocs(
+        query(collection(db, `artifacts/${appId}/public/data/students`)),
+      );
+      membersSnap.docs.forEach((d) => {
+        membersDict[d.id] = d.data();
+      });
+    } catch (errMembers) {
+      console.warn("Could not fetch students collection for subscribers:", errMembers);
+    }
 
-    const membersSnap = await getDocs(
-      query(collection(db, `artifacts/${appId}/public/data/students`)),
-    );
+    const subscribers: { name: string; photoUrl: string | null; roles?: string[]; status?: string }[] = [];
+    const seenStudentIds = new Set<string>();
 
-    const subscribers: { name: string; photoUrl: string | null; roles?: string[] }[] = [];
-    membersSnap.docs.forEach((d) => {
-      if (studentIds.includes(d.id)) {
-        const data = d.data();
-        subscribers.push({
-          name: data.name,
-          photoUrl: data.photoUrl || null,
-          roles: data.roles || [],
-        });
-      }
+    validDocs.forEach((d) => {
+      const attData = d.data();
+      const sId = attData.studentId || d.id;
+      if (seenStudentIds.has(sId)) return;
+      seenStudentIds.add(sId);
+
+      const member = membersDict[sId];
+      const name = (
+        member?.name ||
+        attData.studentName ||
+        attData.memberName ||
+        attData.name ||
+        attData.guestName ||
+        "Participante"
+      ).trim();
+
+      subscribers.push({
+        name,
+        photoUrl: member?.photoUrl || attData.photoUrl || null,
+        roles: member?.roles || attData.roles || (attData.isVisitor ? ["VISITANTE"] : []),
+        status: attData.status || "inscrito",
+      });
     });
 
     return subscribers;

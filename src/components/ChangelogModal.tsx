@@ -8,6 +8,22 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v8.1b',
+      title: 'Gestão de Enquetes, Autenticidade de Certificados & Presença Multi-Dias',
+      changes: [
+        'Gerenciamento de Enquetes: novo painel administrativo com suporte a imagens, votação anônima, escolha única ou múltipla, duração configurável e resultados em tempo real na página inicial.',
+        'Correção de Autenticidade & QR Code: resolução definitiva para código de autenticidade e QR Code dos certificados, corrigindo informações de horas e curso tanto para novas emissões quanto retroativamente para os já gerados.',
+        'Auto-Liberação de Certificados: emissão e liberação automática de certificados para os participantes e organizadores após o horário de término do evento.',
+        'Correção no Download (PDF): animação de download agora é individual por certificado, sem acionar os demais botões.',
+        'Presença Diária em Eventos Multi-Dias: eventos com mais de um dia exigem assinatura diária na lista de presença digital e na lista impressa.',
+        'Carteirinha Reativa ao Perfil: títulos oficiais automáticos (Documento Universitário para professores, Documento do Profissional da Educação para colaboradores, e Documento Estudantil para alunos não-seminaristas).',
+        'Painel Novo Evento Retrátil: formulário de cadastro de eventos minimizado para maior ergonomia e clareza visual.',
+        'Cartaz de Divulgação Acessível: visualização e download do cartaz do evento disponível para todos os participantes (com a lista de presença restrita a administradores).',
+        'Aviso de Responsabilidade e Guarda: aviso informando sobre o armazenamento temporário de certificados no painel.'
+      ],
+      current: true,
+    },
+    {
       version: 'v8.0b',
       title: 'Correção Geral de Assinaturas, Remoção do Mural & Atualização Sob Demanda',
       changes: [
@@ -16,7 +32,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Sincronização Sob Demanda no Botão de Atualização: limpeza profunda de cache do navegador e recarga limpa garantida com 1 clique, sem ficar preso na versão anterior.',
         'Proteção contra colapso de imagem e erro de carregamento entre domínios (CORS/WebKit).'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v7.9b',
