@@ -62,6 +62,7 @@ import EventCheckInModal from "./EventCheckInModal";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import { DEFAULT_PUBLIC_URL } from "../lib/constants";
+import { isEventCertificateReleased, getEventEndTime } from "../lib/certificateAuth";
 import EventManagement from "./EventManagement";
 
 export default function EventsPage({ onNavigateToStudent, renderSeminary = false }: { onNavigateToStudent?: () => void, renderSeminary?: boolean }) {
@@ -169,13 +170,11 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     const unsubEvents = onSnapshot(qEvents, (snap) => {
       let evts = snap.docs.map((d) => {
         const e = d.data() as Event;
-        const now = new Date().getTime();
-        if (e.status === "aberto") {
-          const checkDate = e.endDate ? new Date(e.endDate).getTime() : new Date(e.startDate).getTime();
-          const GRACE_PERIOD = 2 * 60 * 60 * 1000; // 2 hours
-          if (checkDate + GRACE_PERIOD < now) {
-             return { ...e, status: "encerrado" as any };
-          }
+        const now = Date.now();
+        const endTime = getEventEndTime(e);
+        const hasPassedEnd = endTime > 0 && now >= endTime;
+        if (e.status === "aberto" && hasPassedEnd) {
+           return { ...e, status: "encerrado" as any, isCertificateReleased: true };
         }
         return e;
       });

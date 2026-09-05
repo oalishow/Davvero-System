@@ -17,11 +17,10 @@ import PublicRequestModal from "./PublicRequestModal";
 import SuggestEditModal from "./SuggestEditModal";
 import Modal from "./Modal";
 import RegistrationSuccessModal from "./RegistrationSuccessModal";
-import HomePollsWidget from "./HomePollsWidget";
 import { useDialog } from "../context/DialogContext";
 import { playSound } from '../lib/sounds';
 import { recordQRScan } from "../lib/telemetry";
-import { resolveCertificate, syncAllExistingCertificates } from "../lib/certificateAuth";
+import { resolveCertificate, syncAllExistingCertificates, generateCertificateCode } from "../lib/certificateAuth";
 
 import { motion } from "motion/react";
 import confetti from "canvas-confetti";
@@ -161,26 +160,31 @@ export default function Verifier({
     // Split by common separators (- , / , :)
     let eventPart = "";
     let memberPart = "";
+    let cleanCode = code.replace(/^FAJ-|^CERT-/, "").trim();
 
-    if (code.includes("-")) {
-      const parts = code.split("-");
+    if (cleanCode.includes("-")) {
+      const parts = cleanCode.split("-");
       eventPart = parts[0].trim();
-      memberPart = parts.slice(1).join("-").trim();
-    } else if (code.includes("/")) {
-      const parts = code.split("/");
+      if (parts.length >= 3 && (parts[parts.length - 1] === "ORG" || parts[parts.length - 1] === "PAR")) {
+        memberPart = parts.slice(1, parts.length - 1).join("-").trim();
+      } else {
+        memberPart = parts.slice(1).join("-").trim();
+      }
+    } else if (cleanCode.includes("/")) {
+      const parts = cleanCode.split("/");
       eventPart = parts[0].trim();
       memberPart = parts.slice(1).join("/").trim();
-    } else if (code.includes(":")) {
-      const parts = code.split(":");
+    } else if (cleanCode.includes(":")) {
+      const parts = cleanCode.split(":");
       eventPart = parts[0].trim();
       memberPart = parts.slice(1).join(":").trim();
     } else {
-      if (code.length >= 12 && code.length <= 20) {
-        eventPart = code.slice(0, 8);
-        memberPart = code.slice(8);
+      if (cleanCode.length >= 12 && cleanCode.length <= 20) {
+        eventPart = cleanCode.slice(0, 8);
+        memberPart = cleanCode.slice(8);
       } else {
-        eventPart = code;
-        memberPart = code;
+        eventPart = cleanCode;
+        memberPart = cleanCode;
       }
     }
 
@@ -905,6 +909,25 @@ export default function Verifier({
     setTimeout(async () => {
       const targetId = idOrCode.toUpperCase().trim();
       const rawTextUpper = (rawScannedText || idOrCode).toUpperCase().trim();
+
+      // Priority 1: Direct Certificate detection - prevent treating certificates as member cards
+      const isCertQuery =
+        rawTextUpper.includes("CERT=") ||
+        targetId.includes("CERT=") ||
+        rawTextUpper.includes("/CERTIFICADO") ||
+        rawTextUpper.includes("FAJ-") ||
+        targetId.startsWith("FAJ-") ||
+        targetId.startsWith("CERT-") ||
+        targetId.endsWith("-PAR") ||
+        targetId.endsWith("-ORG") ||
+        targetId.includes("-PAR-") ||
+        targetId.includes("-ORG-");
+
+      if (verifyMode === "CERTIFICATE" || isCertQuery) {
+        setVerifyMode("CERTIFICATE");
+        await handleVerifyCertificate(rawScannedText || idOrCode);
+        return;
+      }
 
       const foundMember = membersCache.find((m) => {
         if (m.deletedAt || m.isApproved === false) return false;
@@ -1645,7 +1668,7 @@ export default function Verifier({
                         <button
                           key={item.event.id}
                           onClick={() => {
-                            const certCode = `${item.event.id.slice(0, 8).toUpperCase()}-${(student.id || student.ra || "DOC").slice(0, 8).toUpperCase()}`;
+                            const certCode = generateCertificateCode(item.event, student, item.attendance.isOrganizer);
                             handleVerifyCertificate(certCode);
                           }}
                           className="p-3 bg-white/90 dark:bg-slate-800/90 hover:bg-white dark:hover:bg-slate-800 rounded-xl border border-sky-100 dark:border-slate-700 hover:border-emerald-500 dark:hover:border-emerald-500 flex items-center justify-between text-left transition-all shadow-sm hover:shadow"
@@ -1901,11 +1924,6 @@ export default function Verifier({
             aceitação sujeita aos critérios dos organizadores de eventos.
           </p>
         </div>
-      </div>
-
-      {/* Enquetes para votações na página inicial abaixo de Garantia de Meia-Entrada */}
-      <div className="w-full max-w-md px-4 mt-6 no-print">
-        <HomePollsWidget />
       </div>
     </div>
   );

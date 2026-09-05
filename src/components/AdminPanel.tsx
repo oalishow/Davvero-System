@@ -188,6 +188,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const baseRoles = [
     "ALUNO(A)",
     "PROFESSOR(A)",
+    "PROFISSIONAL DA EDUCAÇÃO",
     "COLABORADOR(A)",
     "SEMINARISTA",
     "PADRE",

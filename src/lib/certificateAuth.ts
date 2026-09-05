@@ -1,6 +1,6 @@
 import { db, appId } from "./firebase";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, writeBatch } from "firebase/firestore";
-import type { Event, Member, Attendance } from "../types";
+import type { Event, Member, Attendance, CertificateTemplate } from "../types";
 
 export interface CertificateRecord {
   code: string;
@@ -35,31 +35,30 @@ export function generateCertificateCode(
   const isOrg = Boolean(isOrganizer);
   const typeTag = isOrg ? "ORG" : "PAR";
 
-  // Event unique part: prioritize unique tail of ID or timestamp
+  // Event unique part: prioritize unique ID or timestamp, bounded to 6-10 chars
   let eventPart = "";
   if (event.id) {
     const rawClean = cleanAlphaNum(event.id);
-    // If it starts with EVT, remove it to get the unique timestamp/hash tail
     const withoutPrefix = rawClean.replace(/^EVT/, "");
-    eventPart = withoutPrefix.length >= 6 ? withoutPrefix.slice(-8) : rawClean.slice(-8);
+    eventPart = withoutPrefix.length >= 6 ? withoutPrefix.slice(0, 10) : (rawClean.length >= 6 ? rawClean.slice(0, 10) : rawClean);
   } else if (event.title) {
     eventPart = cleanAlphaNum(event.title).slice(0, 8);
   } else {
-    eventPart = "EVT" + Date.now().toString().slice(-5);
+    eventPart = "EVT" + Date.now().toString().slice(-6);
   }
 
-  // Member unique part: prioritize RA if available, otherwise unique tail of ID or CPF
+  // Member unique part: prioritize RA if available, otherwise unique ID or CPF (bounded to 10 chars)
   let memberPart = "";
   if (member.ra && cleanAlphaNum(member.ra).length >= 3) {
-    memberPart = cleanAlphaNum(member.ra).slice(-8);
+    memberPart = cleanAlphaNum(member.ra).slice(0, 10);
+  } else if (member.cpf && cleanAlphaNum(member.cpf).length >= 6) {
+    memberPart = cleanAlphaNum(member.cpf).slice(-6);
   } else if (member.id) {
     const rawClean = cleanAlphaNum(member.id);
     const withoutPrefix = rawClean.replace(/^STD|^MEM/, "");
-    memberPart = withoutPrefix.length >= 4 ? withoutPrefix.slice(-8) : rawClean.slice(-8);
-  } else if (member.cpf && cleanAlphaNum(member.cpf).length >= 6) {
-    memberPart = cleanAlphaNum(member.cpf).slice(-8);
+    memberPart = withoutPrefix.length >= 4 ? withoutPrefix.slice(0, 10) : rawClean.slice(0, 10);
   } else {
-    memberPart = "DOC" + cleanAlphaNum(member.name || "USER").slice(0, 5);
+    memberPart = "DOC" + cleanAlphaNum(member.name || "USER").slice(0, 6);
   }
 
   return `FAJ-${eventPart}-${memberPart}-${typeTag}`;
@@ -220,13 +219,13 @@ export async function syncAllExistingCertificates(): Promise<number> {
       const student = studentsMap.get(att.studentId);
       if (!event || !student) continue;
 
+      const isReleased = event.status === "encerrado" || (event as any).isCertificateReleased || isEventCertificateReleased(event);
       // Broaden eligibility to cover any certificate that was released, attended, or has template
       const hasPart = Boolean(
         att.status === "presente" ||
         att.status === "apto_para_certificado" ||
         event.allowAllRegisteredCertificates ||
-        (event as any).isCertificateReleased ||
-        event.status === "encerrado" ||
+        isReleased ||
         event.certificateTemplate
       );
       const hasOrg = Boolean(att.isOrganizer);
@@ -308,6 +307,37 @@ export async function syncAllExistingCertificates(): Promise<number> {
         }
         count++;
       }
+    }
+
+    // Sweep existing certificates in Firestore to correct any wrong hours or titles
+    try {
+      const existingCertsSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/certificates`)).catch(() => null);
+      if (existingCertsSnap && !existingCertsSnap.empty) {
+        for (const cDoc of existingCertsSnap.docs) {
+          const cData = cDoc.data() as CertificateRecord;
+          if (cData.eventId && cData.studentId) {
+            const ev = eventsMap.get(cData.eventId);
+            const st = studentsMap.get(cData.studentId);
+            if (ev && st) {
+              const correctHours = Number(String(cData.isOrganizer && ev.organizationHours ? ev.organizationHours : (ev.hours || 0)).replace(/[^0-9.]/g, "")) || 0;
+              const updates: Partial<CertificateRecord> = {
+                eventTitle: ev.title || cData.eventTitle || "Evento Acadêmico",
+                hours: correctHours,
+                memberCourse: st.course || cData.memberCourse || "",
+                memberName: st.name || cData.memberName || "",
+                memberRa: st.ra || cData.memberRa || "",
+              };
+              if (batchOperations >= 450) {
+                await commitAndRenewBatch();
+              }
+              currentBatch.set(cDoc.ref, updates, { merge: true });
+              batchOperations++;
+            }
+          }
+        }
+      }
+    } catch (sweepErr) {
+      console.warn("Certificates repair sweep non-blocking error:", sweepErr);
     }
 
     if (batchOperations > 0) {
@@ -410,11 +440,40 @@ export async function resolveCertificate(
         }
 
         if (foundEvent && foundMember) {
+          const resolvedHours = data.hours !== undefined && data.hours !== null ? Number(data.hours) : (data.isOrganizer && foundEvent.organizationHours ? foundEvent.organizationHours : foundEvent.hours);
           return {
-            event: foundEvent,
-            member: foundMember,
+            event: {
+              ...foundEvent,
+              title: data.eventTitle || foundEvent.title,
+              hours: resolvedHours,
+              organizationHours: data.isOrganizer ? resolvedHours : foundEvent.organizationHours,
+            },
+            member: {
+              ...foundMember,
+              name: data.memberName || foundMember.name,
+              course: data.memberCourse || foundMember.course,
+            },
             isOrganizer: Boolean(data.isOrganizer),
-            certCode: code,
+            certCode: data.code || code,
+          };
+        } else if (data.eventTitle && (data.memberName || data.memberRa)) {
+          return {
+            event: {
+              id: data.eventId,
+              title: data.eventTitle,
+              hours: data.hours,
+              organizationHours: data.isOrganizer ? data.hours : undefined,
+              status: "encerrado",
+            } as Event,
+            member: {
+              id: data.studentId,
+              name: data.memberName || "Participante Certificado",
+              ra: data.memberRa || "",
+              course: data.memberCourse || "",
+              roles: ["ALUNO(A)"],
+            } as Member,
+            isOrganizer: Boolean(data.isOrganizer),
+            certCode: data.code || code,
           };
         }
       }
@@ -512,7 +571,6 @@ export async function resolveCertificate(
   const isEventMatch = (ev: Event): boolean => {
     if (!ev) return false;
     const evClean = cleanAlphaNum(ev.id || "");
-    const evTitleClean = cleanAlphaNum(ev.title || "");
     const evTail8 = evClean.length >= 8 ? evClean.slice(-8) : evClean;
     const evWithoutEvt = evClean.replace(/^EVT/, "");
     const evWithoutEvtTail8 = evWithoutEvt.length >= 6 ? evWithoutEvt.slice(-8) : evWithoutEvt;
@@ -520,12 +578,12 @@ export async function resolveCertificate(
     return (
       evClean === cleanEventSearch ||
       evClean.endsWith(cleanEventSearch) ||
-      evClean.slice(0, 8) === cleanEventSearch ||
+      evWithoutEvt === cleanEventSearch ||
+      evWithoutEvt.endsWith(cleanEventSearch) ||
       evTail8 === cleanEventSearch ||
       evWithoutEvtTail8 === cleanEventSearch ||
-      evWithoutEvt.endsWith(cleanEventSearch) ||
-      evClean.includes(cleanEventSearch) ||
-      (cleanEventSearch.length >= 4 && evTitleClean.includes(cleanEventSearch))
+      (cleanEventSearch.length >= 6 && evWithoutEvt.startsWith(cleanEventSearch)) ||
+      (cleanEventSearch.length >= 8 && evClean.startsWith(cleanEventSearch))
     );
   };
 
@@ -627,11 +685,19 @@ export async function resolveCertificate(
 }
 
 /**
- * Calculates event end timestamp safely from startDate and endDate.
+ * Calculates event end timestamp safely from startDate, endDate and endTime.
  */
-export function getEventEndTime(event: { endDate?: string; startDate?: string }): number {
+export function getEventEndTime(event?: { endDate?: string; startDate?: string; endTime?: string } | null): number {
+  if (!event) return 0;
   if (!event.endDate && !event.startDate) return 0;
-  const dateStr = event.endDate || event.startDate || "";
+  const dateStr = (event.endDate || event.startDate || "").trim();
+  const timeStr = (event.endTime || "").trim();
+
+  if (timeStr && timeStr.includes(":") && dateStr.length === 10 && dateStr.includes("-")) {
+    const [y, m, day] = dateStr.split("-").map(Number);
+    const [hours, minutes] = timeStr.split(":").map(Number);
+    return new Date(y, m - 1, day, hours || 0, minutes || 0, 0, 0).getTime();
+  }
   if (dateStr.includes("T")) {
     const t = new Date(dateStr).getTime();
     if (!isNaN(t)) return t;
@@ -645,11 +711,12 @@ export function getEventEndTime(event: { endDate?: string; startDate?: string })
 }
 
 /**
- * Checks if certificates for an event are released, either because the event is marked 'encerrado'
- * or because its scheduled end time has passed (when autoReleaseCertificatesOnEnd is active, default true).
+ * Checks if certificates for an event are released, either because the event is marked 'encerrado',
+ * manually released, or because its scheduled end time has passed (when autoReleaseCertificatesOnEnd is active, default true).
  */
 export function isEventCertificateReleased(event: Event): boolean {
   if (event.status === "encerrado") return true;
+  if ((event as any).isCertificateReleased === true) return true;
   // If event has autoReleaseCertificatesOnEnd enabled (default true)
   if (event.autoReleaseCertificatesOnEnd !== false) {
     const now = Date.now();
@@ -660,3 +727,58 @@ export function isEventCertificateReleased(event: Event): boolean {
   }
   return false;
 }
+
+/**
+ * Provides a complete default CertificateTemplate for an event.
+ */
+export function getDefaultCertificateTemplate(
+  event?: Partial<Event>,
+  isOrganizer?: boolean,
+  settings?: any
+): CertificateTemplate {
+  const isDioceseEvent = Boolean(event?.isDiocese || event?.dioceseId);
+  return {
+    bodyText: "",
+    fontFamily: "serif",
+    bgStyle: "theme-classic",
+    isApproved: true,
+    showFajopaDirectorSignature: !isDioceseEvent,
+    fajopaDirectorName: settings?.directorName || "Direção Acadêmica",
+    showSeminarRectorSignature: !isDioceseEvent,
+    seminarRectorName: settings?.rectorName || "Reitoria",
+    showSignature1: isDioceseEvent,
+    signature1Name: "",
+    signature1Role: isDioceseEvent ? "Coordenador(a) Diocesano(a)" : "",
+    signatureName: "",
+    signatureRole: "",
+    showSignature2: isDioceseEvent,
+    signature2Name: "",
+    signature2Role: isDioceseEvent ? "Bispo Diocesano" : "",
+    showSignature3: false,
+    signature3Name: "",
+    signature3Role: "",
+    fontSize: 26,
+    isBold: false,
+    textAlign: "justify",
+    textBoxWidth: "normal",
+    titleText: "CERTIFICADO",
+    subtitleText: isOrganizer ? "DE ORGANIZAÇÃO" : "DE PARTICIPAÇÃO",
+    showLogo: true,
+    logoSize: 70,
+    logoPosition: "top-center",
+    showLogo2: true,
+    logo2Size: 60,
+    logo2Position: "top-right",
+    backgroundOpacity: 100,
+    keepFrameWithCustomBg: false,
+    institutionAddress: settings?.instAddress || "",
+    institutionEmail: settings?.instEmail || "",
+    showInstitutionFooter: true,
+    institutionFooterOffsetY: 0,
+    signatureSize: 65,
+    signaturePosition: "space-around",
+    signatureOffsetY: 0,
+    signatureLineGap: -4,
+  };
+}
+

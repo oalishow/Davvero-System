@@ -101,13 +101,29 @@ export default function SchedulingManager() {
   };
 
   const handleUpdate = (id: string, field: keyof ProfessionalConfig, value: any) => {
-    setLocalProfs(
-      localProfs.map((p) => (p.id === id ? { ...p, [field]: value } : p))
+    setLocalProfs((prev) =>
+      prev.map((p) => (p.id === id ? { ...p, [field]: value } : p))
     );
   };
 
+  const handleRemoveFormationDoc = (id: string) => {
+    setLocalProfs((prev) =>
+      prev.map((p) =>
+        p.id === id
+          ? {
+              ...p,
+              formationDocUrl: null,
+              formationDocName: "",
+              formationDocDescription: "",
+            }
+          : p
+      )
+    );
+    showAlert("Documento removido. Clique em 'Salvar Alterações' para confirmar no sistema.", "info");
+  };
+
   const handleRemove = (id: string) => {
-    setLocalProfs(localProfs.filter((p) => p.id !== id));
+    setLocalProfs((prev) => prev.filter((p) => p.id !== id));
   };
 
   const handleSave = async () => {
@@ -425,10 +441,7 @@ export default function SchedulingManager() {
                       </button>
                       <button
                         type="button"
-                        onClick={() => {
-                          handleUpdate(prof.id, "formationDocUrl", null);
-                          handleUpdate(prof.id, "formationDocName", "");
-                        }}
+                        onClick={() => handleRemoveFormationDoc(prof.id)}
                         className="p-1.5 text-red-500 hover:bg-red-100 dark:hover:bg-red-950/40 rounded-lg transition-colors cursor-pointer"
                         title="Remover documento"
                       >

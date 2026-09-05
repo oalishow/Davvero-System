@@ -38,7 +38,7 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
     }
   });
 
-  const baseRoles = ["ALUNO(A)", "PROFESSOR(A)", "COLABORADOR(A)", "SEMINARISTA", "PADRE", "DIÁCONO", "BISPO", "DIRETOR", "VICE-DIRETOR", "RELIGIOSO(A)", "COORDENADOR(A)", "REITOR", "VICE-REITOR", "PSICÓLOGO(A)", "DIRETOR ESPIRITUAL"];
+  const baseRoles = ["ALUNO(A)", "PROFESSOR(A)", "PROFISSIONAL DA EDUCAÇÃO", "COLABORADOR(A)", "SEMINARISTA", "PADRE", "DIÁCONO", "BISPO", "DIRETOR", "VICE-DIRETOR", "RELIGIOSO(A)", "COORDENADOR(A)", "REITOR", "VICE-REITOR", "PSICÓLOGO(A)", "DIRETOR ESPIRITUAL"];
   const availableRoles = [...baseRoles, ...customRoles];
 
   useEffect(() => {

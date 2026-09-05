@@ -372,15 +372,15 @@ export default function VerificationResult({
               <p className="text-base sm:text-lg font-black text-slate-800 dark:text-white leading-snug">{safeName}</p>
               {member?.ra && <p className="text-xs text-slate-500 font-mono mt-0.5 font-semibold">RA: {member.ra}</p>}
               {member?.course && (
-                <p className="text-xs text-sky-700 dark:text-sky-400 font-bold mt-0.5">
-                  Curso: <span className="font-normal">{member.course}</span>
+                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-0.5">
+                  <span className="font-bold text-slate-500 dark:text-slate-400">Curso de Graduação:</span> {member.course}
                 </p>
               )}
               {member?.cpf && (isMyID || isAdminLogged) && <p className="text-xs text-slate-500 font-mono font-semibold">CPF: {member.cpf}</p>}
             </div>
 
             <div className="border-t border-slate-200/80 dark:border-slate-700/60 pt-3">
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Evento / Curso</p>
+              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Evento / Atividade Acadêmica Certificada</p>
               <p className="text-sm sm:text-base font-bold text-sky-600 dark:text-sky-400 leading-snug">
                 {event?.title || "Evento Acadêmico"}
               </p>
@@ -390,13 +390,16 @@ export default function VerificationResult({
               <div>
                 <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Tipo de Emissão</p>
                 <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">
-                  {isOrganizer ? "Organização" : "Participação"}
+                  {isOrganizer ? "Comissão Organizadora" : "Participação"}
                 </p>
               </div>
               <div>
-                <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Carga Horária</p>
+                <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Carga Horária Certificada</p>
                 <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">
-                  {Number(String(isOrganizer && event?.organizationHours ? event.organizationHours : (event?.hours || 0)).replace(/[^0-9.]/g, "")) || 0} Horas
+                  {(() => {
+                    const parsed = Number(String(isOrganizer && event?.organizationHours ? event.organizationHours : (event?.hours || (event as any)?.workloadHours || 0)).replace(/[^0-9.]/g, "")) || 0;
+                    return parsed > 0 ? `${parsed} Horas` : "Conforme Programação";
+                  })()}
                 </p>
               </div>
               {event?.startDate && (

@@ -61,6 +61,8 @@ export function setStoredVote(pollId: string, optionId: string): void {
 /**
  * Escuta em tempo real as enquetes ativas
  */
+const DEFAULT_POLL_ID = "poll_davvero_default_experience";
+
 export function subscribeActivePolls(callback: (polls: Poll[]) => void): () => void {
   try {
     const q = query(
@@ -71,10 +73,19 @@ export function subscribeActivePolls(callback: (polls: Poll[]) => void): () => v
     return onSnapshot(
       q,
       (snapshot) => {
-        const polls: Poll[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<Poll, "id">),
-        }));
+        const pollsMap = new Map<string, Poll>();
+        snapshot.docs.forEach((d) => {
+          const poll = {
+            id: d.id,
+            ...(d.data() as Omit<Poll, "id">),
+          };
+          // Evita duplicatas com o mesmo título ou id
+          const existingKey = poll.title?.trim().toLowerCase() || poll.id;
+          if (!pollsMap.has(existingKey)) {
+            pollsMap.set(existingKey, poll);
+          }
+        });
+        const polls = Array.from(pollsMap.values());
         // Ordena pela data de criação decrescente
         polls.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
         callback(polls);
@@ -95,14 +106,23 @@ export function subscribeActivePolls(callback: (polls: Poll[]) => void): () => v
  */
 export function subscribeAllPolls(callback: (polls: Poll[]) => void): () => void {
   try {
-    const colRef = collection(db, POLLS_COLLECTION);
+    const q = query(collection(db, POLLS_COLLECTION));
+
     return onSnapshot(
-      colRef,
+      q,
       (snapshot) => {
-        const polls: Poll[] = snapshot.docs.map((d) => ({
-          id: d.id,
-          ...(d.data() as Omit<Poll, "id">),
-        }));
+        const pollsMap = new Map<string, Poll>();
+        snapshot.docs.forEach((d) => {
+          const poll = {
+            id: d.id,
+            ...(d.data() as Omit<Poll, "id">),
+          };
+          const existingKey = poll.title?.trim().toLowerCase() || poll.id;
+          if (!pollsMap.has(existingKey)) {
+            pollsMap.set(existingKey, poll);
+          }
+        });
+        const polls = Array.from(pollsMap.values());
         polls.sort((a, b) => (b.createdAt || "").localeCompare(a.createdAt || ""));
         callback(polls);
       },
@@ -112,7 +132,7 @@ export function subscribeAllPolls(callback: (polls: Poll[]) => void): () => void
       }
     );
   } catch (err) {
-    console.error("[PollsService] Erro ao buscar todas as enquetes:", err);
+    console.error("[PollsService] Erro de inicialização:", err);
     return () => {};
   }
 }
@@ -289,15 +309,28 @@ export async function resetPollVotes(pollId: string): Promise<void> {
 }
 
 /**
- * Garante que existe pelo menos a enquete inicial de experiência do Davvero
+ * Garante que existe apenas uma enquete inicial de experiência do Davvero e limpa duplicatas
  */
 export async function ensureDefaultDavveroPoll(): Promise<void> {
   try {
     const q = query(collection(db, POLLS_COLLECTION));
     const snap = await getDocs(q);
 
-    if (snap.empty) {
-      const defaultPoll: Omit<Poll, "id" | "createdAt" | "totalVotes"> = {
+    // Identifica enquetes padrão de experiência
+    const defaultPolls = snap.docs.filter((d) => {
+      const data = d.data() as Poll;
+      const title = (data.title || "").toLowerCase();
+      return (
+        d.id === DEFAULT_POLL_ID ||
+        data.category === "davvero_experience" ||
+        title.includes("sua experiência utilizando o davvero") ||
+        title.includes("experiencia utilizando o davvero")
+      );
+    });
+
+    if (defaultPolls.length === 0) {
+      const defaultPoll: Poll = {
+        id: DEFAULT_POLL_ID,
         title: "Como está sendo sua experiência utilizando o Davvero?",
         description:
           "Sua opinião é fundamental para aprimorarmos continuamente nossa plataforma acadêmica, litúrgica e formativa.",
@@ -311,9 +344,31 @@ export async function ensureDefaultDavveroPoll(): Promise<void> {
           { id: "opt_3", text: "💡 Boa, mas gostaria de novos recursos", votesCount: 0, color: "#f59e0b" },
           { id: "opt_4", text: "🔧 Regular / Encontrei algumas dificuldades", votesCount: 0, color: "#64748b" },
         ],
+        totalVotes: 0,
+        createdAt: new Date().toISOString(),
+        feedbacks: [],
       };
-      await createPoll(defaultPoll);
+      await setDoc(doc(db, POLLS_COLLECTION, DEFAULT_POLL_ID), defaultPoll);
       console.log("[PollsService] Enquete padrão do Davvero criada com sucesso.");
+    } else if (defaultPolls.length > 1) {
+      // Duplicatas detectadas! Preserva a enquete com mais votos e remove o excesso
+      console.log(`[PollsService] ${defaultPolls.length} duplicatas de enquete detectadas. Limpando...`);
+      defaultPolls.sort((a, b) => {
+        const votesA = (a.data() as Poll).totalVotes || 0;
+        const votesB = (b.data() as Poll).totalVotes || 0;
+        return votesB - votesA;
+      });
+
+      // Mantém a primeira e exclui as outras
+      const duplicatesToDelete = defaultPolls.slice(1);
+      for (const dup of duplicatesToDelete) {
+        try {
+          await deleteDoc(doc(db, POLLS_COLLECTION, dup.id));
+          console.log(`[PollsService] Duplicata removida: ${dup.id}`);
+        } catch (delErr) {
+          console.warn("[PollsService] Erro ao remover duplicata:", delErr);
+        }
+      }
     }
   } catch (err) {
     console.warn("[PollsService] Verificação da enquete padrão falhou:", err);

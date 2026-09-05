@@ -21,6 +21,8 @@ import {
   ChevronUp,
   ChevronDown,
   Plus,
+  ShieldCheck,
+  RefreshCw,
 } from "lucide-react";
 import ImageCropperModal from "./ImageCropperModal";
 import EventQrCodeModal from "./EventQrCodeModal";
@@ -46,7 +48,7 @@ import EventAttendeesModal from "./EventAttendeesModal";
 import CertificateEditor from "./CertificateEditor";
 import Modal from "./Modal";
 import { useDialog } from "../context/DialogContext";
-import { getEventEndTime } from "../lib/certificateAuth";
+import { getEventEndTime, syncAllExistingCertificates, isEventCertificateReleased } from "../lib/certificateAuth";
 
 export default function EventManagement({ 
   adminAccessLevel = "ADMIN",
@@ -128,6 +130,29 @@ export default function EventManagement({
     type: "success" | "error" | "loading";
   } | null>(null);
 
+  const [syncingCerts, setSyncingCerts] = useState(false);
+
+  const handleSyncCertificates = async () => {
+    try {
+      setSyncingCerts(true);
+      const count = await syncAllExistingCertificates();
+      setFeedbackModal({
+        title: "Autenticidade Sincronizada",
+        msg: `Sucesso! ${count} certificados foram sincronizados e seus códigos de autenticidade (novos e anteriores) foram atualizados e validados com segurança.`,
+        type: "success",
+      });
+    } catch (e) {
+      console.error(e);
+      setFeedbackModal({
+        title: "Erro na Sincronização",
+        msg: "Não foi possível sincronizar os certificados no momento.",
+        type: "error",
+      });
+    } finally {
+      setSyncingCerts(false);
+    }
+  };
+
   useEffect(() => {
     const qEvents = query(collection(db, `artifacts/${appId}/public/data/events`));
     const unsub = onSnapshot(qEvents, (snap) => {
@@ -171,9 +196,30 @@ export default function EventManagement({
       setAttendancesCount(counts);
     });
 
+    // Periodic check every 25 seconds for scheduled end-time auto-close
+    const interval = setInterval(() => {
+      const now = Date.now();
+      setEvents((currentEvents) => {
+        currentEvents.forEach((e) => {
+          if (e.status === "aberto" && !e.manuallyReopened) {
+            const endTime = getEventEndTime(e);
+            const shouldAutoRelease = e.autoReleaseCertificatesOnEnd !== false;
+            if (endTime > 0 && endTime <= now && shouldAutoRelease) {
+              closeEvent(e.id, {
+                releaseToAllRegistered: Boolean(e.allowAllRegisteredCertificates),
+                sendNotifications: e.autoSendCertificatesOnClose !== false,
+              }).catch(console.error);
+            }
+          }
+        });
+        return currentEvents;
+      });
+    }, 25000);
+
     return () => {
       unsub();
       unsubAttendances();
+      clearInterval(interval);
     };
   }, []);
 
@@ -1049,25 +1095,40 @@ export default function EventManagement({
                 className="pl-9 pr-4 py-2 w-full sm:w-auto bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-lg text-sm outline-none focus:border-sky-500"
               />
             </div>
-            <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg self-start sm:self-auto w-full sm:w-auto">
+            <div className="flex flex-wrap gap-2 sm:items-center">
               <button
-                onClick={() => setFilterStatus("todos")}
-                className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterStatus === "todos" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-500 hover:bg-slate-200/50 dark:hover:bg-slate-800"}`}
+                onClick={handleSyncCertificates}
+                disabled={syncingCerts}
+                className="flex items-center gap-1.5 px-3 py-1.5 text-xs font-bold rounded-lg border border-sky-200 dark:border-sky-800/60 bg-sky-50 dark:bg-sky-950/40 text-sky-700 dark:text-sky-300 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all shadow-sm active:scale-95 shrink-0"
+                title="Sincronizar e validar códigos de autenticidade de todos os certificados existentes e novos"
               >
-                Todos
+                {syncingCerts ? (
+                  <RefreshCw className="w-3.5 h-3.5 animate-spin text-sky-600 dark:text-sky-400" />
+                ) : (
+                  <ShieldCheck className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                )}
+                <span>{syncingCerts ? "Sincronizando..." : "Sincronizar Autenticidade"}</span>
               </button>
-              <button
-                onClick={() => setFilterStatus("aberto")}
-                className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterStatus === "aberto" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-500 hover:bg-slate-200/50 dark:hover:bg-slate-800"}`}
-              >
-                Abertos / Próximos
-              </button>
-              <button
-                onClick={() => setFilterStatus("encerrado")}
-                className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterStatus === "encerrado" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-500 hover:bg-slate-200/50 dark:hover:bg-slate-800"}`}
-              >
-                Concluídos
-              </button>
+              <div className="flex bg-slate-100 dark:bg-slate-900 p-1 rounded-lg self-start sm:self-auto w-full sm:w-auto">
+                <button
+                  onClick={() => setFilterStatus("todos")}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterStatus === "todos" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-500 hover:bg-slate-200/50 dark:hover:bg-slate-800"}`}
+                >
+                  Todos
+                </button>
+                <button
+                  onClick={() => setFilterStatus("aberto")}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterStatus === "aberto" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-500 hover:bg-slate-200/50 dark:hover:bg-slate-800"}`}
+                >
+                  Abertos / Próximos
+                </button>
+                <button
+                  onClick={() => setFilterStatus("encerrado")}
+                  className={`flex-1 sm:flex-none px-3 py-1.5 text-xs font-bold rounded-md transition-all ${filterStatus === "encerrado" ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-slate-100 shadow-sm" : "text-slate-500 hover:bg-slate-200/50 dark:hover:bg-slate-800"}`}
+                >
+                  Concluídos
+                </button>
+              </div>
             </div>
           </div>
         </div>

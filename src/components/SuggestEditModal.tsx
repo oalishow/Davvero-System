@@ -41,7 +41,7 @@ export default function SuggestEditModal({ member, onClose, onSubmitSuccess }: S
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState('');
 
-  const baseRoles = ["ALUNO(A)", "PROFESSOR(A)", "COLABORADOR(A)", "SEMINARISTA", "PADRE", "DIÁCONO", "BISPO", "DIRETOR", "VICE-DIRETOR", "RELIGIOSO(A)", "COORDENADOR(A)", "REITOR", "VICE-REITOR", "PSICÓLOGO(A)", "DIRETOR ESPIRITUAL"];
+  const baseRoles = ["ALUNO(A)", "PROFESSOR(A)", "PROFISSIONAL DA EDUCAÇÃO", "COLABORADOR(A)", "SEMINARISTA", "PADRE", "DIÁCONO", "BISPO", "DIRETOR", "VICE-DIRETOR", "RELIGIOSO(A)", "COORDENADOR(A)", "REITOR", "VICE-REITOR", "PSICÓLOGO(A)", "DIRETOR ESPIRITUAL"];
   const availableRoles = [...baseRoles, ...settings.customRoles];
 
   const baseCourses = ["FILOSOFIA", "FILOSOFIA EAD", "TEOLOGIA", "TEOLOGIA EAD"];

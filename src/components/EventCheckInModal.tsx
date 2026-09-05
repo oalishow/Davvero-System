@@ -198,6 +198,7 @@ export default function EventCheckInModal({
               generateProtocol(activeMember.id)
             );
             setSignatureTimestamp(new Date().toLocaleString("pt-BR"));
+            showAlert("Você já realizou seu check-in e assinatura digital para este evento hoje! Sua presença já está confirmada.", { type: "info" });
             return;
           } else if (isFromQrScan && activeMember.isActive !== false && presenceStatus.isOpen) {
             // Auto-check-in when redirected from QR code for today
@@ -264,6 +265,13 @@ export default function EventCheckInModal({
       const todayStr = new Date().toISOString().split("T")[0];
       const nowStr = new Date().toLocaleString("pt-BR");
       const protocol = generateProtocol(activeMember.id);
+
+      if (existingAttendance && (existingAttendance.status === "presente" || existingAttendance.status === "apto_para_certificado") && existingAttendance.checkInDates?.includes(todayStr)) {
+        setAlreadyPresent(true);
+        showAlert("Você já realizou seu check-in e assinatura digital para este evento hoje. Nenhuma informação foi duplicada.", { type: "info" });
+        setLoading(false);
+        return;
+      }
 
       if (existingAttendance) {
         await updateAttendanceStatus(existingAttendance.id, "presente", todayStr);
@@ -389,13 +397,41 @@ export default function EventCheckInModal({
         const nowStr = new Date().toLocaleString("pt-BR");
         const protocol = generateProtocol(matched.id);
 
-        await enrollStudent({
-          eventId: event.id,
-          studentId: matched.id,
-          status: "presente",
-          checkInDates: [todayStr],
-          timestamp: new Date().toISOString(),
-        });
+        // Verifica se já possui inscrição ou presença registrada
+        const qCheck = query(
+          collection(db, `artifacts/${appId}/public/data/attendances`),
+          where("eventId", "==", event.id),
+          where("studentId", "==", matched.id),
+          limit(1)
+        );
+        const snapCheck = await getDocs(qCheck);
+
+        if (!snapCheck.empty) {
+          const existing = { id: snapCheck.docs[0].id, ...snapCheck.docs[0].data() } as Attendance;
+          const alreadyToday = Boolean(existing.checkInDates && existing.checkInDates.includes(todayStr));
+
+          if ((existing.status === "presente" || existing.status === "apto_para_certificado") && alreadyToday) {
+            setAlreadyPresent(true);
+            setDigitalSignatureProtocol(protocol);
+            setSignatureTimestamp(nowStr);
+            showAlert(`Olá, ${matched.name}! Você já realizou seu check-in e assinatura digital para este evento hoje. Nenhuma informação foi duplicada.`, {
+              type: "info",
+            });
+            setLoading(false);
+            return;
+          }
+
+          // Se já estava inscrito ou faltava o dia de hoje, atualiza a presença existente
+          await updateAttendanceStatus(existing.id, "presente", todayStr);
+        } else {
+          await enrollStudent({
+            eventId: event.id,
+            studentId: matched.id,
+            status: "presente",
+            checkInDates: [todayStr],
+            timestamp: new Date().toISOString(),
+          });
+        }
 
         setDigitalSignatureProtocol(protocol);
         setSignatureTimestamp(nowStr);

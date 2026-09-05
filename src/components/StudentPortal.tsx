@@ -1,4 +1,4 @@
-import React, { useState, useEffect, memo, useRef } from "react";
+import React, { useState, useEffect, memo, useRef, useMemo } from "react";
 import {
   User,
   CreditCard,
@@ -28,7 +28,7 @@ import {
   MailX,
   AlertTriangle,
 } from "lucide-react";
-import { isEventCertificateReleased } from "../lib/certificateAuth";
+import { isEventCertificateReleased, getDefaultCertificateTemplate } from "../lib/certificateAuth";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
@@ -2314,8 +2314,9 @@ export default function StudentPortal({
                       const attendance = myAttendances.find((a) => a.eventId === e.id);
                       if (!attendance) return false;
                       const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
-                      const hasPartCert = isReleased && e.certificateTemplate?.isApproved === true && (attendance.status === "presente" || attendance.status === "apto_para_certificado");
-                      const hasOrgCert = isReleased && e.organizationCertificateTemplate?.isApproved === true && attendance.isOrganizer === true;
+                      const isEligible = attendance.status === "presente" || attendance.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
+                      const hasPartCert = isReleased && isEligible;
+                      const hasOrgCert = isReleased && attendance.isOrganizer === true;
                       return hasPartCert || hasOrgCert;
                     }).length > 0 ? (
                       <div className="space-y-4">
@@ -2323,8 +2324,9 @@ export default function StudentPortal({
                             const attendance = myAttendances.find((a) => a.eventId === e.id);
                             if (!attendance) return false;
                             const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
-                            const hasPartCert = isReleased && e.certificateTemplate?.isApproved === true && (attendance.status === "presente" || attendance.status === "apto_para_certificado");
-                            const hasOrgCert = isReleased && e.organizationCertificateTemplate?.isApproved === true && attendance.isOrganizer === true;
+                            const isEligible = attendance.status === "presente" || attendance.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
+                            const hasPartCert = isReleased && isEligible;
+                            const hasOrgCert = isReleased && attendance.isOrganizer === true;
                             return hasPartCert || hasOrgCert;
                           })
                           .map((event) => {
@@ -2333,8 +2335,10 @@ export default function StudentPortal({
                             const periodText = startStr === endStr ? startStr : `${startStr} a ${endStr}`;
                             const formatText = event.format === "online" ? "Online" : event.format === "hibrido" ? "Híbrido" : "Presencial";
                             const attendance = myAttendances.find((a) => a.eventId === event.id);
-                            const hasPartCert = event.certificateTemplate?.isApproved === true && (attendance?.status === "presente" || attendance?.status === "apto_para_certificado");
-                            const hasOrgCert = event.organizationCertificateTemplate?.isApproved === true && attendance?.isOrganizer === true;
+                            const isReleased = event.status === "encerrado" || isEventCertificateReleased(event) || event.isCertificateReleased === true;
+                            const isEligible = attendance?.status === "presente" || attendance?.status === "apto_para_certificado" || event.allowAllRegisteredCertificates;
+                            const hasPartCert = isReleased && isEligible;
+                            const hasOrgCert = isReleased && attendance?.isOrganizer === true;
 
                             return (
                               <div key={event.id} className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 text-left shadow-sm flex flex-col gap-3">
@@ -2924,8 +2928,10 @@ export default function StudentPortal({
           {member && allEvents.map((ev) => {
             const att = myAttendances.find((a) => a.eventId === ev.id);
             if (!att) return null;
-            const hasPart = (ev.status === "encerrado" || ev.status === "aberto") && ev.certificateTemplate?.isApproved === true && (att.status === "presente" || att.status === "apto_para_certificado");
-            const hasOrg = (ev.status === "encerrado" || ev.status === "aberto") && ev.organizationCertificateTemplate?.isApproved === true && att.isOrganizer === true;
+            const isReleased = ev.status === "encerrado" || isEventCertificateReleased(ev) || ev.isCertificateReleased === true;
+            const isEligible = att.status === "presente" || att.status === "apto_para_certificado" || ev.allowAllRegisteredCertificates;
+            const hasPart = isReleased && isEligible;
+            const hasOrg = isReleased && att.isOrganizer === true;
 
             return (
               <React.Fragment key={ev.id}>

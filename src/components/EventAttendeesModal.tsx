@@ -430,6 +430,94 @@ export default function EventAttendeesModal({
     }
   };
 
+  const printDocumentHtml = (title: string, contentHtml: string) => {
+    const fullHtml = `<!DOCTYPE html>
+<html>
+  <head>
+    <title>${title}</title>
+    <meta charset="utf-8" />
+    <style>
+      @media print {
+        @page { size: auto; margin: 10mm; }
+      }
+      body { font-family: Arial, sans-serif; padding: 15px; font-size: 11px; color: #000; background: #fff; }
+      table { width: 100%; border-collapse: collapse; margin-top: 15px; }
+      th, td { border: 1px solid black; padding: 6px 8px; text-align: left; }
+      th { background-color: #f3f4f6; }
+      .text-center { text-align: center; }
+      .font-bold { font-weight: bold; }
+      .uppercase { text-transform: uppercase; }
+      .tracking-widest { letter-spacing: 0.1em; }
+      .border-black { border-color: black; }
+      .border-b-2 { border-bottom-width: 2px; }
+      .border-dashed { border-style: dashed; border-color: black; opacity: 0.5; height: 26px; border-bottom-width: 1px; }
+      .mb-6 { margin-bottom: 20px; }
+      .mt-2 { margin-top: 8px; }
+      .mt-8 { margin-top: 24px; }
+      .pb-2 { padding-bottom: 8px; }
+      .text-xl { font-size: 18px; }
+      .text-sm { font-size: 13px; }
+      .text-xs { font-size: 11px; }
+      .inline-block { display: inline-block; }
+      .px-2 { padding-left: 8px; padding-right: 8px; }
+      .py-0\\.5 { padding-top: 2px; padding-bottom: 2px; }
+      .rounded { border-radius: 4px; }
+      .bg-gray-200 { background-color: #e5e7eb; }
+      .text-green-600 { color: #16a34a; }
+      .bg-emerald-50 { background-color: #ecfdf5; }
+      .text-emerald-800 { color: #065f46; }
+      .text-gray-500 { color: #6b7280; }
+      .text-gray-600 { color: #4b5563; }
+      .text-gray-700 { color: #374151; }
+    </style>
+  </head>
+  <body>
+    ${contentHtml}
+  </body>
+</html>`;
+
+    try {
+      let iframe = document.getElementById("davvero_print_frame") as HTMLIFrameElement | null;
+      if (!iframe) {
+        iframe = document.createElement("iframe");
+        iframe.id = "davvero_print_frame";
+        iframe.style.position = "fixed";
+        iframe.style.top = "-9999px";
+        iframe.style.left = "-9999px";
+        iframe.style.width = "0";
+        iframe.style.height = "0";
+        iframe.style.border = "none";
+        document.body.appendChild(iframe);
+      }
+      const doc = iframe.contentWindow?.document || iframe.contentDocument;
+      if (doc) {
+        doc.open();
+        doc.write(fullHtml);
+        doc.close();
+        setTimeout(() => {
+          iframe?.contentWindow?.focus();
+          iframe?.contentWindow?.print();
+        }, 300);
+        return;
+      }
+    } catch (err) {
+      console.warn("Iframe print error, falling back to window.open", err);
+    }
+
+    const printWin = window.open("", "_blank");
+    if (printWin) {
+      printWin.document.write(fullHtml);
+      printWin.document.close();
+      printWin.focus();
+      setTimeout(() => {
+        printWin.print();
+        printWin.close();
+      }, 300);
+    } else {
+      showAlert("Não foi possível abrir a impressão. Por favor, verifique bloqueadores de pop-up.", { type: "warning" });
+    }
+  };
+
   const handlePrint = (filterType: "all" | "alunos" | "visitantes") => {
     let toPrint = attendees;
     let titleAddon = "Geral";
@@ -441,156 +529,126 @@ export default function EventAttendeesModal({
       toPrint = attendees.filter(a => !!a.member?.roles?.includes("VISITANTE"));
       titleAddon = "Categoria: Visitantes";
     }
+
+    if (!toPrint || toPrint.length === 0) {
+      showAlert(`Nenhum participante encontrado na categoria selecionada (${titleAddon}) para impressão.`, { type: "warning" });
+      return;
+    }
   
-    // We update the DOM directly before printing inside the invisible area, or just dynamically build HTML
-    const printWindow = window.open("", "_blank");
-    if (printWindow) {
-      const parsedDaysList: { dateIso: string; displayStr: string }[] = [];
-      if (event?.startDate && event?.endDate) {
-        const start = new Date(event.startDate).getTime();
-        const end = new Date(event.endDate).getTime();
-        if (end > start) {
-          const numDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
-          if (numDays > 1 && numDays <= 30) {
-            for (let i = 0; i < numDays; i++) {
-              const realD = new Date(event.startDate + "T12:00:00");
-              realD.setDate(realD.getDate() + i);
-              const dateIso = realD.toISOString().split("T")[0];
-              const properDayStr = `${String(realD.getDate()).padStart(2, '0')}/${String(realD.getMonth() + 1).padStart(2, '0')}`;
-              parsedDaysList.push({ dateIso, displayStr: properDayStr });
-            }
+    const parsedDaysList: { dateIso: string; displayStr: string }[] = [];
+    if (event?.startDate && event?.endDate) {
+      const start = new Date(event.startDate).getTime();
+      const end = new Date(event.endDate).getTime();
+      if (end > start) {
+        const numDays = Math.round((end - start) / (1000 * 60 * 60 * 24)) + 1;
+        if (numDays > 1 && numDays <= 30) {
+          for (let i = 0; i < numDays; i++) {
+            const realD = new Date(event.startDate + "T12:00:00");
+            realD.setDate(realD.getDate() + i);
+            const dateIso = realD.toISOString().split("T")[0];
+            const properDayStr = `${String(realD.getDate()).padStart(2, '0')}/${String(realD.getMonth() + 1).padStart(2, '0')}`;
+            parsedDaysList.push({ dateIso, displayStr: properDayStr });
           }
         }
       }
+    }
 
-      let daysHeader = `<th class="border border-black p-2 w-48 text-center">ASSINATURA DO INSCRITO</th>`;
+    let daysHeader = `<th class="border border-black p-2 w-48 text-center">ASSINATURA DO INSCRITO</th>`;
+    if (parsedDaysList.length > 1) {
+      daysHeader = parsedDaysList
+        .map((d) => `<th class="border border-black p-2 w-28 text-center text-[10px]">ASSINATURA<br/>${d.displayStr}</th>`)
+        .join("");
+    }
+
+    const evaluateDaysRow = (sub: typeof toPrint[0]) => {
       if (parsedDaysList.length > 1) {
-        daysHeader = parsedDaysList
-          .map((d) => `<th class="border border-black p-2 w-28 text-center text-[10px]">ASSINATURA<br/>${d.displayStr}</th>`)
+        return parsedDaysList
+          .map((d) => {
+            const hasSigned = (sub.checkInDates || []).includes(d.dateIso);
+            if (hasSigned) {
+              return `<td class="border border-black p-1 text-center bg-emerald-50"><div class="text-[9px] font-bold text-emerald-800">✓ PRESENTE</div><div class="text-[7px] text-gray-600 font-medium">Bipado: ${d.displayStr}</div></td>`;
+            }
+            return `<td class="border border-black p-2 align-bottom"><div class="w-full h-8 border-b border-black border-dashed opacity-50"></div></td>`;
+          })
           .join("");
       }
+      const isPresent = sub.status === "presente" || sub.status === "apto_para_certificado";
+      if (isPresent) {
+        const scannedDaysStr = (sub.checkInDates && sub.checkInDates.length > 0)
+          ? sub.checkInDates.map(d => {
+              const parts = d.split('-');
+              return parts.length === 3 ? `${parts[2]}/${parts[1]}` : d;
+            }).join(", ")
+          : (event.startDate ? new Date(event.startDate + "T12:00:00").toLocaleDateString("pt-BR") : "Confirmado");
 
-      const evaluateDaysRow = (sub: typeof toPrint[0]) => {
-        if (parsedDaysList.length > 1) {
-          return parsedDaysList
-            .map((d) => {
-              const hasSigned = (sub.checkInDates || []).includes(d.dateIso);
-              if (hasSigned) {
-                return `<td class="border border-black p-1 text-center bg-emerald-50"><div class="text-[9px] font-bold text-emerald-800">✓ PRESENTE</div><div class="text-[7px] text-gray-500">QR Code</div></td>`;
-              }
-              return `<td class="border border-black p-2 align-bottom"><div class="w-full h-8 border-b border-black border-dashed opacity-50"></div></td>`;
-            })
-            .join("");
-        }
-        const isPresent = sub.status === "presente" || sub.status === "apto_para_certificado";
-        if (isPresent) {
-          return `<td class="border border-black p-1 text-center bg-emerald-50"><div class="text-[9px] font-bold text-emerald-800">✓ ASSINATURA DIGITAL</div><div class="text-[8px] text-gray-500">Presença Confirmada</div></td>`;
-        }
-        return `<td class="border border-black p-2 align-bottom"><div class="w-full h-8 border-b border-black border-dashed opacity-50"></div></td>`;
-      };
+        return `<td class="border border-black p-1 text-center bg-emerald-50">
+          <div class="text-[9px] font-bold text-emerald-800">✓ ASSINATURA DIGITAL</div>
+          <div class="text-[8px] text-gray-700 font-semibold">Dia(s) Presente: ${scannedDaysStr}</div>
+        </td>`;
+      }
+      return `<td class="border border-black p-2 align-bottom"><div class="w-full h-8 border-b border-black border-dashed opacity-50"></div></td>`;
+    };
 
-      let trs = "";
-      toPrint.forEach((sub, idx) => {
-        const rolesText = [
-          ...(sub.member?.roles || []),
-          sub.member?.diocese ? `Diocese: ${sub.member?.diocese}` : ""
-        ].filter(Boolean).join(" • ");
+    let trs = "";
+    toPrint.forEach((sub, idx) => {
+      const rolesText = [
+        ...(sub.member?.roles || []),
+        sub.member?.diocese ? `Diocese: ${sub.member?.diocese}` : ""
+      ].filter(Boolean).join(" • ");
 
-        trs += `
-          <tr>
-            <td class="border border-black p-2 text-center font-bold">${idx + 1}</td>
-            <td class="border border-black p-2 uppercase font-semibold">${sub.member?.name || "Desconhecido"}</td>
-            <td class="border border-black p-2 text-center">${sub.member?.ra || (sub.member as any)?.cpf || "-"}</td>
-            <td class="border border-black p-2 text-[10px] uppercase">${rolesText}</td>
-            ${evaluateDaysRow(sub)}
-          </tr>
-        `;
-      });
-
-      const davveoIconSvg = settings.instLogo 
-        ? `<img src="${settings.instLogo}" style="width: 38px; height: 38px; object-fit: contain;" alt="Logo" />` 
-        : getDavveroSvgHtml('#0f172a', 38);
-
-      const printContent = `
-        <div class="text-center mb-6">
-          <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px;">
-            ${davveoIconSvg}
-            <div style="text-align: left;">
-              <div style="font-size: 16px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;">${settings.instName || "DAVVERO SYSTEM"}</div>
-              <div style="font-size: 9px; font-weight: bold; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Gestão de Eventos Acadêmicos & Diocesanos</div>
-            </div>
-          </div>
-          <h2 class="text-xl font-black uppercase tracking-widest border-b-2 border-black pb-2">
-            Lista Oficial de Presença
-          </h2>
-          <p class="text-sm font-bold mt-2 uppercase">${event?.title}</p>
-          <p class="text-xs font-semibold mt-1 bg-gray-200 inline-block px-2 py-0.5 rounded">${titleAddon}</p>
-          <p class="text-xs mt-1">
-            Data de Início: ${event?.startDate ? new Date(event.startDate + "T12:00:00").toLocaleDateString("pt-BR") : "N/D"}
-          </p>
-        </div>
-        <table class="w-full border-collapse border border-black text-xs">
-          <thead>
-            <tr class="bg-gray-100">
-              <th class="border border-black p-2 w-8 text-center">#</th>
-              <th class="border border-black p-2 text-left">NOME DO INSCRITO</th>
-              <th class="border border-black p-2 w-24 text-center">R.A. / CPF</th>
-              <th class="border border-black p-2 text-left">VÍNCULO / DIOCESE</th>
-              ${daysHeader}
-            </tr>
-          </thead>
-          <tbody>
-            ${trs}
-          </tbody>
-        </table>
-        <div class="mt-8 pt-4 border-t border-black text-center text-[10px] uppercase tracking-widest">
-          Documento Gerado pelo DAVVERO System • Faculdade João Paulo II (FAJOPA)
-        </div>
+      trs += `
+        <tr>
+          <td class="border border-black p-2 text-center font-bold">${idx + 1}</td>
+          <td class="border border-black p-2 uppercase font-semibold">${sub.member?.name || "Desconhecido"}</td>
+          <td class="border border-black p-2 text-center">${sub.member?.ra || (sub.member as any)?.cpf || "-"}</td>
+          <td class="border border-black p-2 text-[10px] uppercase">${rolesText}</td>
+          ${evaluateDaysRow(sub)}
+        </tr>
       `;
+    });
 
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Lista de Presença</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; font-size: 12px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th, td { border: 1px solid black; padding: 8px; text-align: left; }
-              th { background-color: #f3f4f6; }
-              .text-center { text-align: center; }
-              .font-bold { font-weight: bold; }
-              .uppercase { text-transform: uppercase; }
-              .tracking-widest { letter-spacing: 0.1em; }
-              .border-black { border-color: black; }
-              .border-b-2 { border-bottom-width: 2px; }
-              .border-dashed { border-style: dashed; border-color: black; opacity: 0.5; height: 30px; border-bottom-width: 1px; }
-              .mb-6 { margin-bottom: 24px; }
-              .mt-2 { margin-top: 8px; }
-              .mt-8 { margin-top: 32px; }
-              .pb-2 { padding-bottom: 8px; }
-              .text-xl { font-size: 20px; }
-              .text-sm { font-size: 14px; }
-              .text-xs { font-size: 12px; }
-              .inline-block { display: inline-block; }
-              .px-2 { padding-left: 8px; padding-right: 8px; }
-              .py-0\\.5 { padding-top: 2px; padding-bottom: 2px; }
-              .rounded { border-radius: 4px; }
-              .bg-gray-200 { background-color: #e5e7eb; }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      // Allow images or styles to load briefly before printing
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 250);
-    }
+    const davveoIconSvg = settings.instLogo 
+      ? `<img src="${settings.instLogo}" style="width: 38px; height: 38px; object-fit: contain;" alt="Logo" />` 
+      : getDavveroSvgHtml('#0f172a', 38);
+
+    const printContent = `
+      <div class="text-center mb-6">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px;">
+          ${davveoIconSvg}
+          <div style="text-align: left;">
+            <div style="font-size: 16px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;">${settings.instName || "DAVVERO SYSTEM"}</div>
+            <div style="font-size: 9px; font-weight: bold; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Gestão de Eventos Acadêmicos & Diocesanos</div>
+          </div>
+        </div>
+        <h2 class="text-xl font-black uppercase tracking-widest border-b-2 border-black pb-2">
+          Lista Oficial de Presença
+        </h2>
+        <p class="text-sm font-bold mt-2 uppercase">${event?.title}</p>
+        <p class="text-xs font-semibold mt-1 bg-gray-200 inline-block px-2 py-0.5 rounded">${titleAddon}</p>
+        <p class="text-xs mt-1">
+          Data de Início: ${event?.startDate ? new Date(event.startDate + "T12:00:00").toLocaleDateString("pt-BR") : "N/D"}
+        </p>
+      </div>
+      <table class="w-full border-collapse border border-black text-xs">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="border border-black p-2 w-8 text-center">#</th>
+            <th class="border border-black p-2 text-left">NOME DO INSCRITO</th>
+            <th class="border border-black p-2 w-24 text-center">R.A. / CPF</th>
+            <th class="border border-black p-2 text-left">VÍNCULO / DIOCESE</th>
+            ${daysHeader}
+          </tr>
+        </thead>
+        <tbody>
+          ${trs}
+        </tbody>
+      </table>
+      <div class="mt-8 pt-4 border-t border-black text-center text-[10px] uppercase tracking-widest">
+        Documento Gerado pelo DAVVERO System • Faculdade João Paulo II (FAJOPA)
+      </div>
+    `;
+
+    printDocumentHtml(`Lista de Presença - ${event?.title || "Evento"}`, printContent);
   };
 
   const handleExportCSV = () => {
@@ -648,119 +706,82 @@ export default function EventAttendeesModal({
       titleAddon = "Categoria: Visitantes";
     }
 
-    const printWindow = window.open("", "_blank");
-    if (printWindow) {
-      let trs = "";
-      toPrint.forEach((sub, idx) => {
-        const rolesText = [
-          ...(sub.member?.roles || []),
-          sub.member?.diocese ? `Diocese: ${sub.member?.diocese}` : ""
-        ].filter(Boolean).join(" • ");
-
-        const status = sub.status === "presente" ? "Presente" : "Inscrito";
-        const dias = (sub.checkInDates || []).map(d => {
-             const parts = d.split('-');
-             if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
-             return d;
-        }).join(", ");
-
-        trs += `
-          <tr>
-            <td class="border border-black p-2 text-center font-bold">${idx + 1}</td>
-            <td class="border border-black p-2 uppercase font-semibold">${sub.member?.name || "Desconhecido"}</td>
-            <td class="border border-black p-2 text-center">${sub.member?.ra || (sub.member as any)?.cpf || "-"}</td>
-            <td class="border border-black p-2 text-[10px] uppercase">${rolesText}</td>
-            <td class="border border-black p-2 text-center font-bold ${sub.status === 'presente' ? 'text-green-600' : ''}">${status}</td>
-            <td class="border border-black p-2 text-center text-[10px]">${dias || "-"}</td>
-          </tr>
-        `;
-      });
-
-      const davveoIconSvgNest = settings.instLogo 
-        ? `<img src="${settings.instLogo}" style="width: 38px; height: 38px; object-fit: contain;" alt="Logo" />` 
-        : getDavveroSvgHtml('#0f172a', 38);
-
-      const printContent = `
-        <div class="text-center mb-6">
-          <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px;">
-            ${davveoIconSvgNest}
-            <div style="text-align: left;">
-              <div style="font-size: 16px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;">${settings.instName || "DAVVERO SYSTEM"}</div>
-              <div style="font-size: 9px; font-weight: bold; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Gestão de Eventos Acadêmicos & Diocesanos</div>
-            </div>
-          </div>
-          <h2 class="text-xl font-black uppercase tracking-widest border-b-2 border-black pb-2">
-            Relatório Oficial de Presenças
-          </h2>
-          <p class="text-sm font-bold mt-2 uppercase">${event?.title}</p>
-          <p class="text-xs font-semibold mt-1 bg-gray-200 inline-block px-2 py-0.5 rounded">${titleAddon}</p>
-          <p class="text-xs mt-1">
-            Data de Início: ${event?.startDate ? new Date(event.startDate + "T12:00:00").toLocaleDateString("pt-BR") : "N/D"}
-          </p>
-        </div>
-        <table class="w-full border-collapse border border-black text-xs">
-          <thead>
-            <tr class="bg-gray-100">
-              <th class="border border-black p-2 w-8 text-center">#</th>
-              <th class="border border-black p-2 text-left">NOME DO INSCRITO</th>
-              <th class="border border-black p-2 w-24 text-center">R.A. / CPF</th>
-              <th class="border border-black p-2 text-left">VÍNCULO / DIOCESE</th>
-              <th class="border border-black p-2 text-center w-20">STATUS</th>
-              <th class="border border-black p-2 text-center w-32">DIAS PRESENTES</th>
-            </tr>
-          </thead>
-          <tbody>
-            ${trs}
-          </tbody>
-        </table>
-        <div class="mt-8 pt-4 border-t border-black text-center text-[10px] uppercase tracking-widest">
-          Documento Gerado pelo DAVVERO System • Faculdade João Paulo II (FAJOPA)
-        </div>
-      `;
-
-      printWindow.document.write(`
-        <html>
-          <head>
-            <title>Relatório de Presenças</title>
-            <style>
-              body { font-family: Arial, sans-serif; padding: 20px; font-size: 12px; }
-              table { width: 100%; border-collapse: collapse; margin-top: 20px; }
-              th, td { border: 1px solid black; padding: 8px; text-align: left; }
-              th { background-color: #f3f4f6; }
-              .text-center { text-align: center; }
-              .font-bold { font-weight: bold; }
-              .uppercase { text-transform: uppercase; }
-              .tracking-widest { letter-spacing: 0.1em; }
-              .border-black { border-color: black; }
-              .border-b-2 { border-bottom-width: 2px; }
-              .mb-6 { margin-bottom: 24px; }
-              .mt-2 { margin-top: 8px; }
-              .mt-8 { margin-top: 32px; }
-              .pb-2 { padding-bottom: 8px; }
-              .text-xl { font-size: 20px; }
-              .text-sm { font-size: 14px; }
-              .text-xs { font-size: 12px; }
-              .inline-block { display: inline-block; }
-              .px-2 { padding-left: 8px; padding-right: 8px; }
-              .py-0\\.5 { padding-top: 2px; padding-bottom: 2px; }
-              .rounded { border-radius: 4px; }
-              .bg-gray-200 { background-color: #e5e7eb; }
-              .text-green-600 { color: #16a34a; }
-            </style>
-          </head>
-          <body>
-            ${printContent}
-          </body>
-        </html>
-      `);
-      printWindow.document.close();
-      printWindow.focus();
-      // Allow images or styles to load briefly before printing
-      setTimeout(() => {
-        printWindow.print();
-        printWindow.close();
-      }, 250);
+    if (!toPrint || toPrint.length === 0) {
+      showAlert(`Nenhum participante encontrado na categoria selecionada (${titleAddon}) para o relatório.`, { type: "warning" });
+      return;
     }
+
+    let trs = "";
+    toPrint.forEach((sub, idx) => {
+      const rolesText = [
+        ...(sub.member?.roles || []),
+        sub.member?.diocese ? `Diocese: ${sub.member?.diocese}` : ""
+      ].filter(Boolean).join(" • ");
+
+      const status = (sub.status === "presente" || sub.status === "apto_para_certificado") ? "Presente" : "Inscrito";
+      const dias = (sub.checkInDates && sub.checkInDates.length > 0)
+        ? sub.checkInDates.map(d => {
+            const parts = d.split('-');
+            if (parts.length === 3) return `${parts[2]}/${parts[1]}`;
+            return d;
+          }).join(", ")
+        : (status === "Presente" ? "Presença confirmada" : "-");
+
+      trs += `
+        <tr>
+          <td class="border border-black p-2 text-center font-bold">${idx + 1}</td>
+          <td class="border border-black p-2 uppercase font-semibold">${sub.member?.name || "Desconhecido"}</td>
+          <td class="border border-black p-2 text-center">${sub.member?.ra || (sub.member as any)?.cpf || "-"}</td>
+          <td class="border border-black p-2 text-[10px] uppercase">${rolesText}</td>
+          <td class="border border-black p-2 text-center font-bold ${status === 'Presente' ? 'text-green-600' : ''}">${status}</td>
+          <td class="border border-black p-2 text-center text-[10px] font-semibold">${dias}</td>
+        </tr>
+      `;
+    });
+
+    const davveoIconSvgNest = settings.instLogo 
+      ? `<img src="${settings.instLogo}" style="width: 38px; height: 38px; object-fit: contain;" alt="Logo" />` 
+      : getDavveroSvgHtml('#0f172a', 38);
+
+    const printContent = `
+      <div class="text-center mb-6">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px;">
+          ${davveoIconSvgNest}
+          <div style="text-align: left;">
+            <div style="font-size: 16px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;">${settings.instName || "DAVVERO SYSTEM"}</div>
+            <div style="font-size: 9px; font-weight: bold; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Gestão de Eventos Acadêmicos & Diocesanos</div>
+          </div>
+        </div>
+        <h2 class="text-xl font-black uppercase tracking-widest border-b-2 border-black pb-2">
+          Relatório Oficial de Presenças
+        </h2>
+        <p class="text-sm font-bold mt-2 uppercase">${event?.title}</p>
+        <p class="text-xs font-semibold mt-1 bg-gray-200 inline-block px-2 py-0.5 rounded">${titleAddon}</p>
+        <p class="text-xs mt-1">
+          Data de Início: ${event?.startDate ? new Date(event.startDate + "T12:00:00").toLocaleDateString("pt-BR") : "N/D"}
+        </p>
+      </div>
+      <table class="w-full border-collapse border border-black text-xs">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="border border-black p-2 w-8 text-center">#</th>
+            <th class="border border-black p-2 text-left">NOME DO INSCRITO</th>
+            <th class="border border-black p-2 w-24 text-center">R.A. / CPF</th>
+            <th class="border border-black p-2 text-left">VÍNCULO / DIOCESE</th>
+            <th class="border border-black p-2 text-center w-20">STATUS</th>
+            <th class="border border-black p-2 text-center w-32">DIAS PRESENTES</th>
+          </tr>
+        </thead>
+        <tbody>
+          ${trs}
+        </tbody>
+      </table>
+      <div class="mt-8 pt-4 border-t border-black text-center text-[10px] uppercase tracking-widest">
+        Documento Gerado pelo DAVVERO System • Faculdade João Paulo II (FAJOPA)
+      </div>
+    `;
+
+    printDocumentHtml(`Relatório de Presenças - ${event?.title || "Evento"}`, printContent);
   };
 
   const inactiveAttendees = useMemo(() => {

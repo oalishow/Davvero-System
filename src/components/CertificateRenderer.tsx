@@ -2,7 +2,7 @@ import React, { forwardRef, useEffect } from 'react';
 import { QRCodeSVG } from 'qrcode.react';
 import type { Event, CertificateTemplate, Member } from '../types';
 import { useSettings } from '../context/SettingsContext';
-import { extractAssetString } from '../lib/constants';
+import { extractAssetString, DEFAULT_PUBLIC_URL } from '../lib/constants';
 import { generateCertificateCode, registerCertificateRecord } from '../lib/certificateAuth';
 
 interface CertificateRendererProps {
@@ -79,8 +79,25 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     const hoursText = hasValidHours ? `, com carga horária total de ${rawHours} horas` : "";
 
     const certCode = generateCertificateCode(event, member, isOrganizer);
-    const rawBaseUrl = settings.certificateValidationUrl || settings.url || (typeof window !== 'undefined' ? `${window.location.origin}${window.location.pathname}` : '');
-    const cleanBaseUrl = rawBaseUrl.replace(/\/+$/, '');
+    const isBrowser = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('about:blank');
+    const isLocalOrContainer = typeof window !== 'undefined' && (
+      window.location.hostname === 'localhost' ||
+      window.location.hostname === '127.0.0.1' ||
+      window.location.hostname.includes('.cloudspaces.litng.ai') ||
+      window.location.hostname.includes('.googleusercontent.com') ||
+      window.location.hostname.includes('.run.app')
+    );
+    const liveDomain = (settings.url && settings.url.startsWith('http') && !settings.url.includes('localhost'))
+      ? settings.url
+      : (settings.certificateValidationUrl && settings.certificateValidationUrl.startsWith('http') && !settings.certificateValidationUrl.includes('localhost'))
+      ? settings.certificateValidationUrl
+      : DEFAULT_PUBLIC_URL;
+
+    const baseOrigin = (!isLocalOrContainer && isBrowser && window.location.origin.startsWith('http'))
+      ? `${window.location.origin}${window.location.pathname}`
+      : liveDomain;
+
+    const cleanBaseUrl = baseOrigin.replace(/\/+$/, '');
     const certVerificationUrl = `${cleanBaseUrl}${cleanBaseUrl.includes('?') ? '&' : '?'}cert=${encodeURIComponent(certCode)}`;
 
     useEffect(() => {

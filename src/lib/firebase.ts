@@ -465,9 +465,40 @@ export const updateEvent = async (
 
 export const enrollStudent = async (attendanceData: Omit<Attendance, "id">) => {
   try {
-    const { doc, setDoc, collection, getDoc } = await import("firebase/firestore");
-    const attendanceId = "att_" + Date.now().toString();
-    const attendanceRef = doc(collection(db, `artifacts/${appId}/public/data/attendances`), attendanceId);
+    const { doc, setDoc, updateDoc, collection, getDoc, getDocs, query, where, arrayUnion } = await import("firebase/firestore");
+    const attendancesCol = collection(db, `artifacts/${appId}/public/data/attendances`);
+
+    // Verifica se o participante já possui inscrição neste evento
+    const qExist = query(
+      attendancesCol,
+      where("eventId", "==", attendanceData.eventId),
+      where("studentId", "==", attendanceData.studentId)
+    );
+    const existSnap = await getDocs(qExist);
+
+    if (!existSnap.empty) {
+      const existingDoc = existSnap.docs[0];
+      const existingData = existingDoc.data() as Attendance;
+      const updates: any = {};
+
+      if (attendanceData.status === "presente") {
+        updates.status = "presente";
+      }
+      if (attendanceData.checkInDates && attendanceData.checkInDates.length > 0) {
+        updates.checkInDates = arrayUnion(...attendanceData.checkInDates);
+      }
+      if (attendanceData.isOrganizer !== undefined) {
+        updates.isOrganizer = attendanceData.isOrganizer;
+      }
+
+      if (Object.keys(updates).length > 0) {
+        await updateDoc(existingDoc.ref, updates);
+      }
+      return existingDoc.id;
+    }
+
+    const attendanceId = "att_" + Date.now().toString() + "_" + Math.random().toString(36).substring(2, 6);
+    const attendanceRef = doc(attendancesCol, attendanceId);
 
     const cleanData = Object.fromEntries(
       Object.entries(attendanceData).filter(([_, v]) => v !== undefined),
@@ -475,17 +506,15 @@ export const enrollStudent = async (attendanceData: Omit<Attendance, "id">) => {
     const attendanceItem = { ...cleanData, id: attendanceId } as Attendance;
 
     // Optional constraint check, but not blocking offline local save.
-    // If offline, getDoc will serve from cache or fail fast. we can just setDoc directly.
     try {
       const eventRef = doc(db, `artifacts/${appId}/public/data/events`, attendanceData.eventId);
       const eventDoc = await getDoc(eventRef);
       if (eventDoc.exists()) {
         const eventInfo = eventDoc.data() as Event;
-        // Verify constraint quickly 
         if (eventInfo.status === "deleted") throw new Error("EVENTO_EXCLUIDO");
       }
-    } catch(err) {
-       // if offline, proceed
+    } catch (err) {
+      // if offline, proceed
     }
 
     await setDoc(attendanceRef, attendanceItem);
