@@ -303,8 +303,8 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
       }
       return true;
     } else {
-      // Aba Acadêmico / Geral: Exibe eventos acadêmicos gerais e eventos diocesanos marcados como públicos!
-      return (!e.isSeminary && !e.isDiocese) || (e.isDiocese && Boolean(e.isPublic));
+      // Aba Acadêmico / Geral: Exibe estritamente eventos acadêmicos gerais (eventos diocesanos ficam exclusivamente na aba DIOCESES)
+      return !e.isSeminary && !e.isDiocese;
     }
   });
 

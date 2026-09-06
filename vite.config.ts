@@ -24,6 +24,7 @@ export default defineConfig(({mode}) => {
           background_color: '#0f172a',
           display: 'standalone',
           orientation: 'portrait',
+          handle_links: 'preferred',
           icons: [
             {
               src: '/icon-192.png?v=3',

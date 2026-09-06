@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from "react";
-import { Camera, XCircle, Search, ScanLine, ArrowLeft, Loader2, ExternalLink, ShieldCheck, Award, GraduationCap, QrCode, ChevronRight, BookOpen } from "lucide-react";
+import { Camera, XCircle, Search, ScanLine, ArrowLeft, Loader2, ExternalLink, ShieldCheck, Award, GraduationCap, QrCode, ChevronRight, BookOpen, Smartphone } from "lucide-react";
 import { collection, query, getDocs } from "firebase/firestore";
 import {
   db,
@@ -86,6 +86,56 @@ export default function Verifier({
   const [iframeLoaded, setIframeLoaded] = useState(false);
   const scanHandledRef = useRef(false);
 
+  const isStandalone = typeof window !== "undefined" && (
+    window.matchMedia("(display-mode: standalone)").matches ||
+    (window.navigator as any).standalone === true ||
+    document.referrer.includes("android-app://")
+  );
+
+  const handleOpenInInstalledApp = () => {
+    if (typeof window !== "undefined" && (window as any).deferredPrompt) {
+      (window as any).deferredPrompt.prompt();
+      return;
+    }
+    const currentUrl = typeof window !== "undefined" ? window.location.href : "/";
+    window.location.assign(currentUrl);
+    showAlert("Se o aplicativo DAVVERO já estiver instalado no seu celular, toque em 'Abrir no App' na notificação do navegador ou abra o aplicativo para verificar automaticamente.", { type: "info" });
+  };
+
+  const renderOpenInAppBanner = () => {
+    if (isStandalone) return null;
+    return (
+      <div className="w-full max-w-2xl mx-auto mb-5 bg-gradient-to-r from-sky-950/90 via-slate-900/95 to-indigo-950/90 border border-sky-500/30 rounded-2xl p-3.5 sm:p-4 text-white shadow-xl shadow-sky-950/50 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in no-print">
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center shrink-0">
+            <Smartphone className="w-5 h-5 text-sky-400" />
+          </div>
+          <div>
+            <div className="flex items-center gap-2">
+              <h4 className="text-xs sm:text-sm font-bold text-sky-100">Abrir no Aplicativo Instalado</h4>
+              <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500/30 text-sky-300 border border-sky-400/30">
+                PWA
+              </span>
+            </div>
+            <p className="text-[11px] text-slate-300 mt-0.5">
+              Você pode autenticar e salvar este certificado diretamente no aplicativo instalado.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 w-full sm:w-auto shrink-0">
+          <button
+            type="button"
+            onClick={handleOpenInInstalledApp}
+            className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-sky-500/25 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+          >
+            <ExternalLink className="w-3.5 h-3.5" />
+            <span>Abrir no App DAVVERO</span>
+          </button>
+        </div>
+      </div>
+    );
+  };
+
   const handleVerifyCertificate = async (rawCode: string) => {
     if (!rawCode || !rawCode.trim()) {
       showAlert("Por favor, digite ou escaneie o código do certificado.", { type: "warning" });
@@ -93,6 +143,10 @@ export default function Verifier({
     }
 
     setIsProcessing(true);
+    if (typeof window !== "undefined") {
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+
     let code = rawCode.trim();
 
     // 1. If it is a full URL or contains query parameters, extract the cert param
@@ -127,9 +181,20 @@ export default function Verifier({
     // Clean formatting: remove extra quotes, uppercase
     code = code.replace(/["']/g, "").trim().toUpperCase();
 
-    // Centralized Certificate Authentication Resolution
+    // Centralized Certificate Authentication Resolution with Race / Timeout
     try {
-      const resolved = await resolveCertificate(code, eventsCache, membersCache, attendancesCache);
+      const timeoutPromise = new Promise<null>((_, reject) =>
+        setTimeout(() => reject(new Error("Timeout de consulta")), 7500)
+      );
+
+      const resolved = await Promise.race([
+        resolveCertificate(code, eventsCache, membersCache, attendancesCache),
+        timeoutPromise,
+      ]).catch((err) => {
+        console.warn("resolveCertificate timeout or error:", err);
+        return null;
+      });
+
       if (resolved) {
         const { event: foundEvent, member: resolvedMember, isOrganizer, certCode } = resolved;
         recordQRScan("certificate", certCode, "Válido");
@@ -588,38 +653,51 @@ export default function Verifier({
   }, []);
 
   useEffect(() => {
-    if (cacheLoaded && !initialVerifyChecked) {
-      const params = new URLSearchParams(window.location.search);
-      const verifyCode = params.get("verify");
-      const certCode = params.get("cert");
+    if (initialVerifyChecked && !externalCode) return;
 
-      if (certCode) {
+    const params = typeof window !== "undefined" ? new URLSearchParams(window.location.search) : null;
+    const certParam = params?.get("cert");
+    const verifyParam = params?.get("verify");
+    const codeToVerify = externalCode || certParam || verifyParam;
+
+    if (codeToVerify) {
+      const isCert =
+        Boolean(certParam) ||
+        Boolean(externalCode) ||
+        Boolean(
+          verifyParam && (
+            verifyParam.startsWith("FAJ-") ||
+            verifyParam.startsWith("CERT-") ||
+            verifyParam.includes("-PAR") ||
+            verifyParam.includes("-ORG") ||
+            verifyParam.includes("cert=")
+          )
+        );
+
+      if (isCert) {
         setVerifyMode("CERTIFICATE");
-        handleVerifyCertificate(certCode);
-      } else if (verifyCode) {
-        if (
-          verifyCode.startsWith("FAJ-") ||
-          verifyCode.startsWith("CERT-") ||
-          verifyCode.includes("-PAR") ||
-          verifyCode.includes("-ORG") ||
-          verifyCode.includes("cert=")
-        ) {
-          setVerifyMode("CERTIFICATE");
-          handleVerifyCertificate(verifyCode);
-        } else {
-          runVerification(verifyCode, false, window.location.href);
-        }
-      } else if (
-        window.location.pathname.length > 1 &&
-        window.location.pathname !== "/index.html" &&
-        !window.location.pathname.includes("admin")
-      ) {
-        // Fallback for native camera opening legacy URL formats redirected to this domain
-        runVerification(window.location.href, false, window.location.href);
+        setTimeout(() => {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }, 50);
+        handleVerifyCertificate(codeToVerify);
+        if (onExternalVerified) onExternalVerified();
+      } else if (verifyParam) {
+        runVerification(verifyParam, false, window.location.href);
+        if (onExternalVerified) onExternalVerified();
       }
       setInitialVerifyChecked(true);
+    } else if (
+      !initialVerifyChecked &&
+      typeof window !== "undefined" &&
+      window.location.pathname.length > 1 &&
+      window.location.pathname !== "/index.html" &&
+      !window.location.pathname.includes("admin")
+    ) {
+      // Fallback for native camera opening legacy URL formats redirected to this domain
+      runVerification(window.location.href, false, window.location.href);
+      setInitialVerifyChecked(true);
     }
-  }, [cacheLoaded, initialVerifyChecked, membersCache]);
+  }, [externalCode, initialVerifyChecked]);
 
   const startScanner = async () => {
     scanHandledRef.current = false;
@@ -1168,8 +1246,10 @@ export default function Verifier({
 
   if (isProcessing) {
     return (
-      <div className="w-full flex flex-col items-center justify-center py-16 animated-fade-in relative overflow-hidden">
-        <div className="relative w-32 h-32 flex items-center justify-center">
+      <div id="certificate-verifier-container" className="w-full max-w-2xl mx-auto flex flex-col items-center justify-center py-8 sm:py-16 animated-fade-in relative px-3">
+        {renderOpenInAppBanner()}
+
+        <div className="relative w-32 h-32 flex items-center justify-center mt-2">
           {/* Radar Ring 1 */}
           <motion.div
             initial={{ scale: 0.5, opacity: 0 }}
@@ -1230,10 +1310,10 @@ export default function Verifier({
             transition={{ duration: 1.5, repeat: Infinity, ease: "easeInOut" }}
             className="text-sm font-black text-sky-600 dark:text-sky-400 uppercase tracking-widest"
           >
-            A consultar base de dados...
+            {verifyMode === "CERTIFICATE" ? "Autenticando Certificado Digital..." : "A consultar base de dados..."}
           </motion.p>
-          <p className="text-[10px] text-slate-500 mt-2 font-mono uppercase tracking-[0.2em]">
-            Verificando Assinatura Digital
+          <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-2 font-mono uppercase tracking-[0.15em]">
+            {verifyMode === "CERTIFICATE" ? "Verificando Autenticidade & Registro Oficial" : "Verificando Assinatura Digital"}
           </p>
 
           {/* Subtle glow underneath */}
@@ -1246,6 +1326,7 @@ export default function Verifier({
   if (validationResult) {
     return (
       <div id="verification-result-panel" className="w-full flex flex-col items-center pt-1 pb-4 px-2">
+        {renderOpenInAppBanner()}
         {successMsg && (
           <div className="mt-4 p-3 bg-emerald-50 text-emerald-600 text-sm font-medium rounded-xl border border-emerald-200">
             {successMsg}
@@ -1332,6 +1413,7 @@ export default function Verifier({
 
   return (
     <div className="py-2 sm:py-4 flex flex-col items-center space-y-6">
+      {renderOpenInAppBanner()}
       {successMsg && (
         <div className="w-full max-w-sm p-3 bg-emerald-50 text-emerald-600 text-center text-sm font-medium rounded-xl border border-emerald-200">
           {successMsg}

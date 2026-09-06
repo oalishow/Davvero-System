@@ -374,17 +374,44 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
                             onClick={() => {
                               if (!n.read) markNotificationAsRead(n.id, n.recipientId === "todos");
                               
-                              // Navegação via triggerTab global
+                              // Redirecionamento completo do usuário
                               const trigger = (window as any).triggerTab;
-                              if (trigger) {
+                              const actionUrl = n.actionUrl || "";
+
+                              if (actionUrl) {
+                                if (actionUrl.includes("tab=events") || actionUrl.includes("evento")) {
+                                  trigger?.('events');
+                                } else if (actionUrl.includes("tab=certificates") || actionUrl.includes("certificados")) {
+                                  trigger?.('student');
+                                  setTimeout(() => {
+                                    window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: 'certificates' } }));
+                                  }, 50);
+                                } else if (actionUrl.includes("tab=diocese")) {
+                                  trigger?.('diocese');
+                                } else if (actionUrl.includes("tab=appointments")) {
+                                  trigger?.('appointments');
+                                } else if (actionUrl.includes("tab=student") || actionUrl.includes("carteirinha")) {
+                                  trigger?.('student');
+                                } else if (actionUrl.startsWith("http")) {
+                                  window.open(actionUrl, "_blank");
+                                } else if (trigger) {
+                                  trigger('student');
+                                }
+                              } else if (trigger) {
                                 if (n.type === 'evento') trigger('events');
                                 else if (n.type === 'carteirinha') trigger('student');
                                 else if (n.type === 'edicao') {
                                   if (isMasterLogged) trigger('admin');
                                   else trigger('student');
                                 }
-                                else if (n.type === 'certificado') trigger('student');
+                                else if (n.type === 'certificado') {
+                                  trigger('student');
+                                  setTimeout(() => {
+                                    window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: 'certificates' } }));
+                                  }, 50);
+                                }
                                 else if (n.type === 'inscricao' || n.type === 'appointment_swap') trigger('admin');
+                                else trigger('student');
                               }
                               setShowDropdown(false);
                             }}

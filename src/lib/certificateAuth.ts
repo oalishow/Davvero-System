@@ -658,11 +658,28 @@ export async function resolveCertificate(
     }
   }
 
+  // 5c. Direct candidate event + candidate member match (even if attendance record wasn't cached or created)
+  if (candidateEvents.length > 0 && candidateMembers.length > 0) {
+    const candEvent = candidateEvents[0];
+    const candMember = candidateMembers[0];
+    const isOrganizer = isExplicitOrg;
+    registerCertificateRecord({
+      code,
+      event: candEvent,
+      member: candMember,
+      isOrganizer,
+    }).catch(() => null);
+
+    return {
+      event: candEvent,
+      member: candMember,
+      isOrganizer,
+      certCode: code,
+    };
+  }
+
   // 6. Direct event match fallback if member was "DOC" or external
-  const matchedEvent = allEvents.find((e) => {
-    const eClean = cleanAlphaNum(e.id);
-    return eClean === cleanEventSearch || eClean.endsWith(cleanEventSearch) || eClean.slice(0, 8) === cleanEventSearch;
-  });
+  const matchedEvent = candidateEvents[0] || allEvents.find(isEventMatch);
 
   if (matchedEvent) {
     const fallbackMember: Member = candidateMembers[0] || {

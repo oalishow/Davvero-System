@@ -94,30 +94,42 @@ registerRoute(
 self.addEventListener("push", (event: any) => {
   if (!event.data) return;
 
-  let data: any = { title: "DAVVERO System", body: "Você recebeu uma nova notificação.", url: "/" };
-  
+  let title = "DAVVERO System";
+  let body = "Você recebeu uma nova notificação.";
+  let url = "/";
+  let icon = "/icon-192.png";
+  let badge = "/icon-192.png";
+  let tag = "davvero-push-" + Date.now();
+
   try {
-    const parsedData = event.data.json();
-    data = { ...data, ...parsedData };
+    const json = event.data.json();
+    title = json.title || json.notification?.title || title;
+    body = json.body || json.message || json.notification?.body || body;
+    url = json.url || json.data?.url || json.notification?.click_action || url;
+    icon = json.icon || json.notification?.icon || icon;
+    tag = json.tag || tag;
   } catch (err) {
     const textData = event.data.text();
     if (textData) {
-      data.body = textData;
+      body = textData;
     }
   }
 
   const options = {
-    body: data.body || data.message || "Nova notificação recebida",
-    icon: "/icon-192.png",
-    badge: "/icon-192.png",
-    vibrate: [100, 50, 100],
+    body,
+    icon,
+    badge,
+    tag,
+    renotify: true,
+    vibrate: [150, 50, 150],
     data: {
-      url: data.url || "/"
+      url,
+      time: Date.now()
     }
   };
 
   event.waitUntil(
-    self.registration.showNotification(data.title || "DAVVERO System", options)
+    self.registration.showNotification(title, options)
   );
 });
 
@@ -130,18 +142,13 @@ self.addEventListener("notificationclick", (event: any) => {
     self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients: any[]) => {
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
-        if (client.url === targetUrl && 'focus' in client) {
-          return client.focus();
+        if ('focus' in client) {
+          return client.focus().then((focusedClient: any) => {
+            if (focusedClient && 'navigate' in focusedClient) {
+              return focusedClient.navigate(targetUrl);
+            }
+          });
         }
-      }
-      
-      if (windowClients.length > 0 && 'focus' in windowClients[0]) {
-        return windowClients[0].focus().then((client: any) => {
-          if ('navigate' in client) {
-            return client.navigate(targetUrl);
-          }
-          return client;
-        });
       }
 
       if (self.clients.openWindow) {

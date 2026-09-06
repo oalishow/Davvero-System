@@ -108,7 +108,10 @@ export default function App() {
         return "events";
       }
       if (params.has("cert")) {
-        return "verifier"; // We will set targetVerifyCode in an effect
+        return "verifier";
+      }
+      if (params.has("verify")) {
+        return "verifier";
       }
       if (params.has("diocese") || params.get("tab") === "diocese") {
         return "diocese";
@@ -122,9 +125,19 @@ export default function App() {
       if (params.has("cert")) {
         return params.get("cert");
       }
+      if (params.has("verify")) {
+        return params.get("verify");
+      }
     }
     return null;
   });
+
+  useEffect(() => {
+    if (targetVerifyCode) {
+      setActiveTab("verifier");
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }
+  }, [targetVerifyCode]);
   const [adminForceViewCode, setAdminForceViewCode] = useState<string | null>(
     null,
   );
