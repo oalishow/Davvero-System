@@ -46,7 +46,13 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    self.registration.showNotification(title, options).catch((err) => {
+      console.warn("FCM push showNotification fallback:", err);
+      return self.registration.showNotification(title, {
+        body,
+        data: { url }
+      });
+    })
   );
 });
 
@@ -61,6 +67,9 @@ self.addEventListener('notificationclick', (event) => {
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if ('focus' in client) {
+          try {
+            client.postMessage({ type: 'NAVIGATE_URL', url: targetUrl });
+          } catch (_) {}
           return client.focus().then((focusedClient) => {
             if (focusedClient && 'navigate' in focusedClient) {
               return focusedClient.navigate(targetUrl);

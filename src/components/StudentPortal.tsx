@@ -790,8 +790,9 @@ export default function StudentPortal({
         setAllEvents(evts);
         const hasPrivilegedRole = member.roles?.some(r => ["ADMIN", "COORDENADOR", "GERENTE", "REITOR", "VICE-REITOR", "DIRETOR ESPIRITUAL", "PADRE"].includes(r.toUpperCase()));
 
-        setAvailableEvents(evts.filter((e) => e.status === "aberto" && !e.isSeminary));
-        setPastEvents(evts.filter((e) => e.status === "encerrado" && !e.isSeminary));
+        // Eventos acadêmicos gerais: exclui eventos de seminários e dioceses estritamente
+        setAvailableEvents(evts.filter((e) => e.status === "aberto" && !e.isSeminary && !e.isDiocese && !e.dioceseId && (e as any).category !== "diocese" && (e as any).type !== "diocese"));
+        setPastEvents(evts.filter((e) => e.status === "encerrado" && !e.isSeminary && !e.isDiocese && !e.dioceseId && (e as any).category !== "diocese" && (e as any).type !== "diocese"));
         setSeminaryAvailableEvents(evts.filter((e) => e.status === "aberto" && e.isSeminary && (!e.seminaryId || e.seminaryId === member.seminary || hasPrivilegedRole)));
         setSeminaryPastEvents(evts.filter((e) => e.status === "encerrado" && e.isSeminary && (!e.seminaryId || e.seminaryId === member.seminary || hasPrivilegedRole)));
       });

@@ -379,17 +379,26 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
                               const actionUrl = n.actionUrl || "";
 
                               if (actionUrl) {
-                                if (actionUrl.includes("tab=events") || actionUrl.includes("evento")) {
+                                if (actionUrl.includes("cert=") || actionUrl.includes("verify=")) {
+                                  const code = new URL(actionUrl, window.location.origin).searchParams.get("cert") || new URL(actionUrl, window.location.origin).searchParams.get("verify");
+                                  if (code && (window as any).triggerVerification) {
+                                    (window as any).triggerVerification(code);
+                                  } else {
+                                    trigger?.('verifier');
+                                  }
+                                } else if (actionUrl.includes("tab=events") || actionUrl.includes("evento")) {
                                   trigger?.('events');
-                                } else if (actionUrl.includes("tab=certificates") || actionUrl.includes("certificados")) {
+                                } else if (actionUrl.includes("tab=certificates") || actionUrl.includes("subTab=certificates") || actionUrl.includes("certificados")) {
                                   trigger?.('student');
                                   setTimeout(() => {
                                     window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: 'certificates' } }));
-                                  }, 50);
+                                  }, 60);
                                 } else if (actionUrl.includes("tab=diocese")) {
                                   trigger?.('diocese');
                                 } else if (actionUrl.includes("tab=appointments")) {
                                   trigger?.('appointments');
+                                } else if (actionUrl.includes("tab=admin")) {
+                                  trigger?.('admin');
                                 } else if (actionUrl.includes("tab=student") || actionUrl.includes("carteirinha")) {
                                   trigger?.('student');
                                 } else if (actionUrl.startsWith("http")) {
@@ -408,11 +417,12 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
                                   trigger('student');
                                   setTimeout(() => {
                                     window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: 'certificates' } }));
-                                  }, 50);
+                                  }, 60);
                                 }
                                 else if (n.type === 'inscricao' || n.type === 'appointment_swap') trigger('admin');
                                 else trigger('student');
                               }
+                              window.scrollTo({ top: 0, behavior: "smooth" });
                               setShowDropdown(false);
                             }}
                             className={`w-full text-left p-2.5 rounded-xl transition-colors flex items-start gap-2.5 ${n.read ? 'opacity-60 hover:bg-slate-50 dark:hover:bg-slate-800' : 'bg-sky-50 dark:bg-sky-900/10 hover:bg-sky-100 dark:hover:bg-sky-900/20'}`}

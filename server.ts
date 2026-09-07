@@ -235,7 +235,13 @@ async function startServer() {
           return Promise.resolve();
         }
 
-        return webpush.sendNotification(targetSub, JSON.stringify(payload))
+        const pushOptions = {
+          TTL: 86400 * 7, // 7 dias de retenção no gateway push caso dispositivo esteja offline/fechado
+          urgency: "high" as const, // Prioridade alta para acordar o Service Worker em segundo plano
+          topic: "davvero-system"
+        };
+
+        return webpush.sendNotification(targetSub, JSON.stringify(payload), pushOptions)
           .then(() => {
             successCount++;
           })
@@ -283,7 +289,13 @@ async function startServer() {
         url: url || "/"
       };
 
-      await webpush.sendNotification(targetSub, JSON.stringify(notificationPayload));
+      const pushOptions = {
+        TTL: 86400 * 7,
+        urgency: "high" as const,
+        topic: "davvero-system"
+      };
+
+      await webpush.sendNotification(targetSub, JSON.stringify(notificationPayload), pushOptions);
       res.status(200).json({ success: true, message: "Push sent successfully" });
     } catch (error: any) {
       console.error("Error sending push:", error);

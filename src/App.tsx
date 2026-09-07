@@ -91,11 +91,14 @@ export default function App() {
     // Only access window parameters on component mount
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
+      const tabParam = params.get("tab") || params.get("view");
+
       if (
-        params.get("view") === "certificates" ||
-        params.get("tab") === "certificates" ||
-        params.get("tab") === "certificados" ||
-        params.get("view") === "student" ||
+        tabParam === "student" ||
+        tabParam === "aluno" ||
+        tabParam === "carteirinha" ||
+        tabParam === "certificates" ||
+        tabParam === "certificados" ||
         params.has("certEvent") ||
         params.has("eventId") ||
         params.has("certType") ||
@@ -104,17 +107,20 @@ export default function App() {
       ) {
         return "student";
       }
-      if (params.has("event") || params.has("checkin_event") || params.has("checkin")) {
+      if (tabParam === "events" || tabParam === "eventos" || params.has("event") || params.has("checkin_event") || params.has("checkin")) {
         return "events";
       }
-      if (params.has("cert")) {
+      if (params.has("cert") || params.has("verify") || tabParam === "verifier") {
         return "verifier";
       }
-      if (params.has("verify")) {
-        return "verifier";
-      }
-      if (params.has("diocese") || params.get("tab") === "diocese") {
+      if (tabParam === "diocese" || params.has("diocese")) {
         return "diocese";
+      }
+      if (tabParam === "appointments" || tabParam === "agendamentos") {
+        return "appointments";
+      }
+      if (tabParam === "admin") {
+        return "admin";
       }
     }
     return "verifier";
@@ -135,7 +141,14 @@ export default function App() {
   useEffect(() => {
     if (targetVerifyCode) {
       setActiveTab("verifier");
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      setTimeout(() => {
+        const root = document.getElementById("certificate-verifier-root") || document.getElementById("certificate-verifier-container");
+        if (root) {
+          root.scrollIntoView({ behavior: "smooth", block: "start" });
+        } else {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }, 80);
     }
   }, [targetVerifyCode]);
   const [adminForceViewCode, setAdminForceViewCode] = useState<string | null>(
@@ -384,6 +397,74 @@ export default function App() {
     };
     (window as any).triggerWelcomeModal = () => setShowWelcomeModal(true);
     (window as any).triggerCheckUpdates = handleInteractiveUpdateCheck;
+
+    // Listener para redirecionamento imediato disparado por cliques em notificações (SW e links)
+    const handleUrlNavigation = (rawUrl?: string) => {
+      try {
+        const currentUrl = rawUrl ? new URL(rawUrl, window.location.origin) : new URL(window.location.href);
+        const params = currentUrl.searchParams;
+
+        if (params.has("cert") || params.has("verify")) {
+          const code = params.get("cert") || params.get("verify");
+          if (code) {
+            setTargetVerifyCode(code);
+            setActiveTab("verifier");
+          }
+          return;
+        }
+
+        const tab = params.get("tab") || params.get("view");
+        if (tab === "events" || tab === "eventos" || params.has("event") || params.has("checkin")) {
+          setActiveTab("events");
+        } else if (
+          tab === "student" ||
+          tab === "aluno" ||
+          tab === "carteirinha" ||
+          tab === "certificates" ||
+          tab === "certificados" ||
+          params.has("certEvent") ||
+          params.has("eventId") ||
+          params.has("certType")
+        ) {
+          setActiveTab("student");
+          if (tab === "certificates" || tab === "certificados" || params.get("subTab") === "certificates") {
+            setTimeout(() => {
+              window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: "certificates" } }));
+            }, 80);
+          }
+        } else if (tab === "diocese") {
+          setActiveTab("diocese");
+        } else if (tab === "appointments" || tab === "agendamentos") {
+          setActiveTab("appointments");
+        } else if (tab === "admin") {
+          setActiveTab("admin");
+        }
+      } catch (e) {
+        console.warn("handleUrlNavigation error:", e);
+      }
+    };
+
+    const handleSWMessage = (event: MessageEvent) => {
+      if (event.data && event.data.type === "NAVIGATE_URL" && event.data.url) {
+        handleUrlNavigation(event.data.url);
+      }
+    };
+
+    const handlePopState = () => {
+      handleUrlNavigation();
+    };
+
+    if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+      navigator.serviceWorker.addEventListener("message", handleSWMessage);
+    }
+    window.addEventListener("popstate", handlePopState);
+
+    return () => {
+      if (typeof navigator !== "undefined" && navigator.serviceWorker) {
+        navigator.serviceWorker.removeEventListener("message", handleSWMessage);
+      }
+      window.removeEventListener("popstate", handlePopState);
+    };
   }, []);
 
   useEffect(() => {
@@ -892,11 +973,13 @@ export default function App() {
                 >
                   {activeTab === "verifier" && (
                     <div className="space-y-6">
-                      <HomePollsWidget />
-                      <Verifier
-                        externalCode={targetVerifyCode}
-                        onExternalVerified={() => setTargetVerifyCode(null)}
-                      />
+                      <div id="certificate-verifier-root" className="scroll-mt-6">
+                        <Verifier
+                          externalCode={targetVerifyCode}
+                          onExternalVerified={() => setTargetVerifyCode(null)}
+                        />
+                      </div>
+                      {!targetVerifyCode && <HomePollsWidget />}
                     </div>
                   )}
                   {activeTab === "admin" && (

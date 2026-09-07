@@ -129,7 +129,13 @@ self.addEventListener("push", (event: any) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options)
+    self.registration.showNotification(title, options).catch((err: any) => {
+      console.warn("ServiceWorker push showNotification fallback:", err);
+      return self.registration.showNotification(title, {
+        body,
+        data: { url }
+      });
+    })
   );
 });
 
@@ -143,6 +149,9 @@ self.addEventListener("notificationclick", (event: any) => {
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if ('focus' in client) {
+          try {
+            client.postMessage({ type: 'NAVIGATE_URL', url: targetUrl });
+          } catch (_) {}
           return client.focus().then((focusedClient: any) => {
             if (focusedClient && 'navigate' in focusedClient) {
               return focusedClient.navigate(targetUrl);

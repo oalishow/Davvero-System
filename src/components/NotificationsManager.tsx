@@ -194,16 +194,32 @@ export default function NotificationsManager() {
         }
       }
 
-      // 2. In-App notifications via Firestore
+      // 2. Determinar URL de redirecionamento dinâmico baseado no tipo de notificação
+      let redirectUrl = "/";
+      if (type === "evento") {
+        redirectUrl = "/?tab=events";
+      } else if (type === "certificado") {
+        redirectUrl = "/?tab=student&subTab=certificates";
+      } else if (type === "carteirinha") {
+        redirectUrl = "/?tab=student";
+      } else if (type === "diocese") {
+        redirectUrl = "/?tab=diocese";
+      } else if (type === "inscricao") {
+        redirectUrl = "/?tab=events";
+      } else if (type === "sistema") {
+        redirectUrl = "/?tab=student";
+      }
+
+      // 3. In-App notifications via Firestore
       if (audienceMode === "todos") {
-        await createNotification({ recipientId: "todos", title, message, type });
+        await createNotification({ recipientId: "todos", title, message, type, actionUrl: redirectUrl });
       } else {
         await Promise.all(
-          targetMemberIds.map((uid) => createNotification({ recipientId: uid, title, message, type }))
+          targetMemberIds.map((uid) => createNotification({ recipientId: uid, title, message, type, actionUrl: redirectUrl }))
         );
       }
 
-      // 3. Collect WebPush subscriptions from Firestore
+      // 4. Collect WebPush subscriptions from Firestore
       const targetSubscriptions: any[] = [];
       try {
         // Query push_subscriptions
@@ -234,7 +250,7 @@ export default function NotificationsManager() {
         console.warn("Erro ao coletar subscrições do Firestore:", subErr);
       }
 
-      // 4. Send WebPush broadcast via server
+      // 5. Send WebPush broadcast via server
       let pushStats = { sent: 0, failed: 0 };
       if (targetSubscriptions.length > 0) {
         try {
@@ -247,7 +263,7 @@ export default function NotificationsManager() {
             body: JSON.stringify({
               title,
               message,
-              url: "/",
+              url: redirectUrl,
               subscriptions: targetSubscriptions,
             }),
             signal: controller.signal,

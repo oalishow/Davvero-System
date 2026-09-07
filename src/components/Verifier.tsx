@@ -90,37 +90,49 @@ export default function Verifier({
 
   const isStandalone = typeof window !== "undefined" && (
     window.matchMedia("(display-mode: standalone)").matches ||
+    window.matchMedia("(display-mode: fullscreen)").matches ||
+    window.matchMedia("(display-mode: minimal-ui)").matches ||
     (window.navigator as any).standalone === true ||
-    document.referrer.includes("android-app://")
+    document.referrer.includes("android-app://") ||
+    localStorage.getItem("davvero_pwa_installed") === "true" ||
+    localStorage.getItem("pwa_installed") === "true"
   );
 
   const handleOpenInInstalledApp = () => {
+    const currentUrl = typeof window !== "undefined" ? window.location.href : "/";
     if (typeof window !== "undefined" && (window as any).deferredPrompt) {
       (window as any).deferredPrompt.prompt();
       return;
     }
-    const currentUrl = typeof window !== "undefined" ? window.location.href : "/";
-    window.location.assign(currentUrl);
-    showAlert("Se o aplicativo DAVVERO já estiver instalado no seu celular, toque em 'Abrir no App' na notificação do navegador ou abra o aplicativo para verificar automaticamente.", { type: "info" });
+    // Deep-link / direct launch attempt:
+    try {
+      if (/Android/i.test(navigator.userAgent)) {
+        // Tenta acionar o WebAPK/PWA instalado no Android
+        window.location.assign(currentUrl);
+      } else {
+        window.location.assign(currentUrl);
+      }
+    } catch (_) {}
+    showAlert("Se o aplicativo DAVVERO estiver instalado no seu celular, você também pode abri-lo pela tela inicial ou pelo menu do navegador (⋮ > 'Abrir no app').", { type: "info" });
   };
 
   const renderOpenInAppBanner = () => {
     if (isStandalone) return null;
     return (
-      <div className="w-full max-w-2xl mx-auto mb-5 bg-gradient-to-r from-sky-950/90 via-slate-900/95 to-indigo-950/90 border border-sky-500/30 rounded-2xl p-3.5 sm:p-4 text-white shadow-xl shadow-sky-950/50 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in no-print">
-        <div className="flex items-center gap-3">
+      <div className="w-full max-w-2xl mx-auto mb-5 bg-gradient-to-r from-sky-950/95 via-slate-900 to-indigo-950/95 border border-sky-500/40 rounded-2xl p-4 text-white shadow-xl shadow-sky-950/50 flex flex-col sm:flex-row items-center justify-between gap-3 animate-fade-in no-print">
+        <div className="flex items-center gap-3 w-full sm:w-auto">
           <div className="w-10 h-10 rounded-xl bg-sky-500/20 border border-sky-400/30 flex items-center justify-center shrink-0">
             <Smartphone className="w-5 h-5 text-sky-400" />
           </div>
           <div>
             <div className="flex items-center gap-2">
               <h4 className="text-xs sm:text-sm font-bold text-sky-100">Abrir no Aplicativo Instalado</h4>
-              <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-sky-500/30 text-sky-300 border border-sky-400/30">
+              <span className="text-[9px] font-black uppercase tracking-wider px-2 py-0.5 rounded-full bg-emerald-500/20 text-emerald-300 border border-emerald-400/30">
                 PWA
               </span>
             </div>
             <p className="text-[11px] text-slate-300 mt-0.5">
-              Você pode autenticar e salvar este certificado diretamente no aplicativo instalado.
+              Visualize e autentique este certificado diretamente no seu aplicativo DAVVERO instalado.
             </p>
           </div>
         </div>
@@ -128,7 +140,7 @@ export default function Verifier({
           <button
             type="button"
             onClick={handleOpenInInstalledApp}
-            className="w-full sm:w-auto px-4 py-2 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-sky-500/25 active:scale-95 transition-all flex items-center justify-center gap-1.5"
+            className="w-full sm:w-auto px-4 py-2.5 bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white rounded-xl text-xs font-bold shadow-md shadow-sky-500/25 active:scale-95 transition-all flex items-center justify-center gap-1.5"
           >
             <ExternalLink className="w-3.5 h-3.5" />
             <span>Abrir no App DAVVERO</span>
@@ -146,7 +158,14 @@ export default function Verifier({
 
     setIsProcessing(true);
     if (typeof window !== "undefined") {
-      window.scrollTo({ top: 0, behavior: "smooth" });
+      setTimeout(() => {
+        const radar = document.getElementById("certificate-verifier-container") || document.getElementById("certificate-verifier-root");
+        if (radar) {
+          radar.scrollIntoView({ behavior: "smooth", block: "center" });
+        } else {
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }
+      }, 50);
     }
 
     let code = rawCode.trim();
@@ -186,45 +205,46 @@ export default function Verifier({
     // Centralized Certificate Authentication Resolution with Race / Timeout
     try {
       const timeoutPromise = new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout de consulta")), 15000)
-      );
+          setTimeout(() => reject(new Error("Timeout de consulta")), 15000)
+        );
 
-      const resolved = await Promise.race([
-        resolveCertificate(code, eventsCache, membersCache, attendancesCache),
-        timeoutPromise,
-      ]).catch((err) => {
-        console.warn("resolveCertificate timeout or error:", err);
-        return null;
-      });
-
-      if (resolved) {
-        const { event: foundEvent, member: resolvedMember, isOrganizer, certCode, template, allMatches } = resolved;
-        recordQRScan("certificate", certCode, "Válido");
-
-        setValidationResult({
-          member: resolvedMember,
-          status: "VALID_CERTIFICATE",
-          event: foundEvent,
-          isOrganizer,
-          certCode,
-          template,
-          allMatches,
+        const resolved = await Promise.race([
+          resolveCertificate(code, eventsCache, membersCache, attendancesCache),
+          timeoutPromise,
+        ]).catch((err) => {
+          console.warn("resolveCertificate timeout or error:", err);
+          return null;
         });
-        playSound("success");
 
-        setTimeout(() => {
-          const panel = document.getElementById("verification-result-panel");
-          if (panel) {
-            panel.scrollIntoView({ behavior: "smooth", block: "start" });
-          } else {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }
-        }, 100);
-        return;
+        if (resolved) {
+          const { event: foundEvent, member: resolvedMember, isOrganizer, certCode, template, allMatches } = resolved;
+          recordQRScan("certificate", certCode, "Válido");
+
+          setValidationResult({
+            member: resolvedMember,
+            status: "VALID_CERTIFICATE",
+            event: foundEvent,
+            isOrganizer,
+            certCode,
+            template,
+            allMatches,
+          });
+          playSound("success");
+          setIsProcessing(false);
+
+          setTimeout(() => {
+            const panel = document.getElementById("verification-result-panel");
+            if (panel) {
+              panel.scrollIntoView({ behavior: "smooth", block: "start" });
+            } else {
+              window.scrollTo({ top: 0, behavior: "smooth" });
+            }
+          }, 100);
+          return;
+        }
+      } catch (e) {
+        console.warn("Error in resolveCertificate:", e);
       }
-    } catch (e) {
-      console.warn("Error in resolveCertificate:", e);
-    }
 
     // Split by common separators (- , / , :)
     let eventPart = "";

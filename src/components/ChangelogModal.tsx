@@ -8,6 +8,19 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v8.2b',
+      title: 'Autenticação de Certificados, Redirecionamento PWA & Acesso por Notificações',
+      changes: [
+        'Correção na Autenticação de Certificados via QR Code: resolução definitiva para o carregamento contínuo ao escanear o código no navegador, exibindo o resultado oficial e redirecionando a visão do usuário imediatamente.',
+        'Abertura no Aplicativo Instalado (PWA): ao verificar certificados ou abrir links no navegador, o usuário conta com opção direta para abrir no aplicativo DAVVERO instalado no celular.',
+        'Redirecionamento ao Clicar em Notificações: ao clicar em notificações no sistema ou notificações push nativas, o usuário é direcionado exatamente para a página do evento, certificado ou carteirinha correspondente.',
+        'Notificações com Aplicativo Fechado: garantia de entrega de notificações push em segundo plano via PushManager com TTL ampliado e prioridade alta do protocolo WebPush.',
+        'Filtro Estrito do Painel Acadêmico: eventos exclusivos de Dioceses foram isolados para não aparecerem na listagem de eventos acadêmicos gerais e do portal do aluno.',
+        'Correção de Telemetria no Dashboard: métricas de "Plataforma de Acesso" atualizadas para contabilizar com precisão todos os dispositivos com PWA instalado.'
+      ],
+      current: true,
+    },
+    {
       version: 'v8.1b',
       title: 'Gestão de Enquetes, Autenticidade de Certificados & Presença Multi-Dias',
       changes: [
@@ -21,7 +34,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Cartaz de Divulgação Acessível: visualização e download do cartaz do evento disponível para todos os participantes (com a lista de presença restrita a administradores).',
         'Aviso de Responsabilidade e Guarda: aviso informando sobre o armazenamento temporário de certificados no painel.'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v8.0b',
