@@ -132,6 +132,11 @@ export interface CertificateTemplate {
   signatureOffsetY?: number; // -40 to 40px
   signatureLineGap?: number; // -30 to 30px (aproximar/afastar da linha de assinatura)
   signatureGap?: number; // 10 to 60px
+
+  // City & Release Date Customization
+  city?: string;
+  releaseDate?: string; // Data oficial de liberação (AAAA-MM-DD ou ISO). Se vazio, usa o dia em que o evento foi liberado
+  showReleaseDate?: boolean;
 }
 
 export interface EventPresenceConfig {
@@ -186,6 +191,8 @@ export interface Event {
   allowAllRegisteredCertificates?: boolean; // Se true, todos os inscritos recebem certificado
   autoSendCertificatesOnClose?: boolean; // Se false, remove o envio automático de e-mail ao término
   autoReleaseCertificatesOnEnd?: boolean; // Se true (padrão), libera certificados automaticamente após o horário de término
+  certificateReleasedAt?: string; // Data/hora em que os certificados do evento foram liberados
+  closedAt?: string; // Data/hora em que o evento foi encerrado
   presenceConfig?: EventPresenceConfig;
 }
 
@@ -197,6 +204,7 @@ export interface Attendance {
   checkInDates?: string[]; // Array of YYYY-MM-DD
   isOrganizer?: boolean;
   timestamp: string;
+  certificateReleasedAt?: string; // Data/hora em que o participante foi liberado para certificado
   member?: Member;
   paymentStatus?: "pendente" | "pago" | "isento";
   transactionId?: string;

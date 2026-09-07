@@ -25,9 +25,13 @@ import {
   Maximize2,
   Mail,
   BookmarkPlus,
+  BookmarkCheck,
+  Library,
   Layers,
   Building,
   Sliders,
+  Calendar,
+  MapPin,
 } from "lucide-react";
 import type { Event, CertificateTemplate } from "../types";
 import { updateEvent, db, appId } from "../lib/firebase";
@@ -38,6 +42,7 @@ import { resizeAndConvertToBase64 } from "../lib/imageUtils";
 import { useSettings } from "../context/SettingsContext";
 import { useDialog } from "../context/DialogContext";
 import { sendEmailNotification, getCompiledEmail } from "../lib/emailService";
+import { resolveCertificateReleaseDate } from "../lib/certificateAuth";
 
 interface CertificateEditorProps {
   event: Event;
@@ -161,6 +166,11 @@ export default function CertificateEditor({
   const [presetNameInput, setPresetNameInput] = useState("");
   const [isSavingPreset, setIsSavingPreset] = useState(false);
 
+  // Saved Logos Library (Banco e Reutilização de Logos em qualquer certificado)
+  const [savedLogos, setSavedLogos] = useState<{ id: string; name: string; url: string; savedAt: string }[]>([]);
+  const [isLogoModalOpen, setIsLogoModalOpen] = useState(false);
+  const [targetLogoField, setTargetLogoField] = useState<"logoUrl" | "logo2Url">("logoUrl");
+
   // Carregar presets salvos globalmente
   useEffect(() => {
     const loadPresets = async () => {
@@ -175,6 +185,53 @@ export default function CertificateEditor({
     };
     loadPresets();
   }, []);
+
+  // Carregar banco de logos salvas globalmente
+  useEffect(() => {
+    const loadSavedLogos = async () => {
+      try {
+        const snap = await getDoc(doc(db, ASSETS_DOC_PATH(appId, "cert_saved_logos")));
+        if (snap.exists() && snap.data()?.logos) {
+          setSavedLogos(snap.data().logos);
+        }
+      } catch (err) {
+        console.warn("Could not load saved cert logos", err);
+      }
+    };
+    loadSavedLogos();
+  }, []);
+
+  const saveLogoToLibrary = async (url: string, defaultName?: string) => {
+    if (!url) return;
+    try {
+      const exists = savedLogos.find((l) => l.url === url);
+      const name = defaultName || `Logo ${savedLogos.length + 1} (${new Date().toLocaleDateString("pt-BR")})`;
+      const newLogoItem = {
+        id: exists ? exists.id : `logo_${Date.now()}_${Math.random().toString(36).slice(2, 6)}`,
+        name: exists ? exists.name : name,
+        url,
+        savedAt: new Date().toISOString(),
+      };
+      const updated = [newLogoItem, ...savedLogos.filter((l) => l.url !== url)].slice(0, 30);
+      setSavedLogos(updated);
+      await setDoc(doc(db, ASSETS_DOC_PATH(appId, "cert_saved_logos")), { logos: updated }, { merge: true });
+      showAlert("Logo salva no banco de logos com sucesso!", { type: "success" });
+    } catch (err: any) {
+      console.error(err);
+      showAlert("Erro ao salvar logo no banco: " + (err.message || "Tente novamente"), { type: "error" });
+    }
+  };
+
+  const handleDeleteSavedLogo = async (logoId: string) => {
+    try {
+      const updated = savedLogos.filter((l) => l.id !== logoId);
+      setSavedLogos(updated);
+      await setDoc(doc(db, ASSETS_DOC_PATH(appId, "cert_saved_logos")), { logos: updated }, { merge: true });
+      showAlert("Logo removida do banco.", { type: "info" });
+    } catch (err: any) {
+      console.error(err);
+    }
+  };
 
   const handleSaveAsPreset = async () => {
     const name = presetNameInput.trim() || `Modelo ${savedPresets.length + 1} (${new Date().toLocaleDateString("pt-BR")})`;
@@ -456,6 +513,12 @@ Instruções RIGOROSAS:
         ...(fieldName === "logo2Url" ? { showLogo2: true } : {}),
         ...(fieldName === "logoUrl" ? { showLogo: true } : {}),
       }));
+
+      // Auto-salvar no banco de logos se for logo 1 ou logo 2
+      if (fieldName === "logoUrl" || fieldName === "logo2Url") {
+        const cleanName = file.name ? file.name.replace(/\.[^/.]+$/, "") : undefined;
+        saveLogoToLibrary(base64, cleanName);
+      }
     } catch (err) {
       console.error(err);
       showAlert("Erro ao carregar imagem.", { type: "error" });
@@ -1055,6 +1118,64 @@ Instruções RIGOROSAS:
                     {isGenerating ? "Redigindo com Gemini..." : "Redigir com IA Gemini"}
                   </button>
 
+                  {/* Cidade e Data Oficial do Certificado (Dia em que foi liberado) */}
+                  <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div>
+                        <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 flex items-center gap-1.5">
+                          <Calendar className="w-3.5 h-3.5 text-sky-500" />
+                          Data e Cidade Oficial de Emissão
+                        </h4>
+                        <p className="text-[10px] text-slate-500">
+                          A data impressa reflete o dia em que o certificado foi liberado
+                        </p>
+                      </div>
+                      <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800">
+                        {resolveCertificateReleaseDate(event, template).formattedDate}
+                      </span>
+                    </div>
+
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5">
+                      <div>
+                        <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1 mb-1">
+                          <MapPin className="w-3 h-3 text-slate-400" />
+                          Cidade da Emissão:
+                        </label>
+                        <input
+                          type="text"
+                          placeholder={event.diocese ? event.diocese.replace(/Diocese\s+de\s+/i, '') : (settings.instCity || "Marília")}
+                          value={template.city || ""}
+                          onChange={(e) => setTemplate({ ...template, city: e.target.value })}
+                          className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500 shadow-xs"
+                        />
+                      </div>
+
+                      <div>
+                        <div className="flex items-center justify-between mb-1">
+                          <label className="text-[10px] font-bold text-slate-500 uppercase flex items-center gap-1">
+                            <Calendar className="w-3 h-3 text-slate-400" />
+                            Data de Liberação (Opcional):
+                          </label>
+                          {template.releaseDate && (
+                            <button
+                              type="button"
+                              onClick={() => setTemplate({ ...template, releaseDate: "" })}
+                              className="text-[9px] font-bold text-sky-600 hover:underline"
+                            >
+                              Auto (Dia do Evento)
+                            </button>
+                          )}
+                        </div>
+                        <input
+                          type="date"
+                          value={template.releaseDate || ""}
+                          onChange={(e) => setTemplate({ ...template, releaseDate: e.target.value })}
+                          className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500 shadow-xs"
+                        />
+                      </div>
+                    </div>
+                  </div>
+
                   {/* Endereço da Faculdade e E-mail de Contato (Rodapé do Certificado) */}
                   <div className="pt-3 border-t border-slate-200 dark:border-slate-800 space-y-3">
                     <div className="flex items-center justify-between">
@@ -1204,6 +1325,31 @@ Instruções RIGOROSAS:
                           />
                         </label>
 
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTargetLogoField("logoUrl");
+                            setIsLogoModalOpen(true);
+                          }}
+                          className="py-1.5 px-3 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                          title="Escolher uma logo salva em outros certificados"
+                        >
+                          <Library className="w-3.5 h-3.5" />
+                          Banco de Logos {savedLogos.length > 0 && `(${savedLogos.length})`}
+                        </button>
+
+                        {template.logoUrl && (
+                          <button
+                            type="button"
+                            onClick={() => saveLogoToLibrary(template.logoUrl!)}
+                            className="py-1.5 px-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                            title="Salvar esta logo para reutilizar em outros certificados"
+                          >
+                            <BookmarkCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            Salvar Logo
+                          </button>
+                        )}
+
                         {event.imageUrl && !template.logoUrl && (
                           <button
                             type="button"
@@ -1304,7 +1450,7 @@ Instruções RIGOROSAS:
                         </div>
                       )}
 
-                      <div className="pt-2 border-t border-slate-200 dark:border-slate-800 w-full flex justify-center">
+                      <div className="flex flex-wrap items-center justify-center gap-2 pt-2 border-t border-slate-200 dark:border-slate-800 w-full">
                         <label className="py-1.5 px-3 bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 hover:bg-emerald-100 rounded-xl text-xs font-bold cursor-pointer transition-colors flex items-center gap-1.5">
                           <Upload className="w-3.5 h-3.5" />
                           {template.logo2Url ? "Trocar Logo 2" : "Enviar Logo 2 (PNG/JPG)"}
@@ -1315,6 +1461,31 @@ Instruções RIGOROSAS:
                             onChange={(e) => handleUploadImage(e, "logo2Url")}
                           />
                         </label>
+
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setTargetLogoField("logo2Url");
+                            setIsLogoModalOpen(true);
+                          }}
+                          className="py-1.5 px-3 bg-purple-50 dark:bg-purple-950/40 text-purple-700 dark:text-purple-300 hover:bg-purple-100 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                          title="Escolher uma logo salva em outros certificados"
+                        >
+                          <Library className="w-3.5 h-3.5" />
+                          Banco de Logos {savedLogos.length > 0 && `(${savedLogos.length})`}
+                        </button>
+
+                        {template.logo2Url && (
+                          <button
+                            type="button"
+                            onClick={() => saveLogoToLibrary(template.logo2Url!)}
+                            className="py-1.5 px-2.5 bg-slate-100 dark:bg-slate-800 text-slate-700 dark:text-slate-300 hover:bg-slate-200 rounded-xl text-xs font-bold transition-colors flex items-center gap-1.5"
+                            title="Salvar esta logo para reutilizar em outros certificados"
+                          >
+                            <BookmarkCheck className="w-3.5 h-3.5 text-emerald-600" />
+                            Salvar Logo
+                          </button>
+                        )}
                       </div>
                     </div>
 
@@ -2326,6 +2497,138 @@ Instruções RIGOROSAS:
             </button>
           </div>
         </div>
+
+        {/* Modal do Banco de Logos Reutilizáveis */}
+        {isLogoModalOpen && (
+          <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-slate-900/80 backdrop-blur-sm animate-fade-in">
+            <div className="bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-3xl p-6 max-w-xl w-full max-h-[85vh] flex flex-col shadow-2xl">
+              <div className="flex items-center justify-between pb-4 border-b border-slate-100 dark:border-slate-800">
+                <div className="flex items-center gap-3">
+                  <div className="w-10 h-10 rounded-2xl bg-purple-100 dark:bg-purple-900/40 text-purple-600 dark:text-purple-400 flex items-center justify-center">
+                    <Library className="w-5 h-5" />
+                  </div>
+                  <div>
+                    <h3 className="text-base font-bold text-slate-900 dark:text-white">
+                      Banco de Logos Reutilizáveis
+                    </h3>
+                    <p className="text-xs text-slate-500">
+                      Selecione uma logo salva para aplicar em{" "}
+                      <strong className="text-purple-600 dark:text-purple-400">
+                        {targetLogoField === "logoUrl" ? "Logo 1 (Principal)" : "Logo 2 (Secundária)"}
+                      </strong>
+                    </p>
+                  </div>
+                </div>
+                <button
+                  type="button"
+                  onClick={() => setIsLogoModalOpen(false)}
+                  className="p-2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-xl hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+                >
+                  <X className="w-5 h-5" />
+                </button>
+              </div>
+
+              <div className="flex-1 overflow-y-auto py-4 space-y-4">
+                {savedLogos.length === 0 ? (
+                  <div className="text-center py-10 text-slate-400 space-y-3">
+                    <Library className="w-12 h-12 mx-auto opacity-30" />
+                    <p className="text-sm font-medium">Nenhuma logo salva no banco ainda.</p>
+                    <p className="text-xs max-w-xs mx-auto">
+                      Ao enviar qualquer imagem para a Logo 1 ou Logo 2, ela é guardada automaticamente aqui para você usar em outros certificados!
+                    </p>
+                  </div>
+                ) : (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {savedLogos.map((logoItem) => (
+                      <div
+                        key={logoItem.id}
+                        className="p-3 bg-slate-50 dark:bg-slate-800/60 rounded-2xl border border-slate-200 dark:border-slate-700/60 flex flex-col justify-between group hover:border-purple-500/50 transition-all"
+                      >
+                        <div className="h-28 flex items-center justify-center p-2 bg-white/90 dark:bg-slate-900/60 rounded-xl mb-2.5 overflow-hidden">
+                          <img
+                            src={logoItem.url}
+                            alt={logoItem.name}
+                            className="max-h-full max-w-full object-contain drop-shadow-xs"
+                          />
+                        </div>
+
+                        <div className="mb-3">
+                          <h4 className="text-xs font-bold text-slate-800 dark:text-slate-200 truncate" title={logoItem.name}>
+                            {logoItem.name}
+                          </h4>
+                          <span className="text-[10px] text-slate-400 block">
+                            Salvo em {new Date(logoItem.savedAt).toLocaleDateString("pt-BR")}
+                          </span>
+                        </div>
+
+                        <div className="flex items-center gap-1.5 pt-2 border-t border-slate-200/70 dark:border-slate-700/60">
+                          <button
+                            type="button"
+                            onClick={() => {
+                              setTemplate((prev) => ({
+                                ...prev,
+                                [targetLogoField]: logoItem.url,
+                                ...(targetLogoField === "logoUrl" ? { showLogo: true } : { showLogo2: true }),
+                              }));
+                              setIsLogoModalOpen(false);
+                              showAlert(`Logo aplicada com sucesso em ${targetLogoField === "logoUrl" ? "Logo 1" : "Logo 2"}!`, {
+                                type: "success",
+                              });
+                            }}
+                            className="flex-1 py-1.5 px-2.5 bg-purple-600 hover:bg-purple-500 text-white rounded-xl text-xs font-bold transition-colors text-center cursor-pointer"
+                          >
+                            Usar nesta Logo
+                          </button>
+                          <button
+                            type="button"
+                            onClick={() => handleDeleteSavedLogo(logoItem.id)}
+                            className="p-1.5 text-slate-400 hover:text-red-500 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-xl transition-colors cursor-pointer"
+                            title="Excluir do banco"
+                          >
+                            <Trash2 className="w-4 h-4" />
+                          </button>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              <div className="pt-3 border-t border-slate-100 dark:border-slate-800 flex items-center justify-between">
+                <label className="py-2 px-4 bg-slate-100 dark:bg-slate-800 hover:bg-slate-200 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold cursor-pointer transition-colors flex items-center gap-1.5">
+                  <Upload className="w-3.5 h-3.5" />
+                  Subir Logo Direto no Banco
+                  <input
+                    type="file"
+                    className="hidden"
+                    accept="image/*"
+                    onChange={async (e) => {
+                      const file = e.target.files?.[0];
+                      if (!file) return;
+                      try {
+                        const base64 = await resizeAndConvertToBase64(file, 800, {
+                          preserveAlpha: true,
+                          removeWhiteBg: true,
+                          mimeType: "image/png",
+                        });
+                        await saveLogoToLibrary(base64, file.name.replace(/\.[^/.]+$/, ""));
+                      } catch (err) {
+                        showAlert("Erro ao subir logo.", { type: "error" });
+                      }
+                    }}
+                  />
+                </label>
+                <button
+                  type="button"
+                  onClick={() => setIsLogoModalOpen(false)}
+                  className="py-2 px-4 bg-slate-200 dark:bg-slate-800 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold hover:bg-slate-300 transition-colors cursor-pointer"
+                >
+                  Fechar
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
 
       </div>
     </div>,

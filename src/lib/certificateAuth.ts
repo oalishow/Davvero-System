@@ -13,6 +13,7 @@ export interface CertificateRecord {
   hours: number;
   isOrganizer: boolean;
   issuedAt: string;
+  releasedAt?: string;
 }
 
 export interface ResolvedCertificateItem {
@@ -26,6 +27,108 @@ export interface ResolvedCertificateItem {
 
 export interface ResolvedCertificate extends ResolvedCertificateItem {
   allMatches?: ResolvedCertificateItem[];
+}
+
+/**
+ * Resolves the official certificate release/issue date.
+ * Priority:
+ * 1. Explicit template manual override (template.releaseDate)
+ * 2. Member/Attendance specific release date (member.certificateReleasedAt or member.issuedAt)
+ * 3. Event certificateReleasedAt (when the event certificates were unlocked/closed)
+ * 4. Event closedAt (when event was completed/closed)
+ * 5. Event endDate (for completed events, date of conclusion)
+ * 6. Event startDate
+ * 7. Fallback to current Date
+ */
+export function resolveCertificateReleaseDate(
+  event?: Partial<Event> | null,
+  template?: Partial<CertificateTemplate> | null,
+  member?: Partial<Member> | null
+): {
+  day: string;
+  monthName: string;
+  year: number;
+  formattedDate: string;
+  isoDate: string;
+} {
+  const months = [
+    "janeiro", "fevereiro", "março", "abril", "maio", "junho",
+    "julho", "agosto", "setembro", "outubro", "novembro", "dezembro"
+  ];
+
+  const rawCandidate =
+    template?.releaseDate ||
+    (template as any)?.certificateReleasedAt ||
+    (member as any)?.certificateReleasedAt ||
+    (member as any)?.issuedAt ||
+    (event as any)?.certificateReleasedAt ||
+    (event as any)?.closedAt ||
+    (event as any)?.endDate ||
+    (event as any)?.startDate ||
+    null;
+
+  let parsed: { day: number; month: number; year: number } | null = null;
+
+  if (rawCandidate) {
+    if (typeof rawCandidate === "string") {
+      const s = rawCandidate.trim();
+      // Format YYYY-MM-DD or ISO timestamp YYYY-MM-DDTHH:MM:SS
+      if (/^\d{4}-\d{2}-\d{2}/.test(s)) {
+        const datePart = s.split(/[T ]/)[0];
+        const [y, m, d] = datePart.split("-").map(Number);
+        if (y && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          parsed = { year: y, month: m, day: d };
+        }
+      } else if (/^\d{2}\/\d{2}\/\d{4}/.test(s)) {
+        const [d, m, y] = s.split("/").map(Number);
+        if (y && m >= 1 && m <= 12 && d >= 1 && d <= 31) {
+          parsed = { year: y, month: m, day: d };
+        }
+      } else {
+        const dt = new Date(s);
+        if (!isNaN(dt.getTime())) {
+          parsed = {
+            year: dt.getFullYear(),
+            month: dt.getMonth() + 1,
+            day: dt.getDate(),
+          };
+        }
+      }
+    } else if (typeof rawCandidate === "number") {
+      const dt = new Date(rawCandidate);
+      if (!isNaN(dt.getTime())) {
+        parsed = {
+          year: dt.getFullYear(),
+          month: dt.getMonth() + 1,
+          day: dt.getDate(),
+        };
+      }
+    } else if (rawCandidate instanceof Date && !isNaN(rawCandidate.getTime())) {
+      parsed = {
+        year: rawCandidate.getFullYear(),
+        month: rawCandidate.getMonth() + 1,
+        day: rawCandidate.getDate(),
+      };
+    }
+  }
+
+  const now = new Date();
+  const finalYear = parsed?.year ?? now.getFullYear();
+  const finalMonth = parsed?.month ?? (now.getMonth() + 1);
+  const finalDay = parsed?.day ?? now.getDate();
+
+  const dayStr = String(finalDay).padStart(2, "0");
+  const monthName = months[Math.max(0, Math.min(11, finalMonth - 1))];
+  const formattedDate = `${dayStr} de ${monthName} de ${finalYear}`;
+  const isoDate = `${finalYear}-${String(finalMonth).padStart(2, "0")}-${dayStr}`;
+
+  return {
+    day: dayStr,
+    monthName,
+    year: finalYear,
+    formattedDate,
+    isoDate,
+  };
 }
 
 /**
@@ -157,6 +260,7 @@ export async function registerCertificateRecord(params: {
 
   const rawHours = isOrganizer && event.organizationHours ? event.organizationHours : event.hours;
   const parsedHours = Number(String(rawHours || 0).replace(/[^0-9.]/g, "")) || 0;
+  const releaseInfo = resolveCertificateReleaseDate(event, null, member);
 
   const record: CertificateRecord = {
     code: code.trim().toUpperCase(),
@@ -168,7 +272,8 @@ export async function registerCertificateRecord(params: {
     eventTitle: event.title || "Evento Acadêmico",
     hours: parsedHours,
     isOrganizer: Boolean(isOrganizer),
-    issuedAt: new Date().toISOString(),
+    issuedAt: releaseInfo.isoDate,
+    releasedAt: releaseInfo.isoDate,
   };
 
   try {
@@ -243,6 +348,8 @@ export async function syncAllExistingCertificates(): Promise<number> {
       );
       const hasOrg = Boolean(att.isOrganizer);
 
+      const releaseInfo = resolveCertificateReleaseDate(event, null, student);
+
       // Register Participant Certificate
       if (hasPart) {
         const code = generateCertificateCode(event, student, false);
@@ -259,7 +366,8 @@ export async function syncAllExistingCertificates(): Promise<number> {
           eventTitle: event.title || "Evento Acadêmico",
           hours: parsedHours,
           isOrganizer: false,
-          issuedAt: att.timestamp || new Date().toISOString(),
+          issuedAt: releaseInfo.isoDate,
+          releasedAt: releaseInfo.isoDate,
         };
 
         if (batchOperations >= 450) {
@@ -298,7 +406,8 @@ export async function syncAllExistingCertificates(): Promise<number> {
           eventTitle: event.title || "Evento Acadêmico",
           hours: parsedHours,
           isOrganizer: true,
-          issuedAt: att.timestamp || new Date().toISOString(),
+          issuedAt: releaseInfo.isoDate,
+          releasedAt: releaseInfo.isoDate,
         };
 
         if (batchOperations >= 450) {

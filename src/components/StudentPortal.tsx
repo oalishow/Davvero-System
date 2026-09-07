@@ -32,8 +32,10 @@ import {
   RotateCw,
   Maximize2,
   MoveHorizontal,
+  Printer,
 } from "lucide-react";
-import { isEventCertificateReleased, getDefaultCertificateTemplate } from "../lib/certificateAuth";
+import { printCertificateNode } from "../lib/certificatePrint";
+import { isEventCertificateReleased, getDefaultCertificateTemplate, resolveCertificateReleaseDate } from "../lib/certificateAuth";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { motion, AnimatePresence } from "motion/react";
 import { jsPDF } from "jspdf";
@@ -488,6 +490,14 @@ function CertificatePreviewModal({
               className="py-2.5 px-5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
             >
               Fechar
+            </button>
+            <button
+              onClick={() => printCertificateNode(document.getElementById("preview-cert-modal-node"))}
+              className="py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+              title="Imprimir Certificado isolado"
+            >
+              <Printer className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+              Imprimir
             </button>
             <button
               onClick={onDownload}
@@ -2679,6 +2689,7 @@ export default function StudentPortal({
                             const isEligible = attendance?.status === "presente" || attendance?.status === "apto_para_certificado" || event.allowAllRegisteredCertificates;
                             const hasPartCert = isReleased && isEligible;
                             const hasOrgCert = isReleased && attendance?.isOrganizer === true;
+                            const releaseInfo = resolveCertificateReleaseDate(event, undefined, member);
 
                             return (
                               <div key={event.id} className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 text-left shadow-sm flex flex-col gap-3">
@@ -2688,6 +2699,7 @@ export default function StudentPortal({
                                     <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{formatText}</span>
                                     <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{periodText}</span>
                                     <span className="text-[10px] font-bold uppercase bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-lg">{event.hours || 0} horas</span>
+                                    <span className="text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg">Liberado em {releaseInfo.formattedDate}</span>
                                   </div>
                                 </div>
 

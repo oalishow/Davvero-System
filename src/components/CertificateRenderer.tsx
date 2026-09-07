@@ -3,7 +3,7 @@ import { QRCodeSVG } from 'qrcode.react';
 import type { Event, CertificateTemplate, Member } from '../types';
 import { useSettings } from '../context/SettingsContext';
 import { extractAssetString, DEFAULT_PUBLIC_URL } from '../lib/constants';
-import { generateCertificateCode, registerCertificateRecord } from '../lib/certificateAuth';
+import { generateCertificateCode, registerCertificateRecord, resolveCertificateReleaseDate } from '../lib/certificateAuth';
 
 interface CertificateRendererProps {
   event: Event;
@@ -130,16 +130,113 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
     const isSingleDay = !event.endDate || startStr === endStr;
     const datePhrase = isSingleDay ? `no dia ${startStr}` : `entre ${startStr} e ${endStr}`;
 
+    // Extração de Horário
+    const extractTime = (dateStr?: string) => {
+      if (!dateStr) return '';
+      if (dateStr.includes('T') || dateStr.includes(' ')) {
+        const timePart = dateStr.includes('T') ? dateStr.split('T')[1] : dateStr.split(' ')[1];
+        if (timePart) {
+          const parts = timePart.split(':');
+          if (parts.length >= 2) {
+            const h = parts[0].trim();
+            const m = parts[1].trim();
+            if (h && m && (h !== '00' || m !== '00')) {
+              return `${h.padStart(2, '0')}:${m.padStart(2, '0')}`;
+            }
+          }
+        }
+      } else if (dateStr.includes(':') && dateStr.length <= 8) {
+        const parts = dateStr.split(':');
+        if (parts.length >= 2) {
+          return `${parts[0].padStart(2, '0')}:${parts[1].padStart(2, '0')}`;
+        }
+      }
+      return '';
+    };
+
+    const startTime = extractTime(event.startDate);
+    const endTime = extractTime(event.endDate);
+    let timePhrase = '';
+    if (startTime && endTime && startTime !== endTime) {
+      timePhrase = `das ${startTime} às ${endTime}`;
+    } else if (startTime) {
+      timePhrase = `às ${startTime}`;
+    }
+
+    // Identificação de Evento Presencial e Local
+    const rawFormat = (event.format || '').toLowerCase();
+    const rawLocation = (event.location || event.locationOrLink || '').trim();
+    const isPresencial = rawFormat.includes('presencial') || rawFormat.includes('híbrido') || rawFormat.includes('hibrido') || Boolean(rawLocation);
+
+    let presencialInfo = '';
+    if (isPresencial) {
+      const parts: string[] = [];
+      if (timePhrase) {
+        parts.push(`no horário ${timePhrase}`);
+      }
+      if (rawLocation) {
+        parts.push(`no local: ${rawLocation}`);
+      }
+      if (parts.length > 0) {
+        presencialInfo = `, ${parts.join(', ')}`;
+      }
+    }
+
+    // Resolução da Cidade Oficial do Certificado
+    const getCityName = () => {
+      if ((template as any)?.city) return (template as any).city;
+      if (event.diocese) {
+        const cleanDiocese = event.diocese.replace(/Diocese\s+de\s+/i, '').trim();
+        if (cleanDiocese) return cleanDiocese;
+      }
+      if (isDioceseEvent && (dioceseConfig as any)?.city) {
+        return (dioceseConfig as any).city.split('-')[0].trim();
+      }
+      if (settings?.instCity) return settings.instCity;
+      if (settings?.instAddress && settings.instAddress.includes('Marília')) return 'Marília';
+      if (rawLocation && (rawLocation.includes('Marília') || rawLocation.includes('Marilia'))) return 'Marília';
+      return 'Marília';
+    };
+
+    const cityName = getCityName();
+    // Resolução da data oficial: dia em que o certificado/evento foi liberado
+    const releaseInfo = resolveCertificateReleaseDate(event, template, member);
+    const day = releaseInfo.day;
+    const monthName = releaseInfo.monthName;
+    const year = releaseInfo.year;
+    const dateLineText = `${cityName}, ${day} de ${monthName} de ${year}.`;
+
     const defaultBodyText = isOrganizer
-      ? `Certificamos que [NOME DO ALUNO], atuou com distinção como membro da Equipe de Organização do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado ${datePhrase}${hoursText}.`
-      : `Certificamos que [NOME DO ALUNO], participou com êxito e assiduidade do evento "${event.title}", em formato ${event.format || 'acadêmico'}, realizado ${datePhrase}${hoursText}.`;
+      ? `Certificamos que [NOME DO ALUNO], atuou com distinção como membro da Equipe de Organização do evento "${event.title}", em formato ${event.format || 'presencial'}, realizado ${datePhrase}${presencialInfo}${hoursText}.`
+      : `Certificamos que [NOME DO ALUNO], participou com êxito e assiduidade do evento "${event.title}", em formato ${event.format || 'presencial'}, realizado ${datePhrase}${presencialInfo}${hoursText}.`;
 
     // Clean body text (strip any literal "null horas" or "undefined horas" and fix duplicated single-day dates)
     let cleanedText = (template.bodyText || defaultBodyText)
       .replace(/\[NOME DO ALUNO\]/g, member.name || 'NOME DO PARTICIPANTE')
       .replace(/\[RA DO ALUNO\]/g, member.ra || 'RA DO ALUNO')
+      .replace(/\[HORARIO\]/g, timePhrase ? `no horário ${timePhrase}` : '')
+      .replace(/\[LOCAL\]/g, rawLocation ? `no local: ${rawLocation}` : '')
+      .replace(/\[CIDADE\]/g, cityName)
+      .replace(/\[DATA\]/g, `${day} de ${monthName} de ${year}`)
+      .replace(/\[DATA_OFICIAL\]/g, dateLineText)
       .replace(/null horas/gi, '')
       .replace(/undefined horas/gi, '');
+
+    // Se o evento for presencial e o texto customizado ainda não contemplar o horário ou local
+    if (isPresencial && template.bodyText && template.bodyText.trim()) {
+      if (rawLocation && !cleanedText.toLowerCase().includes(rawLocation.toLowerCase()) && !cleanedText.toLowerCase().includes('no local:')) {
+        if (cleanedText.includes('com carga horária')) {
+          cleanedText = cleanedText.replace('com carga horária', `no local: ${rawLocation}, com carga horária`);
+        } else if (cleanedText.includes('totalizando a carga')) {
+          cleanedText = cleanedText.replace('totalizando a carga', `no local: ${rawLocation}, totalizando a carga`);
+        }
+      }
+      if (timePhrase && !cleanedText.toLowerCase().includes(timePhrase.toLowerCase()) && !cleanedText.toLowerCase().includes('no horário')) {
+        if (cleanedText.includes('no local:')) {
+          cleanedText = cleanedText.replace('no local:', `no horário ${timePhrase}, no local:`);
+        }
+      }
+    }
 
     if (isSingleDay && startStr) {
       cleanedText = cleanedText
@@ -566,15 +663,29 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
         </div>
 
         {/* Central Body Content Section */}
-        <div className="relative z-10 flex flex-col items-center justify-center flex-1 my-4 px-8 overflow-hidden">
-          <div className={`${textBoxWidthClass} w-full flex items-center justify-center`}>
+        <div className="relative z-10 flex flex-col items-center justify-center flex-1 my-3 px-8 overflow-hidden">
+          <div className={`${textBoxWidthClass} w-full flex flex-col items-center justify-center`}>
             <p 
-              className={`${currentTheme.defaultTextStyle} ${customFontWeight} ${customTextAlign}`}
+              className={`${currentTheme.defaultTextStyle} ${customFontWeight} ${customTextAlign} w-full`}
               style={{
                 fontSize: customFontSize,
               }}
               dangerouslySetInnerHTML={{ __html: bodyText.replace(/\n/g, '<br />') }}
             ></p>
+
+            {/* Pula um espaço e exibe: Cidade, dia, mês por extenso e ano em que foi gerado */}
+            {!bodyText.includes(dateLineText) && !bodyText.includes(`${day} de ${monthName}`) && (
+              <div className="w-full flex justify-end mt-4 pt-1 pr-1">
+                <p 
+                  className={`text-right text-base sm:text-lg font-medium tracking-wide ${currentTheme.nameColor} opacity-90`}
+                  style={{
+                    fontFamily: template.fontFamily === 'serif' ? 'Georgia, serif' : undefined
+                  }}
+                >
+                  {dateLineText}
+                </p>
+              </div>
+            )}
           </div>
         </div>
 

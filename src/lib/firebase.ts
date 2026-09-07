@@ -275,9 +275,14 @@ export const closeEvent = async (eventId: string, options: CloseEventOptions = {
     const shouldReleaseToAll = options.releaseToAllRegistered ?? Boolean(eventData?.allowAllRegisteredCertificates || eventData?.certificateReleaseMode === "all_registered");
     const shouldNotify = options.sendNotifications ?? (eventData?.autoSendCertificatesOnClose !== false);
 
+    const nowIso = new Date().toISOString();
+    const releaseDate = eventData?.certificateReleasedAt || nowIso;
+
     await updateDoc(eventRef, {
       status: "encerrado",
       manuallyReopened: false,
+      certificateReleasedAt: releaseDate,
+      closedAt: nowIso,
       ...(options.releaseToAllRegistered !== undefined ? { allowAllRegisteredCertificates: options.releaseToAllRegistered } : {})
     });
 
@@ -309,7 +314,10 @@ export const closeEvent = async (eventId: string, options: CloseEventOptions = {
             currentBatch = writeBatch(db);
             batchOps = 0;
           }
-          currentBatch.update(d.ref, { status: "apto_para_certificado" });
+          currentBatch.update(d.ref, {
+            status: "apto_para_certificado",
+            certificateReleasedAt: releaseDate,
+          });
           batchOps++;
           if (a.studentId) {
             eligibleStudentIds.push(a.studentId);

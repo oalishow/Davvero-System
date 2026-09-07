@@ -30,10 +30,11 @@ import {
 import { motion, AnimatePresence } from "motion/react";
 import { QRCodeSVG } from "qrcode.react";
 import { CertificateRenderer } from "./CertificateRenderer";
-import { getDefaultCertificateTemplate } from "../lib/certificateAuth";
+import { getDefaultCertificateTemplate, resolveCertificateReleaseDate } from "../lib/certificateAuth";
 import { db, appId } from "../lib/firebase";
-import { doc, getDoc } from "firebase/firestore";
+import { doc, getDoc, onSnapshot } from "firebase/firestore";
 import { ASSETS_DOC_PATH } from "../lib/constants";
+import { printCertificateNode } from "../lib/certificatePrint";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import type { Event, Member, CertificateTemplate } from "../types";
@@ -134,40 +135,92 @@ export default function CertificateVerificationViewer({
     setHydratedTemplate(base);
 
     if (activeEvent?.id) {
+      // 1. Fetch fresh event document from Firestore to ensure base template parity
+      getDoc(doc(db, `artifacts/${appId}/public/data/events`, activeEvent.id))
+        .then((evSnap) => {
+          if (evSnap.exists() && isMounted) {
+            const evData = evSnap.data() as Event;
+            const freshTpl = activeIsOrg
+              ? evData.organizationCertificateTemplate
+              : evData.certificateTemplate;
+            if (freshTpl) {
+              setHydratedTemplate((prev) => ({ ...freshTpl, ...prev }));
+            }
+          }
+        })
+        .catch(() => null);
+
+      // 2. Fetch specific cert assets document
       const assetDocId = activeIsOrg
         ? `cert_assets_org_${activeEvent.id}`
         : `cert_assets_${activeEvent.id}`;
 
-      getDoc(doc(db, ASSETS_DOC_PATH(appId, assetDocId)))
+      const applyAssets = (assetsData: any) => {
+        if (!assetsData || !isMounted) return;
+        setHydratedTemplate((prev) => ({
+          ...prev,
+          ...(assetsData.backgroundImageUrl && {
+            backgroundImageUrl: assetsData.backgroundImageUrl,
+          }),
+          ...(assetsData.logoUrl && { logoUrl: assetsData.logoUrl }),
+          ...(assetsData.logo2Url && { logo2Url: assetsData.logo2Url }),
+          ...(assetsData.fajopaDirectorSignatureUrl && {
+            fajopaDirectorSignatureUrl: assetsData.fajopaDirectorSignatureUrl,
+          }),
+          ...(assetsData.seminarRectorSignatureUrl && {
+            seminarRectorSignatureUrl: assetsData.seminarRectorSignatureUrl,
+          }),
+          ...(assetsData.signature1Url && {
+            signature1Url: assetsData.signature1Url,
+          }),
+          ...(assetsData.signature2Url && {
+            signature2Url: assetsData.signature2Url,
+          }),
+          ...(assetsData.signature3Url && {
+            signature3Url: assetsData.signature3Url,
+          }),
+        }));
+      };
+
+      const docRef = doc(db, ASSETS_DOC_PATH(appId, assetDocId));
+      getDoc(docRef)
         .then((snap) => {
           if (snap.exists() && isMounted) {
-            const assets = snap.data();
-            setHydratedTemplate((prev) => ({
-              ...prev,
-              ...(assets.backgroundImageUrl && {
-                backgroundImageUrl: assets.backgroundImageUrl,
-              }),
-              ...(assets.logoUrl && { logoUrl: assets.logoUrl }),
-              ...(assets.logo2Url && { logo2Url: assets.logo2Url }),
-              ...(assets.fajopaDirectorSignatureUrl && {
-                fajopaDirectorSignatureUrl: assets.fajopaDirectorSignatureUrl,
-              }),
-              ...(assets.seminarRectorSignatureUrl && {
-                seminarRectorSignatureUrl: assets.seminarRectorSignatureUrl,
-              }),
-              ...(assets.signature1Url && {
-                signature1Url: assets.signature1Url,
-              }),
-              ...(assets.signature2Url && {
-                signature2Url: assets.signature2Url,
-              }),
-              ...(assets.signature3Url && {
-                signature3Url: assets.signature3Url,
-              }),
-            }));
+            const snapData = snap.data();
+            const assetsData = snapData?.data !== undefined ? snapData.data : snapData;
+            applyAssets(assetsData);
           }
         })
         .catch(() => null);
+
+      // Real-time listener for live sync
+      const unsub = onSnapshot(docRef, (snap) => {
+        if (snap.exists() && isMounted) {
+          const snapData = snap.data();
+          const assetsData = snapData?.data !== undefined ? snapData.data : snapData;
+          applyAssets(assetsData);
+        }
+      }, () => null);
+
+      // Old custom bg format fallback
+      if ((activeEvent.certificateTemplate as any)?.hasCustomBg) {
+        getDoc(doc(db, ASSETS_DOC_PATH(appId, `cert_bg_${activeEvent.id}`)))
+          .then((bgSnap) => {
+            if (bgSnap.exists() && isMounted) {
+              const bgData = bgSnap.data();
+              const bgUrl = bgData?.data !== undefined ? bgData.data : bgData;
+              if (bgUrl) {
+                setHydratedTemplate((prev) => ({ ...prev, backgroundImageUrl: bgUrl }));
+              }
+            }
+          })
+          .catch(() => null);
+      }
+
+      return () => {
+        isMounted = false;
+        unsub();
+      };
     }
 
     return () => {
@@ -450,9 +503,9 @@ export default function CertificateVerificationViewer({
     }
   }, [safeName, showAlert]);
 
-  // Print
+  // Print exclusively the certificate node in isolated A4 landscape
   const handlePrint = useCallback(() => {
-    window.print();
+    printCertificateNode(certNodeRef.current);
   }, []);
 
   return (
@@ -902,7 +955,7 @@ export default function CertificateVerificationViewer({
                 <p className="text-sm sm:text-base font-bold text-sky-600 dark:text-sky-400 leading-snug">
                   {activeEvent?.title || "Evento Acadêmico"}
                 </p>
-                <div className="flex items-center gap-3 text-xs text-slate-600 dark:text-slate-300 mt-1">
+                <div className="flex flex-wrap items-center gap-3 text-xs text-slate-600 dark:text-slate-300 mt-1">
                   <span className="flex items-center gap-1">
                     <Clock className="w-3.5 h-3.5 text-slate-400" />
                     <strong>{finalHours} Horas</strong> certificadas
@@ -912,6 +965,10 @@ export default function CertificateVerificationViewer({
                     {activeEvent?.startDate
                       ? new Date(activeEvent.startDate).toLocaleDateString("pt-BR")
                       : "Concluído"}
+                  </span>
+                  <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
+                    <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
+                    Liberado em: {resolveCertificateReleaseDate(activeEvent, activeTemplate, activeMember).formattedDate}
                   </span>
                 </div>
               </div>
