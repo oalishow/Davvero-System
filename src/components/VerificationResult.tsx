@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check } from "lucide-react";
-import type { Member } from "../types";
+import type { Member, CertificateTemplate } from "../types";
 import { QRCodeSVG } from "qrcode.react";
 import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL } from "../lib/constants";
 import FajopaIDCard from "./FajopaIDCard";
@@ -11,6 +11,7 @@ import { useSettings } from "../context/SettingsContext";
 import DavveroLogo from "./DavveroLogo";
 import { getCardDocumentTitle } from "../lib/cardRoles";
 import CardRequirementsAnimation from "./CardRequirementsAnimation";
+import CertificateVerificationViewer, { CertificateMatchItem } from "./CertificateVerificationViewer";
 
 interface VerificationResultProps {
   member: Member | null;
@@ -27,6 +28,8 @@ interface VerificationResultProps {
   event?: any;
   isOrganizer?: boolean;
   certCode?: string;
+  template?: CertificateTemplate;
+  allMatches?: CertificateMatchItem[];
   onReset: () => void;
   onScanNext?: () => void;
   isMyID?: boolean;
@@ -40,6 +43,8 @@ export default function VerificationResult({
   event,
   isOrganizer = false,
   certCode = "",
+  template,
+  allMatches,
   onReset,
   onScanNext,
   isMyID = false,
@@ -335,119 +340,18 @@ export default function VerificationResult({
       )}
 
       {status === "VALID_CERTIFICATE" ? (
-        <div
-          id="validation-card-capture"
-          className="w-full max-w-md bg-white dark:bg-slate-900 rounded-3xl p-6 sm:p-8 border-2 border-emerald-500/40 shadow-2xl shadow-emerald-500/10 flex flex-col items-center animate-success-pop text-center space-y-5 relative overflow-hidden"
-        >
-          {/* Ambient Glows */}
-          <div className="absolute -top-12 -right-12 w-32 h-32 bg-emerald-400/20 rounded-full blur-2xl pointer-events-none" />
-          <div className="absolute -bottom-12 -left-12 w-32 h-32 bg-amber-400/15 rounded-full blur-2xl pointer-events-none" />
-
-          {/* Golden Seal Award Icon */}
-          <motion.div
-            initial={{ scale: 0, rotate: -180 }}
-            animate={{ scale: 1, rotate: 0 }}
-            transition={{ type: "spring", stiffness: 200, damping: 14 }}
-            className="w-20 h-20 bg-gradient-to-br from-emerald-500 to-teal-700 rounded-2xl flex items-center justify-center shadow-lg shadow-emerald-600/30 border-4 border-emerald-100 dark:border-emerald-800 relative z-10"
-          >
-            <Award className="w-10 h-10 text-white" />
-          </motion.div>
-
-          <div className="relative z-10">
-            <div className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 text-[10px] font-black uppercase tracking-widest border border-emerald-300 dark:border-emerald-700 mb-2">
-              <ShieldCheck className="w-3.5 h-3.5" /> Autenticidade Comprovada
-            </div>
-            <h2 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white leading-tight">
-              Certificado Oficial Registrado
-            </h2>
-            <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 font-medium">
-              Faculdade João Paulo II • DAVVERO System
-            </p>
-          </div>
-
-          {/* Certificate Data Card */}
-          <div className="w-full bg-slate-50 dark:bg-slate-800/70 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/60 text-left space-y-3 relative z-10">
-            <div>
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Participante Certificado</p>
-              <p className="text-base sm:text-lg font-black text-slate-800 dark:text-white leading-snug">{safeName}</p>
-              {member?.ra && <p className="text-xs text-slate-500 font-mono mt-0.5 font-semibold">RA: {member.ra}</p>}
-              {member?.course && (
-                <p className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-0.5">
-                  <span className="font-bold text-slate-500 dark:text-slate-400">Curso de Graduação:</span> {member.course}
-                </p>
-              )}
-              {member?.cpf && (isMyID || isAdminLogged) && <p className="text-xs text-slate-500 font-mono font-semibold">CPF: {member.cpf}</p>}
-            </div>
-
-            <div className="border-t border-slate-200/80 dark:border-slate-700/60 pt-3">
-              <p className="text-[10px] text-slate-400 uppercase tracking-widest font-bold">Evento / Atividade Acadêmica Certificada</p>
-              <p className="text-sm sm:text-base font-bold text-sky-600 dark:text-sky-400 leading-snug">
-                {event?.title || "Evento Acadêmico"}
-              </p>
-            </div>
-
-            <div className="grid grid-cols-2 gap-2 border-t border-slate-200/80 dark:border-slate-700/60 pt-3 text-xs">
-              <div>
-                <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Tipo de Emissão</p>
-                <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">
-                  {isOrganizer ? "Comissão Organizadora" : "Participação"}
-                </p>
-              </div>
-              <div>
-                <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Carga Horária Certificada</p>
-                <p className="font-bold text-slate-700 dark:text-slate-200 mt-0.5">
-                  {(() => {
-                    const parsed = Number(String(isOrganizer && event?.organizationHours ? event.organizationHours : (event?.hours || (event as any)?.workloadHours || 0)).replace(/[^0-9.]/g, "")) || 0;
-                    return parsed > 0 ? `${parsed} Horas` : "Conforme Programação";
-                  })()}
-                </p>
-              </div>
-              {event?.startDate && (
-                <div className="col-span-2">
-                  <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Período de Realização</p>
-                  <p className="font-medium text-slate-600 dark:text-slate-300 mt-0.5">
-                    {new Date(event.startDate).toLocaleDateString("pt-BR")}
-                    {event.endDate && event.endDate !== event.startDate ? ` a ${new Date(event.endDate).toLocaleDateString("pt-BR")}` : ""}
-                    {event.format ? ` (${event.format.toUpperCase()})` : ""}
-                  </p>
-                </div>
-              )}
-            </div>
-
-            {certCode && (
-              <div className="border-t border-slate-200/80 dark:border-slate-700/60 pt-3 flex items-center justify-between gap-2">
-                <div>
-                  <p className="text-[9px] text-slate-400 uppercase tracking-widest font-bold">Cód. Autenticação</p>
-                  <p className="text-xs font-mono font-bold text-slate-700 dark:text-slate-300">{certCode}</p>
-                </div>
-                <button
-                  onClick={() => {
-                    const url = `${cleanBaseUrl}?cert=${certCode}`;
-                    navigator.clipboard.writeText(url);
-                    setCopiedLink(true);
-                    showAlert("Link de autenticidade copiado com sucesso!", { type: "success" });
-                    setTimeout(() => setCopiedLink(false), 3000);
-                  }}
-                  className="px-2.5 py-1.5 rounded-xl bg-white dark:bg-slate-700 border border-slate-200 dark:border-slate-600 text-slate-600 dark:text-slate-300 hover:text-sky-500 text-xs font-bold flex items-center gap-1.5 shadow-sm active:scale-95 transition-all"
-                  title="Copiar Link de Autenticidade"
-                >
-                  {copiedLink ? <Check className="w-3.5 h-3.5 text-emerald-500" /> : <Copy className="w-3.5 h-3.5" />}
-                  {copiedLink ? "Copiado!" : "Copiar Link"}
-                </button>
-              </div>
-            )}
-          </div>
-
-          {/* Validation Guarantee Seal */}
-          <div className="w-full bg-emerald-50 dark:bg-emerald-950/30 p-3 rounded-xl border border-emerald-200/60 dark:border-emerald-800/40 text-left">
-            <p className="text-[9px] font-bold text-emerald-800 dark:text-emerald-300 uppercase tracking-wider mb-0.5 flex items-center gap-1">
-              <CheckCircle className="w-3 h-3 text-emerald-600" /> Assinaturas Digitais Válidas
-            </p>
-            <p className="text-[10px] text-emerald-700 dark:text-emerald-400 leading-tight">
-              Emitido sob os termos institucionais da Faculdade João Paulo II e Seminário Provincial.
-            </p>
-          </div>
-        </div>
+        <CertificateVerificationViewer
+          event={event}
+          member={member || ({} as Member)}
+          isOrganizer={isOrganizer}
+          certCode={certCode}
+          template={template}
+          allMatches={allMatches}
+          isAdminLogged={isAdminLogged}
+          isMyID={isMyID}
+          cleanBaseUrl={cleanBaseUrl}
+          onReset={onReset}
+        />
       ) : status === "VALID" && member?.roles?.includes("VISITANTE") && !member?.roles?.some(r => r !== "VISITANTE") && !isAdminLogged && !isMyID ? (
         <div id="validation-card-capture" className="w-full max-w-sm bg-white dark:bg-slate-900 rounded-[2rem] p-8 border-2 border-slate-200 dark:border-slate-800 shadow-xl flex flex-col items-center animate-success-pop text-center space-y-6">
           <div>
@@ -766,72 +670,72 @@ export default function VerificationResult({
           </Modal>
         )}
       </div>
-      <div className="flex flex-col w-full max-w-sm mt-2 no-print print:hidden space-y-2">
-        {isMyID && member?.alphaCode && (
-           <div className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-900 rounded-3xl shadow-lg border-2 border-slate-200 dark:border-slate-800 mb-2 mt-2">
-              <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest mb-4">
-                Escaneie-me
-              </h3>
-              <div className="bg-white p-2 rounded-xl border-2 border-slate-200">
-                  <QRCodeSVG
-                    value={`${cleanBaseUrl}?verify=${member.alphaCode}`}
-                    size={220}
-                    level="H"
-                    includeMargin={true}
-                  />
-              </div>
-              <span className="mt-3 text-xs font-black text-slate-400 uppercase tracking-widest break-all text-center">
-                {member.alphaCode}
-              </span>
-           </div>
-        )}
-        {status === "NOT_ENROLLED" && onEnrollAndCheckIn && (
-          <button
-            onClick={onEnrollAndCheckIn}
-            className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-600/20"
-          >
-            Inscrever e Fazer Check-in
-          </button>
-        )}
-        <div className="flex flex-col sm:flex-row gap-2 w-full">
-          <button
-            onClick={() => setModalResetOpen(true)}
-            className="flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-slate-700 bg-slate-200 hover:bg-slate-300 transition-colors"
-          >
-            Nova Consulta
-          </button>
-          <div className="flex gap-2 flex-1">
-            {!isMyID && (
-              <button
-                onClick={handlePrint}
-                className="p-2.5 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors"
-                title="Imprimir"
-              >
-                <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
-              </button>
-            )}
+      {status !== "VALID_CERTIFICATE" && (
+        <div className="flex flex-col w-full max-w-sm mt-2 no-print print:hidden space-y-2">
+          {isMyID && member?.alphaCode && (
+             <div className="flex flex-col items-center justify-center p-6 bg-white dark:bg-slate-900 rounded-3xl shadow-lg border-2 border-slate-200 dark:border-slate-800 mb-2 mt-2">
+                <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest mb-4">
+                  Escaneie-me
+                </h3>
+                <div className="bg-white p-2 rounded-xl border-2 border-slate-200">
+                    <QRCodeSVG
+                      value={`${cleanBaseUrl}?verify=${member.alphaCode}`}
+                      size={220}
+                      level="H"
+                      includeMargin={true}
+                    />
+                </div>
+                <span className="mt-3 text-xs font-black text-slate-400 uppercase tracking-widest break-all text-center">
+                  {member.alphaCode}
+                </span>
+             </div>
+          )}
+          {status === "NOT_ENROLLED" && onEnrollAndCheckIn && (
             <button
-              onClick={handleExport}
-              disabled={exporting}
-              className={`flex-1 flex justify-center items-center py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-white transition-colors ${
-                status === "VALID" || status === "JUST_CHECKED_IN" || status === "VALID_CERTIFICATE"
-                  ? "bg-emerald-600 hover:bg-emerald-500"
-                  : status === "INACTIVE" || status === "ALREADY_PRESENT"
-                    ? "bg-amber-600 hover:bg-amber-500"
-                    : "bg-rose-600 hover:bg-rose-500"
-              }`}
+              onClick={onEnrollAndCheckIn}
+              className="w-full py-3 px-4 rounded-xl text-sm font-bold text-white bg-indigo-600 hover:bg-indigo-500 transition-colors shadow-lg shadow-indigo-600/20"
             >
-              {exporting
-                ? "..."
-                : status === "VALID_CERTIFICATE"
-                  ? "Baixar Comprovante"
+              Inscrever e Fazer Check-in
+            </button>
+          )}
+          <div className="flex flex-col sm:flex-row gap-2 w-full">
+            <button
+              onClick={() => setModalResetOpen(true)}
+              className="flex-1 py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-slate-700 bg-slate-200 hover:bg-slate-300 transition-colors"
+            >
+              Nova Consulta
+            </button>
+            <div className="flex gap-2 flex-1">
+              {!isMyID && (
+                <button
+                  onClick={handlePrint}
+                  className="p-2.5 rounded-xl bg-slate-800 text-white hover:bg-slate-700 transition-colors"
+                  title="Imprimir"
+                >
+                  <Printer className="w-4 h-4 sm:w-5 sm:h-5" />
+                </button>
+              )}
+              <button
+                onClick={handleExport}
+                disabled={exporting}
+                className={`flex-1 flex justify-center items-center py-2.5 px-4 rounded-xl text-xs sm:text-sm font-bold text-white transition-colors ${
+                  status === "VALID" || status === "JUST_CHECKED_IN"
+                    ? "bg-emerald-600 hover:bg-emerald-500"
+                    : status === "INACTIVE" || status === "ALREADY_PRESENT"
+                      ? "bg-amber-600 hover:bg-amber-500"
+                      : "bg-rose-600 hover:bg-rose-500"
+                }`}
+              >
+                {exporting
+                  ? "..."
                   : isMyID && status === "VALID"
                     ? "Baixar PDF"
                     : "Baixar Imagem"}
-            </button>
+              </button>
+            </div>
           </div>
         </div>
-      </div>
+      )}
 
       {/* Print Footer - Hidden on screen, visible on print only */}
       {!isMyID && (

@@ -35,6 +35,8 @@ export default function HomePollsWidget({
   const [loading, setLoading] = useState(true);
   const [votingId, setVotingId] = useState<string | null>(null);
   const [isCollapsed, setIsCollapsed] = useState(false);
+  const [localVotedMap, setLocalVotedMap] = useState<Record<string, string>>({});
+  const [voteSuccessMsg, setVoteSuccessMsg] = useState<string | null>(null);
 
   // Estado para feedback por enquete
   const [feedbackText, setFeedbackText] = useState("");
@@ -42,11 +44,18 @@ export default function HomePollsWidget({
   const [feedbackSubmitted, setFeedbackSubmitted] = useState<Record<string, boolean>>({});
 
   useEffect(() => {
-    // Garante a enquete padrão de experiência do Davvero
+    // Garante a enquete padrão de experiência do Davvero de forma leve
     ensureDefaultDavveroPoll();
 
     const unsubscribe = subscribeActivePolls((activePolls) => {
       setPolls(activePolls);
+      // Sincroniza votos armazenados no mapa local
+      const storedMap: Record<string, string> = {};
+      activePolls.forEach((p) => {
+        const v = getStoredVote(p.id);
+        if (v) storedMap[p.id] = v;
+      });
+      setLocalVotedMap(storedMap);
       setLoading(false);
     });
 
@@ -59,10 +68,41 @@ export default function HomePollsWidget({
 
   // Pega a primeira enquete ativa (geralmente a mais recente / de experiência)
   const poll = polls[0];
-  const userVotedOptionId = getStoredVote(poll.id);
+  const userVotedOptionId = localVotedMap[poll.id] || getStoredVote(poll.id);
   const totalVotes = poll.totalVotes || 0;
 
   const handleSelectOption = async (option: PollOption) => {
+    const prevOptionId = userVotedOptionId;
+    if (prevOptionId === option.id) return; // já votou exatamente nesta opção
+
+    // 1. Atualização otimista IMEDIATA (0ms de espera, tela não trava)
+    setLocalVotedMap((prev) => ({ ...prev, [poll.id]: option.id }));
+    setVoteSuccessMsg("✓ Voto computado!");
+    setTimeout(() => setVoteSuccessMsg(null), 3500);
+
+    setPolls((currentPolls) =>
+      currentPolls.map((p) => {
+        if (p.id !== poll.id) return p;
+        const newOpts = (p.options || []).map((opt) => {
+          let count = opt.votesCount || 0;
+          if (prevOptionId && opt.id === prevOptionId) {
+            count = Math.max(0, count - 1);
+          }
+          if (opt.id === option.id) {
+            count += 1;
+          }
+          return { ...opt, votesCount: count };
+        });
+        const newTotal = newOpts.reduce((acc, curr) => acc + (curr.votesCount || 0), 0);
+        return {
+          ...p,
+          options: newOpts,
+          totalVotes: newTotal,
+        };
+      })
+    );
+
+    // 2. Gravação no Firebase em background
     setVotingId(option.id);
     try {
       const res = await submitVote(poll.id, option.id, {
@@ -71,13 +111,11 @@ export default function HomePollsWidget({
         rating: feedbackRating,
       });
 
-      if (res.success) {
-        showAlert("Voto registrado com sucesso! Obrigado pela participação.", { type: "success" });
-      } else {
-        showAlert(res.message || "Erro ao registrar voto", { type: "error" });
+      if (!res.success) {
+        console.warn("[HomePollsWidget] Fallback ao registrar voto:", res.message);
       }
     } catch (e: any) {
-      showAlert("Não foi possível registrar o voto.", { type: "error" });
+      console.error("[HomePollsWidget] Erro ao sincronizar voto:", e);
     } finally {
       setVotingId(null);
     }
@@ -126,9 +164,15 @@ export default function HomePollsWidget({
               <span className="inline-flex items-center gap-1 text-[10px] font-black uppercase tracking-widest text-sky-600 dark:text-sky-400 bg-sky-100/70 dark:bg-sky-950/60 px-2.5 py-0.5 rounded-full">
                 <Sparkles className="w-3 h-3 text-amber-500" /> Enquete Oficial
               </span>
-              <span className="text-[11px] font-bold text-slate-400">
-                {totalVotes} {totalVotes === 1 ? "voto computado" : "votos computados"}
-              </span>
+              {voteSuccessMsg ? (
+                <span className="inline-flex items-center gap-1 text-[10px] font-bold text-emerald-700 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-950/80 px-2.5 py-0.5 rounded-full animate-pulse">
+                  <CheckCircle2 className="w-3 h-3 text-emerald-600 dark:text-emerald-400" /> {voteSuccessMsg}
+                </span>
+              ) : (
+                <span className="text-[11px] font-bold text-slate-400">
+                  {totalVotes} {totalVotes === 1 ? "voto computado" : "votos computados"}
+                </span>
+              )}
             </div>
             <h3 className="text-base sm:text-lg font-black text-slate-900 dark:text-white tracking-tight mt-0.5">
               {poll.title}

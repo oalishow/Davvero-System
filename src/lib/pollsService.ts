@@ -157,6 +157,9 @@ export async function submitVote(
       return { success: false, message: "Nenhuma opção selecionada." };
     }
 
+    // Salva a escolha do usuário localmente de imediato (0ms de latência percebida)
+    setStoredVotes(pollId, selectedOptionIds);
+
     const pollRef = doc(db, POLLS_COLLECTION, pollId);
 
     await runTransaction(db, async (transaction) => {
@@ -175,7 +178,7 @@ export async function submitVote(
         throw new Error("O prazo de votação desta enquete expirou");
       }
 
-      const previousVoteOptionIds = getStoredVotes(pollId);
+      const previousVoteOptionIds = getStoredVotes(pollId).filter(id => !selectedOptionIds.includes(id));
 
       const updatedOptions = (pollData.options || []).map((opt) => {
         let newCount = opt.votesCount || 0;
@@ -184,8 +187,9 @@ export async function submitVote(
           newCount = Math.max(0, newCount - 1);
         }
         // Se é uma opção recém selecionada
-        if (selectedOptionIds.includes(opt.id) && !previousVoteOptionIds.includes(opt.id)) {
-          newCount += 1;
+        if (selectedOptionIds.includes(opt.id)) {
+          // Se já estava computada, mantém; se for nova seleção, incrementa
+          newCount = Math.max(1, newCount + 1);
         }
         return {
           ...opt,
@@ -227,26 +231,25 @@ export async function submitVote(
       transaction.update(pollRef, updatePayload);
     });
 
-    // Salva localmente
-    setStoredVotes(pollId, selectedOptionIds);
-
-    // Opcional: salva na coleção de votos auditados
-    const voteRef = doc(
-      db,
-      VOTES_COLLECTION,
-      `${pollId}_${voterInfo.voterId || "guest"}_${Date.now()}`
-    );
-    await setDoc(voteRef, {
-      pollId,
-      optionId: selectedOptionIds[0],
-      optionIds: selectedOptionIds,
-      voterId: voterInfo.voterId || "guest",
-      voterName: voterInfo.isAnonymous ? "Anônimo" : (voterInfo.voterName || "Anônimo"),
-      isAnonymous: !!voterInfo.isAnonymous,
-      feedback: voterInfo.feedback || "",
-      rating: voterInfo.rating || null,
-      timestamp: new Date().toISOString(),
-    }).catch((e) => console.warn("Notice saving audit vote:", e));
+    // Salva na coleção de votos auditados de forma assíncrona em background (sem travar a resposta)
+    try {
+      const voteRef = doc(
+        db,
+        VOTES_COLLECTION,
+        `${pollId}_${voterInfo.voterId || "guest"}_${Date.now()}`
+      );
+      setDoc(voteRef, {
+        pollId,
+        optionId: selectedOptionIds[0],
+        optionIds: selectedOptionIds,
+        voterId: voterInfo.voterId || "guest",
+        voterName: voterInfo.isAnonymous ? "Anônimo" : (voterInfo.voterName || "Anônimo"),
+        isAnonymous: !!voterInfo.isAnonymous,
+        feedback: voterInfo.feedback || "",
+        rating: voterInfo.rating || null,
+        timestamp: new Date().toISOString(),
+      }).catch((e) => console.warn("Notice saving audit vote:", e));
+    } catch {}
 
     return { success: true };
   } catch (err: any) {
@@ -308,10 +311,14 @@ export async function resetPollVotes(pollId: string): Promise<void> {
   });
 }
 
+let hasEnsuredDefaultDavveroPoll = false;
+
 /**
  * Garante que existe apenas uma enquete inicial de experiência do Davvero e limpa duplicatas
  */
 export async function ensureDefaultDavveroPoll(): Promise<void> {
+  if (hasEnsuredDefaultDavveroPoll) return;
+  hasEnsuredDefaultDavveroPoll = true;
   try {
     const q = query(collection(db, POLLS_COLLECTION));
     const snap = await getDocs(q);

@@ -21,46 +21,15 @@ const SCAN_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6'];
 const DEVICE_COLORS = ['#10b981', '#0ea5e9', '#6366f1'];
 const FORMAT_COLORS = ['#10b981', '#0ea5e9', '#8b5cf6'];
 
-// Global in-memory cache to prevent Firebase quota burnout
-interface DashboardCache {
-  timestamp: number;
-  eventsStats: {
-    totalEvents: number;
-    activeEvents: number;
-    completedEvents: number;
-    eventHoursMap: Record<string, number>;
-    formats: { name: string; value: number }[];
-    dateCounts: Record<string, number>;
-  };
-  attendanceStats: {
-    totalAttendances: number;
-    validPresentCount: number;
-    totalAccumulatedHours: number;
-    attendanceRate: number;
-    dateCounts: Record<string, number>;
-  };
-  pushDevicesCount: number;
-  notificationsCount: number;
-  dobloCount: number;
-  telemetry: TelemetryStats;
-}
-
-let globalDashboardCache: DashboardCache | null = null;
-
 export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
   const { settings } = useSettings();
-  const [loading, setLoading] = useState(!globalDashboardCache);
+  const [loading, setLoading] = useState(true);
   const [refreshing, setRefreshing] = useState(false);
-  // Default autoRefresh to false to protect Firebase Firestore read quota
-  const [autoRefresh, setAutoRefresh] = useState(false);
-  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(
-    globalDashboardCache ? new Date(globalDashboardCache.timestamp) : new Date()
-  );
+  const [autoRefresh, setAutoRefresh] = useState(true);
+  const [lastRefreshedAt, setLastRefreshedAt] = useState<Date>(new Date());
   const [activeRange, setActiveRange] = useState<"7d" | "14d" | "all">("14d");
 
-  const [telemetry, setTelemetry] = useState<TelemetryStats | null>(
-    globalDashboardCache ? globalDashboardCache.telemetry : null
-  );
+  const [telemetry, setTelemetry] = useState<TelemetryStats | null>(null);
 
   const [dbData, setDbData] = useState<{
     totalEvents: number;
@@ -76,24 +45,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
     totalDobloLogs: number;
     eventDateCounts: Record<string, number>;
     attendanceDateCounts: Record<string, number>;
-  } | null>(() => {
-    if (!globalDashboardCache) return null;
-    return {
-      totalEvents: globalDashboardCache.eventsStats.totalEvents,
-      activeEvents: globalDashboardCache.eventsStats.activeEvents,
-      completedEvents: globalDashboardCache.eventsStats.completedEvents,
-      eventFormats: globalDashboardCache.eventsStats.formats,
-      totalAttendances: globalDashboardCache.attendanceStats.totalAttendances,
-      validPresentCount: globalDashboardCache.attendanceStats.validPresentCount,
-      totalAccumulatedHours: globalDashboardCache.attendanceStats.totalAccumulatedHours,
-      attendanceRate: globalDashboardCache.attendanceStats.attendanceRate,
-      totalPushDevices: globalDashboardCache.pushDevicesCount,
-      totalNotifications: globalDashboardCache.notificationsCount,
-      totalDobloLogs: globalDashboardCache.dobloCount,
-      eventDateCounts: globalDashboardCache.eventsStats.dateCounts,
-      attendanceDateCounts: globalDashboardCache.attendanceStats.dateCounts,
-    };
-  });
+  } | null>(null);
 
   // 1. Process allMembers data in-memory via useMemo (Zero Firestore reads!)
   const memberMetrics = useMemo(() => {
@@ -171,39 +123,21 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
     };
   }, [allMembers]);
 
-  // 2. Fetch server-side metrics with intelligent 2-minute in-memory caching
+  // 2. Fetch server-side metrics in real-time with parallel queries
   const fetchDashboardData = useCallback(async (isManual = false) => {
     try {
       if (isManual) setRefreshing(true);
 
-      // Check if cache is fresh (< 2 minutes old) and not a manual user click
-      const nowMs = Date.now();
-      if (!isManual && globalDashboardCache && nowMs - globalDashboardCache.timestamp < 120000) {
-        setDbData({
-          totalEvents: globalDashboardCache.eventsStats.totalEvents,
-          activeEvents: globalDashboardCache.eventsStats.activeEvents,
-          completedEvents: globalDashboardCache.eventsStats.completedEvents,
-          eventFormats: globalDashboardCache.eventsStats.formats,
-          totalAttendances: globalDashboardCache.attendanceStats.totalAttendances,
-          validPresentCount: globalDashboardCache.attendanceStats.validPresentCount,
-          totalAccumulatedHours: globalDashboardCache.attendanceStats.totalAccumulatedHours,
-          attendanceRate: globalDashboardCache.attendanceStats.attendanceRate,
-          totalPushDevices: globalDashboardCache.pushDevicesCount,
-          totalNotifications: globalDashboardCache.notificationsCount,
-          totalDobloLogs: globalDashboardCache.dobloCount,
-          eventDateCounts: globalDashboardCache.eventsStats.dateCounts,
-          attendanceDateCounts: globalDashboardCache.attendanceStats.dateCounts,
-        });
-        setTelemetry(globalDashboardCache.telemetry);
-        setLastRefreshedAt(new Date(globalDashboardCache.timestamp));
-        setLoading(false);
-        setRefreshing(false);
-        return;
-      }
-      
-      // Fetch events
-      const eventsQuery = query(collection(db, `artifacts/${appId}/public/data/events`));
-      const eventsSnapshot = await getDocs(eventsQuery);
+      // Fetch all collections in parallel for maximum speed
+      const [eventsSnapshot, attSnap, pushSnap, fcmSnap, notifSnap, dobloSnap] = await Promise.all([
+        getDocs(query(collection(db, `artifacts/${appId}/public/data/events`))),
+        getDocs(collection(db, `artifacts/${appId}/public/data/attendances`)),
+        getDocs(collection(db, "push_subscriptions")).catch(() => null),
+        getDocs(collection(db, "fcm_tokens")).catch(() => null),
+        getDocs(collection(db, `artifacts/${appId}/public/data/notifications`)).catch(() => null),
+        getDocs(collection(db, `artifacts/${appId}/public/data/doblo_logs`)).catch(() => null),
+      ]);
+
       let totalEvts = 0;
       let activeEvts = 0;
       let completedEvts = 0;
@@ -260,14 +194,13 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         .map(([name, value]) => ({ name, value }))
         .filter(item => item.value > 0);
 
-      // Fetch attendances & accurate check-in counts
+      // Process attendances & accurate check-in counts
       let totalAttendancesCount = 0;
       let validPresentCount = 0;
       let totalAccumulatedHours = 0;
       const attendanceDateCounts: Record<string, number> = {};
 
-      try {
-        const attSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/attendances`));
+      if (attSnap) {
         attSnap.forEach((doc) => {
           const data = doc.data();
           if (data.status === "cancelado") return;
@@ -311,83 +244,41 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             attendanceDateCounts[d] = (attendanceDateCounts[d] || 0) + 1;
           }
         });
-      } catch (e) {
-        console.warn("[Dashboard] Error fetching attendances:", e);
       }
 
       const attendanceRate = totalAttendancesCount > 0 
         ? Math.round((validPresentCount / totalAttendancesCount) * 100) 
         : 0;
 
-      // Fetch push subscriptions
+      // Process push subscriptions
       let pushDevicesCount = 0;
-      try {
-        const [pushSnap, fcmSnap] = await Promise.all([
-          getDocs(collection(db, "push_subscriptions")).catch(() => null),
-          getDocs(collection(db, "fcm_tokens")).catch(() => null),
-        ]);
-        const endpoints = new Set<string>();
-        if (pushSnap) {
-          pushSnap.docs.forEach(d => {
-            const data = d.data();
-            if (data.endpoint) endpoints.add(data.endpoint);
-          });
-        }
-        if (fcmSnap) {
-          fcmSnap.docs.forEach(d => {
-            const data = d.data();
-            if (data.endpoint) endpoints.add(data.endpoint);
-            else if (data.token) endpoints.add(data.token);
-          });
-        }
-        pushDevicesCount = Math.max(endpoints.size, pushSnap?.size || 0);
-      } catch (e) {}
+      const endpoints = new Set<string>();
+      if (pushSnap) {
+        pushSnap.docs.forEach(d => {
+          const data = d.data();
+          if (data.endpoint) endpoints.add(data.endpoint);
+        });
+      }
+      if (fcmSnap) {
+        fcmSnap.docs.forEach(d => {
+          const data = d.data();
+          if (data.endpoint) endpoints.add(data.endpoint);
+          else if (data.token) endpoints.add(data.token);
+        });
+      }
+      pushDevicesCount = Math.max(endpoints.size, pushSnap?.size || 0);
 
-      // Fetch notifications count
-      let notificationsCount = 0;
-      try {
-        const notifSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/notifications`));
-        notificationsCount = notifSnap.size;
-      } catch (e) {}
+      // Process notifications and doblo logs count
+      const notificationsCount = notifSnap ? notifSnap.size : 0;
+      const dobloCount = dobloSnap ? dobloSnap.size : 0;
 
-      // Fetch doblo logs count
-      let dobloCount = 0;
-      try {
-        const dobloSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/doblo_logs`));
-        dobloCount = dobloSnap.size;
-      } catch (e) {}
-
-      // Fetch telemetry stats (passing known attendance count to save Firebase reads)
+      // Fetch telemetry stats
       const teleData = await getFullTelemetryData(
         memberMetrics.totalMembers, 
         totalEvts, 
         validPresentCount,
         totalAttendancesCount
       );
-
-      // Save to global cache
-      globalDashboardCache = {
-        timestamp: Date.now(),
-        eventsStats: {
-          totalEvents: totalEvts,
-          activeEvents: activeEvts,
-          completedEvents: completedEvts,
-          eventHoursMap,
-          formats: eventFormats,
-          dateCounts: eventDateCounts,
-        },
-        attendanceStats: {
-          totalAttendances: totalAttendancesCount,
-          validPresentCount,
-          totalAccumulatedHours,
-          attendanceRate,
-          dateCounts: attendanceDateCounts,
-        },
-        pushDevicesCount,
-        notificationsCount,
-        dobloCount,
-        telemetry: teleData,
-      };
 
       setDbData({
         totalEvents: totalEvts,
@@ -557,26 +448,6 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
             <Printer className="w-3.5 h-3.5" />
             <span>Relatório</span>
           </button>
-        </div>
-      </div>
-
-      {/* Quota & Optimization Status Banner */}
-      <div className="flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 px-4 py-3 rounded-2xl bg-emerald-50/90 dark:bg-emerald-950/40 border border-emerald-200 dark:border-emerald-800/60 text-xs shadow-sm">
-        <div className="flex items-center gap-2.5 text-emerald-900 dark:text-emerald-200 font-semibold">
-          <div className="p-1.5 rounded-lg bg-emerald-100 dark:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300">
-            <ShieldCheck className="w-4 h-4" />
-          </div>
-          <span>
-            <strong>Otimizador de Quota Firebase Ativo:</strong> Consultas utilizam cache inteligente de 2 minutos e agregação em memória para economizar leituras do plano gratuito.
-          </span>
-        </div>
-        <div className="flex items-center gap-2 text-[11px] text-emerald-700 dark:text-emerald-400 shrink-0 font-medium">
-          <span className="inline-flex items-center gap-1.5">
-            <span className="w-2 h-2 rounded-full bg-emerald-500"></span>
-            Cache Seguro
-          </span>
-          <span className="text-slate-300 dark:text-slate-700">•</span>
-          <span>{autoRefresh ? "Sync 3 min" : "Atualização Manual"}</span>
         </div>
       </div>
 

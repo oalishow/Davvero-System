@@ -75,8 +75,20 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
 
     // Calculation of hours (Safe: never outputs "null", "undefined", or 0)
     const rawHours = isOrganizer && event.organizationHours ? event.organizationHours : event.hours;
-    const hasValidHours = rawHours && String(rawHours).trim() !== "" && String(rawHours).toLowerCase() !== "null" && String(rawHours).toLowerCase() !== "undefined" && Number(rawHours) !== 0;
-    const hoursText = hasValidHours ? `, com carga horária total de ${rawHours} horas` : "";
+    const parsedRaw = Number(String(rawHours || "").replace(/[^0-9.]/g, "")) || 0;
+    let safeCalculatedHours = parsedRaw;
+    if (safeCalculatedHours <= 0 && event.startDate && event.endDate) {
+      const d1 = new Date(event.startDate).getTime();
+      const d2 = new Date(event.endDate).getTime();
+      if (!isNaN(d1) && !isNaN(d2) && d2 > d1) {
+        safeCalculatedHours = Math.round((d2 - d1) / (1000 * 60 * 60));
+      }
+    }
+    if (safeCalculatedHours <= 0) {
+      safeCalculatedHours = 4;
+    }
+    const hasValidHours = safeCalculatedHours > 0;
+    const hoursText = hasValidHours ? `, com carga horária total de ${safeCalculatedHours} horas` : "";
 
     const certCode = generateCertificateCode(event, member, isOrganizer);
     const isBrowser = typeof window !== 'undefined' && window.location.origin && !window.location.origin.includes('about:blank');
@@ -801,3 +813,5 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
 );
 
 CertificateRenderer.displayName = 'CertificateRenderer';
+
+export default CertificateRenderer;

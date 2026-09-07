@@ -36,7 +36,7 @@ import {
   removeAttendancePresence,
   enrollStudent
 } from "../lib/firebase";
-import { collection, getDocs, query, where } from "firebase/firestore";
+import { collection, getDocs, query, where, onSnapshot } from "firebase/firestore";
 import Modal from "./Modal";
 import CertificateEditor from "./CertificateEditor";
 import EventQrCodeModal from "./EventQrCodeModal";
@@ -50,14 +50,6 @@ interface EventAttendeesModalProps {
   isAdmin?: boolean;
   onClose: () => void;
 }
-
-// Global in-memory cache to prevent repeated student reads from exhausting Firebase quota
-interface CachedStudentsLookup {
-  timestamp: number;
-  membersDict: Record<string, Member>;
-  activeMembers: Member[];
-}
-let globalStudentsLookupCache: CachedStudentsLookup | null = null;
 
 const ALPHABET = "ABCDEFGHIJKLMNOPQRSTUVWXYZ".split("");
 
@@ -120,75 +112,78 @@ export default function EventAttendeesModal({
     course: "Visitante",
   });
 
-  const loadData = async () => {
-    try {
-      setLoading(true);
-      const attendancesSnap = await getDocs(
-        query(
-          collection(db, `artifacts/${appId}/public/data/attendances`),
-          where("eventId", "==", event.id)
-        )
-      );
-      const eventAttendances = attendancesSnap.docs
-        .map(d => ({ id: d.id, ...d.data() } as Attendance))
-        .filter((a) => a.status !== ("cancelado" as any));
+  // Real-time synchronization without quota delays
+  useEffect(() => {
+    setMounted(true);
+    setLoading(true);
 
-      let currentAllM = allMembers;
-      let currentMembersDict: Record<string, Member> = {};
+    let currentAttendances: Attendance[] = [];
+    let currentMembersDict: Record<string, Member> = {};
 
-      // Check global in-memory cache to save Firebase quota (valid for 2 minutes)
-      const nowMs = Date.now();
-      if (globalStudentsLookupCache && nowMs - globalStudentsLookupCache.timestamp < 120000) {
-        currentMembersDict = globalStudentsLookupCache.membersDict;
-        currentAllM = globalStudentsLookupCache.activeMembers;
-        setAllMembers(currentAllM);
-      } else if (currentAllM.length === 0) {
-        const membersSnap = await getDocs(
-          query(collection(db, `artifacts/${appId}/public/data/students`)),
-        );
-        const membersDict: Record<string, Member> = {};
-        const allM: Member[] = [];
-        membersSnap.docs.forEach((d) => {
-          if (!d.id.startsWith("_")) {
-            const mbr = { id: d.id, ...d.data() } as Member;
-            if (mbr.deletedAt) return; // Only ignore deleted
-            membersDict[d.id] = mbr;
-            if (mbr.isActive !== false) {
-              allM.push(mbr); // Inactive members will NOT appear in the list for check-in / adding
-            }
-          }
-        });
-        currentAllM = allM;
-        currentMembersDict = membersDict;
-        setAllMembers(allM);
-        globalStudentsLookupCache = {
-          timestamp: nowMs,
-          membersDict,
-          activeMembers: allM,
-        };
-      } else {
-        currentAllM.forEach((mbr) => {
-          currentMembersDict[mbr.id!] = mbr;
-        });
-      }
-
-      const enriched = eventAttendances.map((a: Attendance) => ({
+    const recomputeAttendees = () => {
+      const enriched = currentAttendances.map((a: Attendance) => ({
         ...a,
         member: currentMembersDict[a.studentId],
       }));
-
       setAttendees(enriched);
-    } catch (err) {
-      console.error("Failed to load attendees", err);
-    } finally {
       setLoading(false);
-    }
-  };
+    };
 
-  useEffect(() => {
-    setMounted(true);
-    loadData();
+    // 1. Escuta em tempo real todas as presenças/inscrições deste evento
+    const qAttendances = query(
+      collection(db, `artifacts/${appId}/public/data/attendances`),
+      where("eventId", "==", event.id)
+    );
+    const unsubAtt = onSnapshot(
+      qAttendances,
+      (snap) => {
+        currentAttendances = snap.docs
+          .map((d) => ({ id: d.id, ...d.data() } as Attendance))
+          .filter((a) => a.status !== ("cancelado" as any));
+        recomputeAttendees();
+      },
+      (err) => {
+        console.error("Error listening to attendances in real time:", err);
+        setLoading(false);
+      }
+    );
+
+    // 2. Escuta em tempo real os dados de estudantes para atualização imediata
+    const qStudents = query(collection(db, `artifacts/${appId}/public/data/students`));
+    const unsubStudents = onSnapshot(
+      qStudents,
+      (snap) => {
+        const dict: Record<string, Member> = {};
+        const activeM: Member[] = [];
+        snap.docs.forEach((d) => {
+          if (!d.id.startsWith("_")) {
+            const mbr = { id: d.id, ...d.data() } as Member;
+            if (mbr.deletedAt) return;
+            dict[d.id] = mbr;
+            if (mbr.isActive !== false) {
+              activeM.push(mbr);
+            }
+          }
+        });
+        currentMembersDict = dict;
+        setAllMembers(activeM);
+        recomputeAttendees();
+      },
+      (err) => {
+        console.error("Error listening to students in real time:", err);
+        setLoading(false);
+      }
+    );
+
+    return () => {
+      unsubAtt();
+      unsubStudents();
+    };
   }, [event.id]);
+
+  const loadData = async () => {
+    // Mantido para compatibilidade com chamadas manuais pontuais
+  };
 
   const handleCancelEnrollment = (eventId: string, studentId: string, memberName: string) => {
     setConfirmModal({

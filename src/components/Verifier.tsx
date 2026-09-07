@@ -70,6 +70,8 @@ export default function Verifier({
     event?: any;
     isOrganizer?: boolean;
     certCode?: string;
+    template?: any;
+    allMatches?: any[];
   } | null>(null);
 
   const [showPublicReq, setShowPublicReq] = useState(false);
@@ -184,7 +186,7 @@ export default function Verifier({
     // Centralized Certificate Authentication Resolution with Race / Timeout
     try {
       const timeoutPromise = new Promise<null>((_, reject) =>
-        setTimeout(() => reject(new Error("Timeout de consulta")), 7500)
+        setTimeout(() => reject(new Error("Timeout de consulta")), 15000)
       );
 
       const resolved = await Promise.race([
@@ -196,7 +198,7 @@ export default function Verifier({
       });
 
       if (resolved) {
-        const { event: foundEvent, member: resolvedMember, isOrganizer, certCode } = resolved;
+        const { event: foundEvent, member: resolvedMember, isOrganizer, certCode, template, allMatches } = resolved;
         recordQRScan("certificate", certCode, "Válido");
 
         setValidationResult({
@@ -205,6 +207,8 @@ export default function Verifier({
           event: foundEvent,
           isOrganizer,
           certCode,
+          template,
+          allMatches,
         });
         playSound("success");
 
@@ -1338,6 +1342,8 @@ export default function Verifier({
           event={validationResult.event}
           isOrganizer={validationResult.isOrganizer}
           certCode={validationResult.certCode}
+          template={validationResult.template}
+          allMatches={validationResult.allMatches}
           isAdminLogged={isAdminLogged}
           onReset={() => {
             setValidationResult(null);
@@ -1566,7 +1572,7 @@ export default function Verifier({
 
             <div className="bg-white/80 dark:bg-slate-800/40 backdrop-blur-sm p-4 rounded-2xl border border-slate-200 dark:border-slate-700/50 shadow-sm">
               <label className="block text-[10px] sm:text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2 text-center">
-                Código de Identificação ou RA
+                Código do Certificado, RA, CPF ou ID
               </label>
               <div className="flex flex-col sm:flex-row gap-3">
                 <input
@@ -1574,7 +1580,7 @@ export default function Verifier({
                   value={codeInput}
                   onChange={(e) => setCodeInput(e.target.value.toUpperCase())}
                   onKeyDown={(e) => e.key === "Enter" && handleVerifyManual()}
-                  placeholder="EX: A1B2C3 OU 123456"
+                  placeholder="EX: FAJ-..., 008605, RA OU CPF"
                   className="input-modern flex-grow rounded-xl py-2.5 px-4 text-center font-mono tracking-widest uppercase text-sm sm:text-lg"
                 />
                 <button

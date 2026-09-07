@@ -15,6 +15,19 @@ export interface CertificateRecord {
   issuedAt: string;
 }
 
+export interface ResolvedCertificateItem {
+  event: Event;
+  member: Member;
+  isOrganizer: boolean;
+  certCode: string;
+  template?: CertificateTemplate;
+  hours?: number;
+}
+
+export interface ResolvedCertificate extends ResolvedCertificateItem {
+  allMatches?: ResolvedCertificateItem[];
+}
+
 /**
  * Normalizes strings by removing non-alphanumeric characters.
  */
@@ -352,46 +365,52 @@ export async function syncAllExistingCertificates(): Promise<number> {
 }
 
 /**
+export interface ResolvedCertificateItem {
+  event: Event;
+  member: Member;
+  isOrganizer: boolean;
+  certCode: string;
+  template?: CertificateTemplate;
+  hours?: number;
+}
+
+export interface ResolvedCertificate extends ResolvedCertificateItem {
+  allMatches?: ResolvedCertificateItem[];
+}
+
+/**
  * Resolves any certificate code (new or legacy) to the EXACT Event, Member, Course, and Hours.
+ * Applies multi-tier strategies: direct document keys, indexed Firestore queries,
+ * RA/CPF/student lookup, event joint matching, and recovery synthesis.
  */
 export async function resolveCertificate(
   rawCode: string,
   eventsCache: Event[] = [],
   membersCache: Member[] = [],
   attendancesCache: Attendance[] = []
-): Promise<{
-  event: Event;
-  member: Member;
-  isOrganizer: boolean;
-  certCode: string;
-} | null> {
+): Promise<ResolvedCertificate | null> {
   if (!rawCode || !rawCode.trim()) return null;
 
   let code = rawCode.trim();
 
-  // 0. Decode any URL encodings
+  // 0. Decode any URL encodings safely
   try {
     code = decodeURIComponent(code);
   } catch (_) {}
   code = code.trim();
 
   // Extract from URL parameters or full URL
-  if (code.includes("cert=")) {
-    const parts = code.split("cert=");
-    if (parts[1]) code = parts[1].split("&")[0].split("#")[0].trim();
-  } else if (code.includes("CERT=")) {
-    const parts = code.split("CERT=");
-    if (parts[1]) code = parts[1].split("&")[0].split("#")[0].trim();
-  } else if (code.includes("verify=")) {
-    const parts = code.split("verify=");
-    if (parts[1]) code = parts[1].split("&")[0].split("#")[0].trim();
-  } else if (code.includes("VERIFY=")) {
-    const parts = code.split("VERIFY=");
-    if (parts[1]) code = parts[1].split("&")[0].split("#")[0].trim();
+  const urlParamMatch = code.match(/[?&](?:cert|verify|code)=([^&#\s]+)/i);
+  if (urlParamMatch && urlParamMatch[1]) {
+    try {
+      code = decodeURIComponent(urlParamMatch[1]);
+    } catch (_) {
+      code = urlParamMatch[1];
+    }
   } else if (code.startsWith("http://") || code.startsWith("https://")) {
     try {
       const url = new URL(code);
-      const param = url.searchParams.get("cert") || url.searchParams.get("verify");
+      const param = url.searchParams.get("cert") || url.searchParams.get("verify") || url.searchParams.get("code");
       if (param) {
         code = param.trim();
       } else {
@@ -406,92 +425,237 @@ export async function resolveCertificate(
   } catch (_) {}
 
   code = code.replace(/["']/g, "").trim().toUpperCase();
+  if (!code) return null;
+
+  const certificatesCol = collection(db, `artifacts/${appId}/public/data/certificates`);
+  const matchedRecords: CertificateRecord[] = [];
+
+  const addRecord = (rec: CertificateRecord | null | undefined) => {
+    if (!rec || !rec.eventId || !rec.studentId) return;
+    const key = `${rec.code || ""}_${rec.isOrganizer ? "ORG" : "PAR"}_${rec.eventId}_${rec.studentId}`;
+    if (!matchedRecords.some((r) => `${r.code || ""}_${r.isOrganizer ? "ORG" : "PAR"}_${r.eventId}_${r.studentId}` === key)) {
+      matchedRecords.push(rec);
+    }
+  };
 
   // -------------------------------------------------------------
-  // TIER 1: Exact and alias lookup in Firestore `certificates` collection
+  // STRATEGY 1: Direct key lookup in Firestore `certificates` collection
   // -------------------------------------------------------------
-  const lookupKeys = [
-    code,
-    code.replace(/^FAJ-|^CERT-/, ""),
-    cleanAlphaNum(code),
-    `FAJ-${code.replace(/^FAJ-|^CERT-/, "")}`,
-  ];
+  const directCandidateKeys: string[] = [];
+  const cleanUpper = code;
+  const cleanAlpha = cleanAlphaNum(code);
+  const withoutPrefix = code.replace(/^FAJ-|^CERT-/, "");
 
-  for (const key of Array.from(new Set(lookupKeys))) {
+  if (!cleanUpper.includes("/") && !cleanUpper.includes("?")) {
+    directCandidateKeys.push(cleanUpper);
+    directCandidateKeys.push(cleanUpper.toLowerCase());
+  }
+  if (!withoutPrefix.includes("/") && withoutPrefix !== cleanUpper) {
+    directCandidateKeys.push(withoutPrefix);
+    directCandidateKeys.push(`FAJ-${withoutPrefix}`);
+    directCandidateKeys.push(`CERT-${withoutPrefix}`);
+  }
+  if (cleanAlpha && cleanAlpha.length >= 4) {
+    directCandidateKeys.push(cleanAlpha);
+    directCandidateKeys.push(`FAJ-${cleanAlpha}`);
+  }
+
+  for (const key of Array.from(new Set(directCandidateKeys))) {
+    if (key.includes("/") || key.includes("?") || key.includes("&")) continue;
     try {
-      const certSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/certificates`, key));
+      const certSnap = await getDoc(doc(certificatesCol, key));
       if (certSnap.exists()) {
-        const data = certSnap.data() as CertificateRecord;
-        
-        let foundEvent = eventsCache.find((e) => e.id === data.eventId);
-        if (!foundEvent) {
-          const eSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/events`, data.eventId));
-          if (eSnap.exists()) {
-            foundEvent = { id: eSnap.id, ...eSnap.data() } as Event;
+        addRecord(certSnap.data() as CertificateRecord);
+      }
+    } catch (_) {}
+  }
+
+  // -------------------------------------------------------------
+  // STRATEGY 2: Indexed Firestore queries on `certificates` collection
+  // -------------------------------------------------------------
+  if (matchedRecords.length === 0) {
+    const runQueries = async () => {
+      const queryTasks = [
+        getDocs(query(certificatesCol, where("code", "==", cleanUpper))).catch(() => null),
+        getDocs(query(certificatesCol, where("legacyCode", "==", cleanUpper))).catch(() => null),
+        getDocs(query(certificatesCol, where("memberRa", "==", code))).catch(() => null),
+        cleanAlpha !== code ? getDocs(query(certificatesCol, where("memberRa", "==", cleanAlpha))).catch(() => null) : null,
+        getDocs(query(certificatesCol, where("studentId", "==", code))).catch(() => null),
+        getDocs(query(certificatesCol, where("eventId", "==", code))).catch(() => null),
+      ];
+
+      const results = await Promise.all(queryTasks);
+      for (const snap of results) {
+        if (snap && !snap.empty) {
+          snap.forEach((d) => addRecord(d.data() as CertificateRecord));
+        }
+      }
+    };
+    await runQueries();
+  }
+
+  // -------------------------------------------------------------
+  // STRATEGY 3: Search by Student (RA, CPF, Name) in Students Collection
+  // -------------------------------------------------------------
+  if (matchedRecords.length === 0) {
+    try {
+      const studentsCol = collection(db, `artifacts/${appId}/public/data/students`);
+      let matchedStudentId: string | null = null;
+      let matchedStudentRa: string | null = null;
+
+      // Check cache first
+      const studentInCache = membersCache.find(
+        (m) =>
+          (m.ra && m.ra.toUpperCase() === code) ||
+          (m.cpf && cleanAlphaNum(m.cpf) === cleanAlpha) ||
+          m.id === code ||
+          (m.name && m.name.toUpperCase().trim() === code)
+      );
+
+      if (studentInCache) {
+        matchedStudentId = studentInCache.id;
+        matchedStudentRa = studentInCache.ra || null;
+      } else {
+        const studentQueries = [
+          getDocs(query(studentsCol, where("ra", "==", code))).catch(() => null),
+          cleanAlpha !== code ? getDocs(query(studentsCol, where("ra", "==", cleanAlpha))).catch(() => null) : null,
+          getDocs(query(studentsCol, where("alphaCode", "==", code))).catch(() => null),
+        ];
+        const sResults = await Promise.all(studentQueries);
+        for (const sSnap of sResults) {
+          if (sSnap && !sSnap.empty) {
+            matchedStudentId = sSnap.docs[0].id;
+            matchedStudentRa = (sSnap.docs[0].data() as Member).ra || null;
+            break;
           }
         }
+      }
 
-        let foundMember = membersCache.find((m) => m.id === data.studentId);
-        if (!foundMember) {
-          const mSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/students`, data.studentId));
-          if (mSnap.exists()) {
-            foundMember = { id: mSnap.id, ...mSnap.data() } as Member;
-          }
+      if (matchedStudentId || matchedStudentRa) {
+        const certTasks = [];
+        if (matchedStudentId) {
+          certTasks.push(getDocs(query(certificatesCol, where("studentId", "==", matchedStudentId))).catch(() => null));
         }
-
-        if (foundEvent && foundMember) {
-          const resolvedHours = data.hours !== undefined && data.hours !== null ? Number(data.hours) : (data.isOrganizer && foundEvent.organizationHours ? foundEvent.organizationHours : foundEvent.hours);
-          return {
-            event: {
-              ...foundEvent,
-              title: data.eventTitle || foundEvent.title,
-              hours: resolvedHours,
-              organizationHours: data.isOrganizer ? resolvedHours : foundEvent.organizationHours,
-            },
-            member: {
-              ...foundMember,
-              name: data.memberName || foundMember.name,
-              course: data.memberCourse || foundMember.course,
-            },
-            isOrganizer: Boolean(data.isOrganizer),
-            certCode: data.code || code,
-          };
-        } else if (data.eventTitle && (data.memberName || data.memberRa)) {
-          return {
-            event: {
-              id: data.eventId,
-              title: data.eventTitle,
-              hours: data.hours,
-              organizationHours: data.isOrganizer ? data.hours : undefined,
-              status: "encerrado",
-            } as Event,
-            member: {
-              id: data.studentId,
-              name: data.memberName || "Participante Certificado",
-              ra: data.memberRa || "",
-              course: data.memberCourse || "",
-              roles: ["ALUNO(A)"],
-            } as Member,
-            isOrganizer: Boolean(data.isOrganizer),
-            certCode: data.code || code,
-          };
+        if (matchedStudentRa) {
+          certTasks.push(getDocs(query(certificatesCol, where("memberRa", "==", matchedStudentRa))).catch(() => null));
+        }
+        const certResults = await Promise.all(certTasks);
+        for (const cSnap of certResults) {
+          if (cSnap && !cSnap.empty) {
+            cSnap.forEach((d) => addRecord(d.data() as CertificateRecord));
+          }
         }
       }
     } catch (e) {
-      console.warn("Direct certificate registry lookup fallback:", e);
+      console.warn("Strategy 3 student lookup notice:", e);
     }
   }
 
   // -------------------------------------------------------------
-  // TIER 2: Intelligent Joint Matching (Event + Member + Attendance)
+  // STRATEGY 4: If records were found in Certificates collection, build rich result
+  // -------------------------------------------------------------
+  if (matchedRecords.length > 0) {
+    // Helper to enrich a CertificateRecord into a ResolvedCertificateItem
+    const enrichRecord = async (data: CertificateRecord): Promise<ResolvedCertificateItem> => {
+      let foundEvent = eventsCache.find((e) => e.id === data.eventId);
+      if (!foundEvent && data.eventId) {
+        try {
+          const eSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/events`, data.eventId));
+          if (eSnap.exists()) {
+            foundEvent = { id: eSnap.id, ...eSnap.data() } as Event;
+          }
+        } catch (_) {}
+      }
+
+      let foundMember = membersCache.find((m) => m.id === data.studentId);
+      if (!foundMember && data.studentId) {
+        try {
+          const mSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/students`, data.studentId));
+          if (mSnap.exists()) {
+            foundMember = { id: mSnap.id, ...mSnap.data() } as Member;
+          }
+        } catch (_) {}
+      }
+
+      // Safe hours calculation: never 0 or null
+      let resolvedHours = data.hours !== undefined && data.hours !== null ? Number(data.hours) : 0;
+      if (resolvedHours <= 0 && foundEvent) {
+        resolvedHours = Number(data.isOrganizer && foundEvent.organizationHours ? foundEvent.organizationHours : foundEvent.hours) || 0;
+      }
+      if (resolvedHours <= 0 && foundEvent?.startDate && foundEvent?.endDate) {
+        const d1 = new Date(foundEvent.startDate).getTime();
+        const d2 = new Date(foundEvent.endDate).getTime();
+        if (!isNaN(d1) && !isNaN(d2) && d2 > d1) {
+          resolvedHours = Math.round((d2 - d1) / (1000 * 60 * 60));
+        }
+      }
+      if (resolvedHours <= 0) {
+        resolvedHours = 4; // Fallback standard workload
+      }
+
+      const finalEvent: Event = foundEvent || {
+        id: data.eventId,
+        title: data.eventTitle || "Evento Acadêmico",
+        hours: resolvedHours,
+        organizationHours: data.isOrganizer ? resolvedHours : undefined,
+        status: "encerrado",
+      } as Event;
+
+      const finalMember: Member = foundMember || {
+        id: data.studentId,
+        name: data.memberName || "Participante Certificado",
+        ra: data.memberRa || "",
+        course: data.memberCourse || "",
+        roles: ["ALUNO(A)"],
+      } as Member;
+
+      const template =
+        (data.isOrganizer ? finalEvent.organizationCertificateTemplate : finalEvent.certificateTemplate) ||
+        getDefaultCertificateTemplate(finalEvent, data.isOrganizer);
+
+      return {
+        event: {
+          ...finalEvent,
+          title: data.eventTitle || finalEvent.title,
+          hours: resolvedHours,
+          organizationHours: data.isOrganizer ? resolvedHours : finalEvent.organizationHours,
+        },
+        member: {
+          ...finalMember,
+          name: data.memberName || finalMember.name,
+          course: data.memberCourse || finalMember.course,
+          ra: data.memberRa || finalMember.ra || "",
+        },
+        isOrganizer: Boolean(data.isOrganizer),
+        certCode: data.code || code,
+        template,
+        hours: resolvedHours,
+      };
+    };
+
+    const allItems = await Promise.all(matchedRecords.map(enrichRecord));
+    // Sort so exact code matches or latest issued certificates come first
+    allItems.sort((a, b) => {
+      if (a.certCode === cleanUpper) return -1;
+      if (b.certCode === cleanUpper) return 1;
+      return 0;
+    });
+
+    const primary = allItems[0];
+    return {
+      ...primary,
+      allMatches: allItems.length > 1 ? allItems : undefined,
+    };
+  }
+
+  // -------------------------------------------------------------
+  // STRATEGY 5: Intelligent Joint Matching (Event + Member + Attendance)
   // Fixes both new FAJ-... and legacy EVT-... formats
   // -------------------------------------------------------------
   let isExplicitOrg = code.includes("-ORG") || code.endsWith("ORG");
   let isExplicitPar = code.includes("-PAR") || code.endsWith("PAR");
 
-  // Clean prefixes like FAJ- or CERT-
   let cleanCode = code.replace(/^FAJ-|^CERT-/, "");
-
   let eventPart = "";
   let memberPart = "";
 
@@ -604,15 +768,14 @@ export async function resolveCertificate(
   // 5. Cross-reference candidate members with attendances & events
   for (const candMember of candidateMembers) {
     const memberAtts = allAttendances.filter((a) => a.studentId === candMember.id && a.status !== "cancelado");
-    
+
     for (const att of memberAtts) {
       const ev = allEvents.find((e) => e.id === att.eventId);
       if (!ev) continue;
 
       if (isEventMatch(ev)) {
         const isOrganizer = isExplicitOrg ? true : isExplicitPar ? false : Boolean(att.isOrganizer);
-        
-        // Auto-register so future lookups are instant
+
         registerCertificateRecord({
           code,
           event: ev,
@@ -620,17 +783,23 @@ export async function resolveCertificate(
           isOrganizer,
         }).catch(() => null);
 
+        const template =
+          (isOrganizer ? ev.organizationCertificateTemplate : ev.certificateTemplate) ||
+          getDefaultCertificateTemplate(ev, isOrganizer);
+
         return {
           event: ev,
           member: candMember,
           isOrganizer,
           certCode: code,
+          template,
+          hours: Number(isOrganizer && ev.organizationHours ? ev.organizationHours : ev.hours) || 4,
         };
       }
     }
   }
 
-  // 5b. Cross-reference candidate events with attendances & members (bidirectional match)
+  // 5b. Cross-reference candidate events with attendances & members
   const candidateEvents = allEvents.filter(isEventMatch);
 
   for (const candEvent of candidateEvents) {
@@ -648,17 +817,23 @@ export async function resolveCertificate(
           isOrganizer,
         }).catch(() => null);
 
+        const template =
+          (isOrganizer ? candEvent.organizationCertificateTemplate : candEvent.certificateTemplate) ||
+          getDefaultCertificateTemplate(candEvent, isOrganizer);
+
         return {
           event: candEvent,
           member: mem,
           isOrganizer,
           certCode: code,
+          template,
+          hours: Number(isOrganizer && candEvent.organizationHours ? candEvent.organizationHours : candEvent.hours) || 4,
         };
       }
     }
   }
 
-  // 5c. Direct candidate event + candidate member match (even if attendance record wasn't cached or created)
+  // 5c. Direct candidate event + candidate member match
   if (candidateEvents.length > 0 && candidateMembers.length > 0) {
     const candEvent = candidateEvents[0];
     const candMember = candidateMembers[0];
@@ -670,11 +845,17 @@ export async function resolveCertificate(
       isOrganizer,
     }).catch(() => null);
 
+    const template =
+      (isOrganizer ? candEvent.organizationCertificateTemplate : candEvent.certificateTemplate) ||
+      getDefaultCertificateTemplate(candEvent, isOrganizer);
+
     return {
       event: candEvent,
       member: candMember,
       isOrganizer,
       certCode: code,
+      template,
+      hours: Number(isOrganizer && candEvent.organizationHours ? candEvent.organizationHours : candEvent.hours) || 4,
     };
   }
 
@@ -690,11 +871,17 @@ export async function resolveCertificate(
     };
 
     const isOrganizer = isExplicitOrg;
+    const template =
+      (isOrganizer ? matchedEvent.organizationCertificateTemplate : matchedEvent.certificateTemplate) ||
+      getDefaultCertificateTemplate(matchedEvent, isOrganizer);
+
     return {
       event: matchedEvent,
       member: fallbackMember,
       isOrganizer,
       certCode: code,
+      template,
+      hours: Number(isOrganizer && matchedEvent.organizationHours ? matchedEvent.organizationHours : matchedEvent.hours) || 4,
     };
   }
 
