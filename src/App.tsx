@@ -125,6 +125,36 @@ export default function App() {
     }
     return "verifier";
   });
+
+  // Mantém abas visitadas ativas para eliminação de travamentos e latência zero ao alternar
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set([activeTab]));
+
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
+
+  // Pré-carregamento em background sem competir com a thread de renderização
+  useEffect(() => {
+    const prefetch = () => {
+      import("./components/StudentPortal");
+      import("./components/Admin");
+      import("./components/EventsPage");
+      import("./components/PublicAppointmentsList");
+      import("./components/DioceseHub");
+    };
+    if (typeof window !== "undefined") {
+      if ("requestIdleCallback" in window) {
+        (window as any).requestIdleCallback(prefetch);
+      } else {
+        setTimeout(prefetch, 800);
+      }
+    }
+  }, []);
   const [targetVerifyCode, setTargetVerifyCode] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -940,70 +970,67 @@ export default function App() {
               </button>
             </div>
 
-          <AnimatePresence mode="wait">
-            <motion.div
-              key={activeTab}
-              initial={{
-                opacity: 0,
-                x:
-                  activeTab === "student"
-                    ? -20
-                    : activeTab === "admin"
-                      ? 20
-                      : 0,
-              }}
-              animate={{ opacity: 1, x: 0 }}
-              exit={{
-                opacity: 0,
-                x:
-                  activeTab === "student"
-                    ? 20
-                    : activeTab === "admin"
-                      ? -20
-                      : 0,
-              }}
-              transition={{ duration: 0.2 }}
+          <div className="w-full">
+            <Suspense
+              fallback={
+                <div className="flex justify-center p-10">
+                  <Loader2 className="animate-spin text-sky-500 w-8 h-8" />
+                </div>
+              }
             >
-              <Suspense
-                  fallback={
-                    <div className="flex justify-center p-10">
-                      <Loader2 className="animate-spin text-sky-500 w-8 h-8" />
+              {visitedTabs.has("verifier") && (
+                <div className={activeTab === "verifier" ? "block" : "hidden"}>
+                  <div className="space-y-6">
+                    <div id="certificate-verifier-root" className="scroll-mt-6">
+                      <Verifier
+                        externalCode={targetVerifyCode}
+                        onExternalVerified={() => setTargetVerifyCode(null)}
+                      />
                     </div>
-                  }
-                >
-                  {activeTab === "verifier" && (
-                    <div className="space-y-6">
-                      <div id="certificate-verifier-root" className="scroll-mt-6">
-                        <Verifier
-                          externalCode={targetVerifyCode}
-                          onExternalVerified={() => setTargetVerifyCode(null)}
-                        />
-                      </div>
-                      {!targetVerifyCode && <HomePollsWidget />}
-                    </div>
-                  )}
-                  {activeTab === "admin" && (
-                    <div id="admin-section" className="scroll-mt-20">
-                      <Admin />
-                    </div>
-                  )}
-                  {activeTab === "events" && <EventsPage onNavigateToStudent={() => setActiveTab("student")} />}
-                  {activeTab === "appointments" && <PublicAppointmentsList member={null} onNavigateToStudent={() => setActiveTab("student")} />}
-                  {activeTab === "diocese" && (
-                    <DioceseHub
-                      member={null}
-                      onNavigateToEvents={() => setActiveTab("events")}
-                    />
-                  )}
-                  {activeTab === "student" && (
-                    <StudentPortal
-                      overrideCode={adminForceViewCode}
-                      onOverrideConsumed={() => setAdminForceViewCode(null)}
-                    />
-                  )}
-                </Suspense>
-            </motion.div>
-          </AnimatePresence>
+                    {!targetVerifyCode && <HomePollsWidget />}
+                  </div>
+                </div>
+              )}
+
+              {visitedTabs.has("admin") && (
+                <div className={activeTab === "admin" ? "block" : "hidden"}>
+                  <div id="admin-section" className="scroll-mt-20">
+                    <Admin />
+                  </div>
+                </div>
+              )}
+
+              {visitedTabs.has("events") && (
+                <div className={activeTab === "events" ? "block" : "hidden"}>
+                  <EventsPage onNavigateToStudent={() => setActiveTab("student")} />
+                </div>
+              )}
+
+              {visitedTabs.has("appointments") && (
+                <div className={activeTab === "appointments" ? "block" : "hidden"}>
+                  <PublicAppointmentsList member={null} onNavigateToStudent={() => setActiveTab("student")} />
+                </div>
+              )}
+
+              {visitedTabs.has("diocese") && (
+                <div className={activeTab === "diocese" ? "block" : "hidden"}>
+                  <DioceseHub
+                    member={null}
+                    onNavigateToEvents={() => setActiveTab("events")}
+                  />
+                </div>
+              )}
+
+              {visitedTabs.has("student") && (
+                <div className={activeTab === "student" ? "block" : "hidden"}>
+                  <StudentPortal
+                    overrideCode={adminForceViewCode}
+                    onOverrideConsumed={() => setAdminForceViewCode(null)}
+                  />
+                </div>
+              )}
+            </Suspense>
+          </div>
 
           <Footer />
         </div>

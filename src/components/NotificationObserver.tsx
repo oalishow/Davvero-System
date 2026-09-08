@@ -108,12 +108,32 @@ export default function NotificationObserver() {
 
   // For PWA Push / Badge sync
   useEffect(() => {
-    if (typeof window !== 'undefined' && 'setAppBadge' in navigator) {
-      if (unreadCount > 0) {
-        navigator.setAppBadge(unreadCount).catch(() => {});
-      } else {
-        navigator.clearAppBadge().catch(() => {});
-      }
+    if (typeof window !== 'undefined') {
+      try {
+        if (unreadCount > 0) {
+          if ('setAppBadge' in navigator) {
+            (navigator as any).setAppBadge(unreadCount).catch(() => {});
+          }
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: "SYNC_APP_BADGE",
+              count: unreadCount
+            });
+          }
+        } else {
+          if ('clearAppBadge' in navigator) {
+            (navigator as any).clearAppBadge().catch(() => {});
+          }
+          if ('setAppBadge' in navigator) {
+            (navigator as any).setAppBadge(0).catch(() => {});
+          }
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({
+              type: "CLEAR_APP_BADGE"
+            });
+          }
+        }
+      } catch (_) {}
     }
   }, [unreadCount]);
 

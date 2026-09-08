@@ -968,7 +968,7 @@ export default function CertificateVerificationViewer({
                   </span>
                   <span className="flex items-center gap-1 text-emerald-600 dark:text-emerald-400 font-semibold">
                     <CheckCircle className="w-3.5 h-3.5 text-emerald-500" />
-                    Liberado em: {resolveCertificateReleaseDate(activeEvent, activeTemplate, activeMember).formattedDate}
+                    Liberado em: {resolveCertificateReleaseDate(activeEvent, hydratedTemplate, activeMember).formattedDate}
                   </span>
                 </div>
               </div>

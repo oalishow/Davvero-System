@@ -61,7 +61,19 @@ import { Calendar, BriefcaseMedical, LayoutDashboard, Vote } from "lucide-react"
 export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const { settings, updateSettings, loading } = useSettings();
   const [activeTab, setActiveTab] = useState<"dashboard" | "members" | "events" | "appointments" | "notifications" | "polls">("dashboard");
-    const [name, setName] = useState("");
+  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set(["dashboard"]));
+
+  useEffect(() => {
+    setVisitedTabs((prev) => {
+      if (prev.has(activeTab)) return prev;
+      const next = new Set(prev);
+      next.add(activeTab);
+      return next;
+    });
+  }, [activeTab]);
+
+  const processedExpiredIdsRef = useRef<Set<string>>(new Set());
+  const [name, setName] = useState("");
   const [ra, setRa] = useState("");
   const [cpf, setCpf] = useState("");
   const [birthdate, setBirthdate] = useState("");
@@ -299,7 +311,8 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
       // Auto-expiration Logic
       const isExpired = m.validityDate && m.validityDate < todayStr;
-      if (isExpired && m.isActive && m.isApproved && !m.deletedAt) {
+      if (isExpired && m.isActive && m.isApproved && !m.deletedAt && !processedExpiredIdsRef.current.has(m.id)) {
+        processedExpiredIdsRef.current.add(m.id);
         updateDoc(doc(db, `artifacts/${appId}/public/data/students`, m.id), {
           isActive: false,
           isApproved: false,
@@ -660,55 +673,64 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
         </button>
       </div>
 
-      {activeTab === "dashboard" && (
-        <DashboardPanel allMembers={allMembers} />
-      )}
-
-      {activeTab === "polls" && (
-        <AdminPolls />
-      )}
-
-      {activeTab === "events" && (
-        <div className="space-y-12">
-          <EventManagement adminAccessLevel={adminAccessLevel} />
-          {adminAccessLevel !== "LEITOR" && (
-            <div className="pt-8 border-t border-slate-200 dark:border-slate-800/60 mt-8">
-              <EventsRecycleBin />
-            </div>
-          )}
+      {visitedTabs.has("dashboard") && (
+        <div className={activeTab === "dashboard" ? "block" : "hidden"}>
+          <DashboardPanel allMembers={allMembers} />
         </div>
       )}
 
-      {activeTab === "appointments" && (
-        <div className="space-y-4">
-          {settings?.appointmentsExternalLink ? (
-            <div className="bg-sky-50 dark:bg-sky-900/20 p-6 rounded-2xl border border-sky-100 dark:border-sky-800 text-center text-sky-800 dark:text-sky-300">
-              <h3 className="text-lg font-bold mb-2">Modo Simplificado Ativo</h3>
-              <p className="text-sm opacity-80 mb-4">Os agendamentos estão configurados para usar um link externo (WhatsApp/Agenda).</p>
-              <button onClick={() => updateSettings({ appointmentsExternalLink: '' })} className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors">
-                Restaurar Sistema Interno
-              </button>
-            </div>
-          ) : null}
-          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-            <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 font-display flex items-center gap-3">
-              <span className="bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400 p-2 rounded-xl">
-                <BriefcaseMedical className="w-5 h-5" />
-              </span>
-              Painel de Agendamentos (WhatsApp)
-            </h2>
-            
+      {visitedTabs.has("polls") && (
+        <div className={activeTab === "polls" ? "block" : "hidden"}>
+          <AdminPolls />
+        </div>
+      )}
+
+      {visitedTabs.has("events") && (
+        <div className={activeTab === "events" ? "block" : "hidden"}>
+          <div className="space-y-12">
+            <EventManagement adminAccessLevel={adminAccessLevel} />
+            {adminAccessLevel !== "LEITOR" && (
+              <div className="pt-8 border-t border-slate-200 dark:border-slate-800/60 mt-8">
+                <EventsRecycleBin />
+              </div>
+            )}
           </div>
-          <AdminAppointments />
         </div>
       )}
 
-      {activeTab === "notifications" && (
-        <NotificationsManager />
+      {visitedTabs.has("appointments") && (
+        <div className={activeTab === "appointments" ? "block" : "hidden"}>
+          <div className="space-y-4">
+            {settings?.appointmentsExternalLink ? (
+              <div className="bg-sky-50 dark:bg-sky-900/20 p-6 rounded-2xl border border-sky-100 dark:border-sky-800 text-center text-sky-800 dark:text-sky-300">
+                <h3 className="text-lg font-bold mb-2">Modo Simplificado Ativo</h3>
+                <p className="text-sm opacity-80 mb-4">Os agendamentos estão configurados para usar um link externo (WhatsApp/Agenda).</p>
+                <button onClick={() => updateSettings({ appointmentsExternalLink: '' })} className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors">
+                  Restaurar Sistema Interno
+                </button>
+              </div>
+            ) : null}
+            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+              <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 font-display flex items-center gap-3">
+                <span className="bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400 p-2 rounded-xl">
+                  <BriefcaseMedical className="w-5 h-5" />
+                </span>
+                Painel de Agendamentos (WhatsApp)
+              </h2>
+            </div>
+            <AdminAppointments />
+          </div>
+        </div>
+      )}
+
+      {visitedTabs.has("notifications") && (
+        <div className={activeTab === "notifications" ? "block" : "hidden"}>
+          <NotificationsManager />
+        </div>
       )}
       
-      {activeTab === "members" && (
-        <>
+      {visitedTabs.has("members") && (
+        <div className={activeTab === "members" ? "block" : "hidden"}>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-8 no-print">
             <button
               onClick={() => {
@@ -1209,7 +1231,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
               </button>
             </div>
           </div>
-        </>
+        </div>
       )}
 
       {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}

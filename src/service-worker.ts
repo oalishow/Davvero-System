@@ -129,13 +129,61 @@ self.addEventListener("push", (event: any) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options).catch((err: any) => {
-      console.warn("ServiceWorker push showNotification fallback:", err);
-      return self.registration.showNotification(title, {
-        body,
-        data: { url }
-      });
-    })
+    (async () => {
+      try {
+        await self.registration.showNotification(title, options);
+      } catch (err) {
+        console.warn("ServiceWorker push showNotification fallback:", err);
+        await self.registration.showNotification(title, {
+          body,
+          data: { url }
+        });
+      }
+
+      // Sincroniza o App Badge no Windows / PWA
+      try {
+        const notifs = await self.registration.getNotifications();
+        const count = notifs.length || 1;
+        if ("setAppBadge" in navigator) {
+          await (navigator as any).setAppBadge(count);
+        }
+      } catch (_) {}
+    })()
+  );
+});
+
+// Manipulador acionado quando o usuário clica ou limpa notificações na Central de Ações do Windows
+self.addEventListener("notificationclose", (event: any) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const activeNotifs = await self.registration.getNotifications();
+        if (activeNotifs.length === 0) {
+          if ("clearAppBadge" in navigator) {
+            await (navigator as any).clearAppBadge().catch(() => {});
+          }
+          if ("setAppBadge" in navigator) {
+            await (navigator as any).setAppBadge(0).catch(() => {});
+          }
+        } else {
+          if ("setAppBadge" in navigator) {
+            await (navigator as any).setAppBadge(activeNotifs.length).catch(() => {});
+          }
+        }
+
+        // Notifica todas as janelas ativas do app para sincronizar o contador interno
+        const clients = await self.clients.matchAll({ type: "window", includeUncontrolled: true });
+        for (const client of clients) {
+          client.postMessage({
+            type: "NOTIFICATION_CLOSED_IN_OS",
+            remaining: activeNotifs.length,
+            closedTag: event.notification?.tag
+          });
+        }
+      } catch (err) {
+        console.warn("[SW] notificationclose sync error:", err);
+      }
+    })()
   );
 });
 
@@ -145,24 +193,71 @@ self.addEventListener("notificationclick", (event: any) => {
   const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients: any[]) => {
+    (async () => {
+      // Atualiza o app badge após o fechamento desta notificação
+      try {
+        const activeNotifs = await self.registration.getNotifications();
+        if (activeNotifs.length === 0) {
+          if ("clearAppBadge" in navigator) {
+            await (navigator as any).clearAppBadge().catch(() => {});
+          }
+          if ("setAppBadge" in navigator) {
+            await (navigator as any).setAppBadge(0).catch(() => {});
+          }
+        } else {
+          if ("setAppBadge" in navigator) {
+            await (navigator as any).setAppBadge(activeNotifs.length).catch(() => {});
+          }
+        }
+      } catch (_) {}
+
+      const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if ('focus' in client) {
           try {
             client.postMessage({ type: 'NAVIGATE_URL', url: targetUrl });
           } catch (_) {}
-          return client.focus().then((focusedClient: any) => {
-            if (focusedClient && 'navigate' in focusedClient) {
-              return focusedClient.navigate(targetUrl);
-            }
-          });
+          const focusedClient = await client.focus();
+          if (focusedClient && 'navigate' in focusedClient) {
+            return focusedClient.navigate(targetUrl);
+          }
+          return;
         }
       }
 
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
-    })
+    })()
   );
 });
+
+// Listener para sincronização direta de Badge via cliente
+self.addEventListener("message", (event: any) => {
+  if (!event.data) return;
+
+  if (event.data.type === "CLEAR_APP_BADGE") {
+    if ("clearAppBadge" in navigator) {
+      (navigator as any).clearAppBadge().catch(() => {});
+    }
+    if ("setAppBadge" in navigator) {
+      (navigator as any).setAppBadge(0).catch(() => {});
+    }
+  } else if (event.data.type === "SYNC_APP_BADGE") {
+    const count = Number(event.data.count) || 0;
+    if (count <= 0) {
+      if ("clearAppBadge" in navigator) {
+        (navigator as any).clearAppBadge().catch(() => {});
+      }
+      if ("setAppBadge" in navigator) {
+        (navigator as any).setAppBadge(0).catch(() => {});
+      }
+    } else {
+      if ("setAppBadge" in navigator) {
+        (navigator as any).setAppBadge(count).catch(() => {});
+      }
+    }
+  }
+});
+

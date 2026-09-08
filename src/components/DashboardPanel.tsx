@@ -30,6 +30,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
   const [activeRange, setActiveRange] = useState<"7d" | "14d" | "all">("14d");
 
   const [telemetry, setTelemetry] = useState<TelemetryStats | null>(null);
+  const [chartsReady, setChartsReady] = useState(false);
 
   const [dbData, setDbData] = useState<{
     totalEvents: number;
@@ -345,6 +346,16 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
       console.warn("Realtime presence listener fallback:", err);
     }
   }, []);
+
+  // Delay chart initialization until DOM container dimensions are resolved
+  useEffect(() => {
+    if (!loading && dbData && telemetry) {
+      const timer = setTimeout(() => {
+        setChartsReady(true);
+      }, 100);
+      return () => clearTimeout(timer);
+    }
+  }, [loading, dbData, telemetry]);
 
   if (loading) {
     return (
@@ -694,14 +705,14 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
       </div>
 
       {/* --- GRÁFICOS PRINCIPAIS DE FLUXO & OPERAÇÕES --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 min-w-0">
         
         {/* Gráfico: Leituras de QR Code vs Acessos ao App (Evolução Diária) */}
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.25 }}
-          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col min-w-0 overflow-hidden"
         >
           <div className="flex items-center justify-between mb-4 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
             <div className="flex items-center gap-3">
@@ -718,30 +729,34 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               </div>
             </div>
           </div>
-          <div className="h-[280px] w-full mt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <AreaChart data={telemetry.dailyMetrics} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                <defs>
-                  <linearGradient id="accessGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
-                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                  </linearGradient>
-                  <linearGradient id="scansGrad" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.5}/>
-                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
-                  </linearGradient>
-                </defs>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <RechartsTooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                />
-                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                <Area type="monotone" dataKey="accesses" name="Acessos ao App" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#accessGrad)" />
-                <Area type="monotone" dataKey="scans" name="Leituras de QR Code" stroke="#0ea5e9" strokeWidth={3} fillOpacity={1} fill="url(#scansGrad)" />
-              </AreaChart>
-            </ResponsiveContainer>
+          <div className="h-[280px] w-full min-w-0 relative mt-2">
+            {chartsReady ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <AreaChart data={telemetry.dailyMetrics} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                  <defs>
+                    <linearGradient id="accessGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
+                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                    </linearGradient>
+                    <linearGradient id="scansGrad" x1="0" y1="0" x2="0" y2="1">
+                      <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.5}/>
+                      <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                    </linearGradient>
+                  </defs>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <RechartsTooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                  <Area type="monotone" dataKey="accesses" name="Acessos ao App" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#accessGrad)" />
+                  <Area type="monotone" dataKey="scans" name="Leituras de QR Code" stroke="#0ea5e9" strokeWidth={3} fillOpacity={1} fill="url(#scansGrad)" />
+                </AreaChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
+            )}
           </div>
         </motion.div>
 
@@ -750,7 +765,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.3 }}
-          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col min-w-0 overflow-hidden"
         >
           <div className="flex items-center justify-between mb-4 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
             <div className="flex items-center gap-3">
@@ -767,33 +782,37 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               </div>
             </div>
           </div>
-          <div className="h-[280px] w-full mt-2">
-            <ResponsiveContainer width="100%" height="100%">
-              <BarChart data={telemetry.dailyMetrics} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
-                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                <RechartsTooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                />
-                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                <Bar dataKey="reads" name="Leituras (Reads)" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-                <Bar dataKey="writes" name="Escritas (Writes)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-              </BarChart>
-            </ResponsiveContainer>
+          <div className="h-[280px] w-full min-w-0 relative mt-2">
+            {chartsReady ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <BarChart data={telemetry.dailyMetrics} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                  <RechartsTooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                  <Bar dataKey="reads" name="Leituras (Reads)" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                  <Bar dataKey="writes" name="Escritas (Writes)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+                </BarChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
+            )}
           </div>
         </motion.div>
       </div>
 
       {/* --- GRÁFICOS DE SEGMENTAÇÃO (Tipos de Leituras QR & Meios de Acesso) --- */}
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6">
+      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-5 md:gap-6 min-w-0">
         
         {/* Tipos de Leituras QR Realizadas */}
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.35 }}
-          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col min-w-0 overflow-hidden"
         >
           <div className="flex items-center gap-3 mb-4 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
             <div className="bg-sky-100 dark:bg-sky-500/20 p-2 rounded-xl text-sky-600 dark:text-sky-400">
@@ -808,28 +827,32 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               </p>
             </div>
           </div>
-          <div className="h-[220px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={scanTypesData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {scanTypesData.map((entry, index) => (
-                    <Cell key={`cell-${index}`} fill={SCAN_COLORS[index % SCAN_COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                />
-                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="h-[220px] w-full min-w-0 relative">
+            {chartsReady ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <PieChart>
+                  <Pie
+                    data={scanTypesData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {scanTypesData.map((entry, index) => (
+                      <Cell key={`cell-${index}`} fill={SCAN_COLORS[index % SCAN_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
+            )}
           </div>
         </motion.div>
 
@@ -838,7 +861,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
           transition={{ delay: 0.4 }}
-          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col min-w-0 overflow-hidden"
         >
           <div className="flex items-center gap-3 mb-4 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
             <div className="bg-emerald-100 dark:bg-emerald-500/20 p-2 rounded-xl text-emerald-600 dark:text-emerald-400">
@@ -853,28 +876,32 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               </p>
             </div>
           </div>
-          <div className="h-[220px] w-full">
-            <ResponsiveContainer width="100%" height="100%">
-              <PieChart>
-                <Pie
-                  data={deviceData}
-                  cx="50%"
-                  cy="50%"
-                  innerRadius={50}
-                  outerRadius={80}
-                  paddingAngle={3}
-                  dataKey="value"
-                >
-                  {deviceData.map((entry, index) => (
-                    <Cell key={`cell-dev-${index}`} fill={DEVICE_COLORS[index % DEVICE_COLORS.length]} />
-                  ))}
-                </Pie>
-                <RechartsTooltip 
-                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                />
-                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
-              </PieChart>
-            </ResponsiveContainer>
+          <div className="h-[220px] w-full min-w-0 relative">
+            {chartsReady ? (
+              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                <PieChart>
+                  <Pie
+                    data={deviceData}
+                    cx="50%"
+                    cy="50%"
+                    innerRadius={50}
+                    outerRadius={80}
+                    paddingAngle={3}
+                    dataKey="value"
+                  >
+                    {deviceData.map((entry, index) => (
+                      <Cell key={`cell-dev-${index}`} fill={DEVICE_COLORS[index % DEVICE_COLORS.length]} />
+                    ))}
+                  </Pie>
+                  <RechartsTooltip 
+                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                  />
+                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
+                </PieChart>
+              </ResponsiveContainer>
+            ) : (
+              <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
+            )}
           </div>
         </motion.div>
 
@@ -934,13 +961,13 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
       </div>
 
       {/* --- DISTRIBUIÇÃO INSTITUCIONAL (Cargos, Dioceses, Seminários e Modalidades) --- */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6">
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-5 md:gap-6 min-w-0">
         {/* Distribuição por Cargo */}
         <motion.div 
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.5 }}
-          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col min-w-0 overflow-hidden"
         >
           <div className="flex items-center gap-3 mb-6 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
             <div className="bg-sky-100 dark:bg-sky-500/20 p-2 rounded-xl text-sky-600 dark:text-sky-400">
@@ -951,20 +978,24 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Top funções e categorias</p>
             </div>
           </div>
-          <div className="h-[260px] w-full">
+          <div className="h-[260px] w-full min-w-0 relative">
             {memberMetrics.rolesDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={memberMetrics.rolesDistribution.slice(0, 8)} margin={{ top: 10, right: 30, left: -10, bottom: 25 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={45} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <RechartsTooltip 
-                    cursor={{ fill: 'rgba(0,0,0,0.04)' }} 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                  />
-                  <Bar dataKey="value" name="Membros" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              chartsReady ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <BarChart data={memberMetrics.rolesDistribution.slice(0, 8)} margin={{ top: 10, right: 30, left: -10, bottom: 25 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={45} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <RechartsTooltip 
+                      cursor={{ fill: 'rgba(0,0,0,0.04)' }} 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                    />
+                    <Bar dataKey="value" name="Membros" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
+              )
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
                 Nenhum cargo registrado nos cadastros.
@@ -978,7 +1009,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.52 }}
-          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col min-w-0 overflow-hidden"
         >
           <div className="flex items-center gap-3 mb-6 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
             <div className="bg-emerald-100 dark:bg-emerald-500/20 p-2 rounded-xl text-emerald-600 dark:text-emerald-400">
@@ -989,20 +1020,24 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Top dioceses de origem</p>
             </div>
           </div>
-          <div className="h-[260px] w-full">
+          <div className="h-[260px] w-full min-w-0 relative">
             {memberMetrics.dioceseDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <BarChart data={memberMetrics.dioceseDistribution.slice(0, 8)} margin={{ top: 10, right: 30, left: -10, bottom: 25 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
-                  <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={45} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <RechartsTooltip 
-                    cursor={{ fill: 'rgba(0,0,0,0.04)' }} 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                  />
-                  <Bar dataKey="value" name="Membros" fill="#10b981" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
+              chartsReady ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <BarChart data={memberMetrics.dioceseDistribution.slice(0, 8)} margin={{ top: 10, right: 30, left: -10, bottom: 25 }}>
+                    <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                    <XAxis dataKey="name" tick={{ fontSize: 10 }} angle={-35} textAnchor="end" height={45} />
+                    <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                    <RechartsTooltip 
+                      cursor={{ fill: 'rgba(0,0,0,0.04)' }} 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                    />
+                    <Bar dataKey="value" name="Membros" fill="#10b981" radius={[4, 4, 0, 0]} />
+                  </BarChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
+              )
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
                 Nenhuma diocese especificada nos membros cadastrados.
@@ -1016,7 +1051,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.55 }}
-          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col min-w-0 overflow-hidden"
         >
           <div className="flex items-center gap-3 mb-6 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
             <div className="bg-indigo-100 dark:bg-indigo-500/20 p-2 rounded-xl text-indigo-600 dark:text-indigo-400">
@@ -1027,39 +1062,43 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Origem dos Membros</p>
             </div>
           </div>
-          <div className="h-[260px] w-full">
+          <div className="h-[260px] w-full min-w-0 relative">
             {memberMetrics.seminaryDistribution.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={memberMetrics.seminaryDistribution}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={90}
-                    paddingAngle={2}
-                    dataKey="value"
-                    label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                      const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                      const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                      const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                      return percent > 0.05 ? (
-                        <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="bold">
-                          {`${(percent * 100).toFixed(0)}%`}
-                        </text>
-                      ) : null;
-                    }}
-                  >
-                    {memberMetrics.seminaryDistribution.map((entry, index) => (
-                      <Cell key={`cell-sem-${index}`} fill={COLORS[index % COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                  />
-                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
-                </PieChart>
-              </ResponsiveContainer>
+              chartsReady ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <PieChart>
+                    <Pie
+                      data={memberMetrics.seminaryDistribution}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={90}
+                      paddingAngle={2}
+                      dataKey="value"
+                      label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                        const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                        const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                        return percent > 0.05 ? (
+                          <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="bold">
+                            {`${(percent * 100).toFixed(0)}%`}
+                          </text>
+                        ) : null;
+                      }}
+                    >
+                      {memberMetrics.seminaryDistribution.map((entry, index) => (
+                        <Cell key={`cell-sem-${index}`} fill={COLORS[index % COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                    />
+                    <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
+              )
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
                 Nenhum seminário/casa de formação registrado.
@@ -1073,7 +1112,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           initial={{ opacity: 0, scale: 0.98 }}
           animate={{ opacity: 1, scale: 1 }}
           transition={{ delay: 0.58 }}
-          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col"
+          className="bg-white dark:bg-slate-800/40 rounded-3xl p-5 md:p-6 shadow-sm ring-1 ring-slate-100 dark:ring-slate-700/50 flex flex-col min-w-0 overflow-hidden"
         >
           <div className="flex items-center gap-3 mb-6 bg-slate-50 dark:bg-slate-800/80 p-3 rounded-2xl ring-1 ring-slate-100 dark:ring-slate-700/50">
             <div className="bg-purple-100 dark:bg-purple-500/20 p-2 rounded-xl text-purple-600 dark:text-purple-400">
@@ -1084,39 +1123,43 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Presencial / Online / Híbrido</p>
             </div>
           </div>
-          <div className="h-[260px] w-full">
+          <div className="h-[260px] w-full min-w-0 relative">
             {dbData.eventFormats.length > 0 ? (
-              <ResponsiveContainer width="100%" height="100%">
-                <PieChart>
-                  <Pie
-                    data={dbData.eventFormats}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={55}
-                    outerRadius={90}
-                    paddingAngle={3}
-                    dataKey="value"
-                    label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
-                      const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
-                      const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
-                      const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
-                      return percent > 0.05 ? (
-                        <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="bold">
-                          {`${(percent * 100).toFixed(0)}%`}
-                        </text>
-                      ) : null;
-                    }}
-                  >
-                    {dbData.eventFormats.map((entry, index) => (
-                      <Cell key={`cell-fmt-${index}`} fill={FORMAT_COLORS[index % FORMAT_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                  />
-                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
-                </PieChart>
-              </ResponsiveContainer>
+              chartsReady ? (
+                <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+                  <PieChart>
+                    <Pie
+                      data={dbData.eventFormats}
+                      cx="50%"
+                      cy="50%"
+                      innerRadius={55}
+                      outerRadius={90}
+                      paddingAngle={3}
+                      dataKey="value"
+                      label={({ cx, cy, midAngle, innerRadius, outerRadius, percent }) => {
+                        const radius = innerRadius + (outerRadius - innerRadius) * 0.5;
+                        const x = cx + radius * Math.cos(-midAngle * (Math.PI / 180));
+                        const y = cy + radius * Math.sin(-midAngle * (Math.PI / 180));
+                        return percent > 0.05 ? (
+                          <text x={x} y={y} fill="white" textAnchor="middle" dominantBaseline="central" fontSize={11} fontWeight="bold">
+                            {`${(percent * 100).toFixed(0)}%`}
+                          </text>
+                        ) : null;
+                      }}
+                    >
+                      {dbData.eventFormats.map((entry, index) => (
+                        <Cell key={`cell-fmt-${index}`} fill={FORMAT_COLORS[index % FORMAT_COLORS.length]} />
+                      ))}
+                    </Pie>
+                    <RechartsTooltip 
+                      contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                    />
+                    <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
+                  </PieChart>
+                </ResponsiveContainer>
+              ) : (
+                <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
+              )
             ) : (
               <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
                 Nenhum evento registrado ainda.

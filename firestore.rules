@@ -61,6 +61,12 @@ service cloud.firestore {
         allow write: if isSignedIn();
       }
 
+      // Certificates
+      match /certificates/{certificateId} {
+        allow read: if isSignedIn() || true;
+        allow write: if isSignedIn();
+      }
+
       // Appointments
       match /appointments/{appointmentId} {
         allow read: if isSignedIn() || true;

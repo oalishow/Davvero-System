@@ -152,13 +152,33 @@ export function useNotifications(recipientInput: string | string[] | null) {
       const unread = processed.filter(n => !n.read).length;
       setUnreadCount(unread);
 
-      // Atualizar badge do PWA
-      if (typeof window !== 'undefined' && 'setAppBadge' in navigator) {
-        if (unread > 0) {
-          navigator.setAppBadge(unread).catch(console.error);
-        } else {
-          navigator.clearAppBadge().catch(console.error);
-        }
+      // Atualizar badge do PWA no Windows / Sistema Operacional
+      if (typeof window !== 'undefined') {
+        try {
+          if (unread > 0) {
+            if ('setAppBadge' in navigator) {
+              (navigator as any).setAppBadge(unread).catch(() => {});
+            }
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({
+                type: "SYNC_APP_BADGE",
+                count: unread
+              });
+            }
+          } else {
+            if ('clearAppBadge' in navigator) {
+              (navigator as any).clearAppBadge().catch(() => {});
+            }
+            if ('setAppBadge' in navigator) {
+              (navigator as any).setAppBadge(0).catch(() => {});
+            }
+            if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+              navigator.serviceWorker.controller.postMessage({
+                type: "CLEAR_APP_BADGE"
+              });
+            }
+          }
+        } catch (_) {}
       }
     };
 
@@ -251,14 +271,51 @@ export function useNotifications(recipientInput: string | string[] | null) {
       processNotifications(lastSnapshotDocs);
     };
 
+    // Sincronizar badge com o Windows sempre que o usuário voltar à janela do aplicativo
+    const handleVisibilityOrFocus = () => {
+      if (typeof document !== 'undefined' && document.visibilityState === 'visible') {
+        if (typeof window !== 'undefined' && 'serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then((reg) => {
+            reg.getNotifications().then((notifs) => {
+              if (notifs.length === 0) {
+                // Notificações foram limpas externamente no Windows
+                if ('clearAppBadge' in navigator) (navigator as any).clearAppBadge().catch(() => {});
+                if ('setAppBadge' in navigator) (navigator as any).setAppBadge(0).catch(() => {});
+              }
+            }).catch(() => {});
+          }).catch(() => {});
+        }
+      }
+    };
+
+    // Escuta evento disparado pelo Service Worker quando o usuário limpa no Windows Action Center
+    const handleServiceWorkerMessage = (event: MessageEvent) => {
+      if (event.data?.type === 'NOTIFICATION_CLOSED_IN_OS') {
+        if (event.data.remaining === 0) {
+          if ('clearAppBadge' in navigator) (navigator as any).clearAppBadge().catch(() => {});
+          if ('setAppBadge' in navigator) (navigator as any).setAppBadge(0).catch(() => {});
+        }
+      }
+    };
+
     if (typeof window !== 'undefined') {
       window.addEventListener('davveroId_notifs_local_update', handleLocalUpdate);
+      window.addEventListener('focus', handleVisibilityOrFocus);
+      document.addEventListener('visibilitychange', handleVisibilityOrFocus);
+      if ('serviceWorker' in navigator) {
+        navigator.serviceWorker.addEventListener('message', handleServiceWorkerMessage);
+      }
     }
     
     return () => {
       unsubscribe();
       if (typeof window !== 'undefined') {
         window.removeEventListener('davveroId_notifs_local_update', handleLocalUpdate);
+        window.removeEventListener('focus', handleVisibilityOrFocus);
+        document.removeEventListener('visibilitychange', handleVisibilityOrFocus);
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.removeEventListener('message', handleServiceWorkerMessage);
+        }
       }
     };
   }, [recipientKey, isAuthenticated]);

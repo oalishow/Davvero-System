@@ -947,6 +947,28 @@ export const clearAllNotifications = async (recipientId: string) => {
         }
       }
     }
+
+    // Fechar notificações abertas na central do sistema operacional e zerar o badge do Windows / PWA
+    if (typeof window !== 'undefined') {
+      try {
+        if ('clearAppBadge' in navigator) {
+          (navigator as any).clearAppBadge().catch(() => {});
+        }
+        if ('setAppBadge' in navigator) {
+          (navigator as any).setAppBadge(0).catch(() => {});
+        }
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then((reg) => {
+            reg.getNotifications().then((notifs) => {
+              notifs.forEach((n) => n.close());
+            }).catch(() => {});
+          }).catch(() => {});
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: "CLEAR_APP_BADGE" });
+          }
+        }
+      } catch (_) {}
+    }
   } catch (error: any) {
     if (
       error?.code !== "permission-denied" &&
@@ -972,13 +994,35 @@ export const markAllNotificationsAsRead = async (recipientId: string) => {
     );
 
     const snap = await getDocs(q);
-    if (snap.empty) return;
+    if (!snap.empty) {
+      const batch = writeBatch(db);
+      snap.docs.forEach((d) => {
+        batch.update(d.ref, { read: true });
+      });
+      await batch.commit();
+    }
 
-    const batch = writeBatch(db);
-    snap.docs.forEach((d) => {
-      batch.update(d.ref, { read: true });
-    });
-    await batch.commit();
+    // Também zera o badge e fecha notificações nativas
+    if (typeof window !== 'undefined') {
+      try {
+        if ('clearAppBadge' in navigator) {
+          (navigator as any).clearAppBadge().catch(() => {});
+        }
+        if ('setAppBadge' in navigator) {
+          (navigator as any).setAppBadge(0).catch(() => {});
+        }
+        if ('serviceWorker' in navigator) {
+          navigator.serviceWorker.ready.then((reg) => {
+            reg.getNotifications().then((notifs) => {
+              notifs.forEach((n) => n.close());
+            }).catch(() => {});
+          }).catch(() => {});
+          if (navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: "CLEAR_APP_BADGE" });
+          }
+        }
+      } catch (_) {}
+    }
   } catch (error: any) {
     if (
       error?.code !== "permission-denied" &&

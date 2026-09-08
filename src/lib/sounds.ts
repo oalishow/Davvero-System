@@ -2,14 +2,25 @@ import { triggerHaptic } from './haptics';
 
 const DAVVERO_SOUND_VOLUME = 'davveroId_sound_volume';
 
+let cachedVolume: number | null = null;
+
 export const getSoundVolume = (): number => {
-  const vol = localStorage.getItem(DAVVERO_SOUND_VOLUME);
-  if (vol === null) return 0.05; // default volume
-  return parseFloat(vol);
+  if (cachedVolume !== null) return cachedVolume;
+  if (typeof window === 'undefined') return 0.05;
+  try {
+    const vol = localStorage.getItem(DAVVERO_SOUND_VOLUME);
+    cachedVolume = vol === null ? 0.05 : parseFloat(vol);
+    return cachedVolume;
+  } catch {
+    return 0.05;
+  }
 };
 
 export const setSoundVolume = (vol: number) => {
-  localStorage.setItem(DAVVERO_SOUND_VOLUME, vol.toString());
+  cachedVolume = vol;
+  try {
+    localStorage.setItem(DAVVERO_SOUND_VOLUME, vol.toString());
+  } catch {}
 };
 
 let sharedAudioContext: AudioContext | any = null;

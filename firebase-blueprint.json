@@ -130,6 +130,25 @@
         "status": { "type": "string" },
         "timestamp": { "type": "string" }
       }
+    },
+    "Certificate": {
+      "title": "Certificate Record",
+      "description": "Registered certificate for event attendance or organization",
+      "type": "object",
+      "properties": {
+        "code": { "type": "string", "maxLength": 128 },
+        "eventId": { "type": "string", "maxLength": 128 },
+        "studentId": { "type": "string", "maxLength": 128 },
+        "memberRa": { "type": "string", "maxLength": 50 },
+        "memberName": { "type": "string", "maxLength": 150 },
+        "memberCourse": { "type": "string", "maxLength": 150 },
+        "eventTitle": { "type": "string", "maxLength": 250 },
+        "hours": { "type": "number" },
+        "isOrganizer": { "type": "boolean" },
+        "issuedAt": { "type": "string" },
+        "releasedAt": { "type": "string" },
+        "legacyCode": { "type": "string", "maxLength": 128 }
+      }
     }
   },
   "firestore": {
@@ -144,6 +163,10 @@
     "/artifacts/{appId}/public/data/attendances": {
       "schema": { "$ref": "#/entities/Attendance" },
       "description": "Stores event attendance and enrollment records"
+    },
+    "/artifacts/{appId}/public/data/certificates": {
+      "schema": { "$ref": "#/entities/Certificate" },
+      "description": "Stores issued certificates and validation records"
     },
     "/artifacts/{appId}/public/data/appointments": {
       "schema": { "$ref": "#/entities/Appointment" },

@@ -1143,7 +1143,7 @@ Instruções RIGOROSAS:
                         </label>
                         <input
                           type="text"
-                          placeholder={event.diocese ? event.diocese.replace(/Diocese\s+de\s+/i, '') : (settings.instCity || "Marília")}
+                          placeholder={(event as any).diocese ? (event as any).diocese.replace(/Diocese\s+de\s+/i, '') : (settings.instCity || "Marília")}
                           value={template.city || ""}
                           onChange={(e) => setTemplate({ ...template, city: e.target.value })}
                           className="w-full bg-white dark:bg-slate-950 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-2 text-xs font-medium text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500 shadow-xs"

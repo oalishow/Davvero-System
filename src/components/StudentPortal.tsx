@@ -684,29 +684,17 @@ export default function StudentPortal({
 
   const scrollToCard = () => {
     // Dynamic adaptive scroll considering device screen size, viewport height and header elements
-    setTimeout(() => {
+    if (typeof window === 'undefined') return;
+    window.requestAnimationFrame(() => {
       const el = cardRef.current || document.getElementById('student-carteirinha-container');
       if (el) {
         const rect = el.getBoundingClientRect();
-        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
-        const screenWidth = window.innerWidth;
-
-        // Mobile devices need safe offset for top fixed banners / navigation
-        let topOffset = 20;
-        if (screenWidth < 640) {
-          topOffset = 50; // Extra room for mobile header
-        } else if (screenWidth < 768) {
-          topOffset = 35;
-        } else {
-          topOffset = 20;
+        // Só aciona scroll se a carteirinha estiver fora do viewport visível
+        if (rect.top < 0 || rect.bottom > window.innerHeight) {
+          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
         }
-
-        const targetY = Math.max(0, rect.top + scrollTop - topOffset);
-        window.scrollTo({ top: targetY, behavior: 'smooth' });
-      } else {
-        window.scrollTo({ top: 0, behavior: 'smooth' });
       }
-    }, 100);
+    });
   };
 
   // Fallback PIN state

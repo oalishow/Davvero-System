@@ -655,8 +655,10 @@ export default function Verifier({
         }
 
         setCacheLoaded(true);
-        // Background retroactive sync for legacy certificates
-        syncAllExistingCertificates().catch(() => null);
+        // Background retroactive sync for legacy certificates (authenticated only)
+        if (auth.currentUser) {
+          syncAllExistingCertificates().catch(() => null);
+        }
       } catch (e) {
         console.error("Cache load error", e);
         if (retries > 0) {

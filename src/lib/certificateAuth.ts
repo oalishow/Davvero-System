@@ -1,4 +1,4 @@
-import { db, appId } from "./firebase";
+import { db, appId, auth } from "./firebase";
 import { doc, getDoc, setDoc, collection, getDocs, query, where, writeBatch } from "firebase/firestore";
 import type { Event, Member, Attendance, CertificateTemplate } from "../types";
 
@@ -277,6 +277,10 @@ export async function registerCertificateRecord(params: {
   };
 
   try {
+    if (!auth.currentUser) {
+      // Writing certificate records to Firestore requires authentication
+      return;
+    }
     const certRef = doc(db, `artifacts/${appId}/public/data/certificates`, record.code);
     await setDoc(certRef, record, { merge: true });
 
@@ -288,8 +292,10 @@ export async function registerCertificateRecord(params: {
         await setDoc(legacyRef, { ...record, legacyCode }, { merge: true }).catch(() => null);
       }
     }
-  } catch (err) {
-    console.warn("Failed to register certificate record in Firestore:", err);
+  } catch (err: any) {
+    if (err?.code !== "permission-denied" && !err?.message?.includes("insufficient permissions")) {
+      console.warn("Failed to register certificate record in Firestore:", err);
+    }
   }
 }
 
@@ -300,6 +306,11 @@ export async function registerCertificateRecord(params: {
  * This completely fixes already generated / printed certificates!
  */
 export async function syncAllExistingCertificates(): Promise<number> {
+  // Syncing requires authenticated privileges to write to certificates collection
+  if (!auth.currentUser) {
+    return 0;
+  }
+
   try {
     const attsSnap = await getDocs(collection(db, `artifacts/${appId}/public/data/attendances`)).catch(() => null);
     if (!attsSnap || attsSnap.empty) return 0;
@@ -467,8 +478,10 @@ export async function syncAllExistingCertificates(): Promise<number> {
     }
 
     return count;
-  } catch (err) {
-    console.error("Error during syncAllExistingCertificates:", err);
+  } catch (err: any) {
+    if (err?.code !== "permission-denied" && !err?.message?.includes("insufficient permissions")) {
+      console.warn("Notice during syncAllExistingCertificates:", err);
+    }
     return 0;
   }
 }
