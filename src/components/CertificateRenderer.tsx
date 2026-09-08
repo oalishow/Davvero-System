@@ -121,7 +121,7 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
           isOrganizer: Boolean(isOrganizer),
         }).catch(() => null);
       }
-    }, [certCode, event, member, isOrganizer]);
+    }, [certCode, event?.id, member?.id, isOrganizer]);
 
     const startObj = new Date(event.startDate);
     const endObj = event.endDate ? new Date(event.endDate) : startObj;

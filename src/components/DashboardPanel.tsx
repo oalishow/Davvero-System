@@ -30,6 +30,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
   const [activeRange, setActiveRange] = useState<"7d" | "14d" | "all">("14d");
 
   const [telemetry, setTelemetry] = useState<TelemetryStats | null>(null);
+  const [realtimeOnlineCount, setRealtimeOnlineCount] = useState<number | null>(null);
   const [chartsReady, setChartsReady] = useState(false);
 
   const [dbData, setDbData] = useState<{
@@ -334,12 +335,16 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         let online = 0;
         snap.forEach((d) => {
           const data = d.data();
-          if (data.lastActive) {
-            const diff = now - new Date(data.lastActive).getTime();
-            if (diff < 120 * 1000) online++;
+          const ts = data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0);
+          if (ts && Math.abs(now - ts) < 240 * 1000) {
+            online++;
           }
         });
-        setTelemetry((prev) => prev ? { ...prev, onlineUsersCount: Math.max(1, online) } : prev);
+        const finalCount = Math.max(1, online);
+        setRealtimeOnlineCount(finalCount);
+        setTelemetry((prev) => prev ? { ...prev, onlineUsersCount: finalCount } : prev);
+      }, (err) => {
+        console.warn("Notice in online presence listener:", err?.message || err);
       });
       return () => unsubscribe();
     } catch (err) {
@@ -489,10 +494,10 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           <div className="mt-4">
             <div className="flex items-baseline gap-2">
               <p className="text-4xl font-black text-slate-800 dark:text-white tracking-tight">
-                {telemetry.onlineUsersCount}
+                {realtimeOnlineCount ?? telemetry.onlineUsersCount}
               </p>
               <span className="text-xs font-semibold text-emerald-600 dark:text-emerald-400">
-                {telemetry.onlineUsersCount === 1 ? "sessão ativa" : "sessões ativas"}
+                {(realtimeOnlineCount ?? telemetry.onlineUsersCount) === 1 ? "sessão ativa" : "sessões ativas"}
               </span>
             </div>
             <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">

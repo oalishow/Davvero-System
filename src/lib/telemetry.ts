@@ -186,18 +186,14 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
 
   const updateHeartbeat = async () => {
     try {
-      // Avoid heartbeat if document is hidden in background
-      if (typeof document !== "undefined" && document.visibilityState === "hidden") {
-        return;
-      }
       lastHeartbeatTime = Date.now();
-      await loginAnon();
       await setDoc(presenceDocRef, {
         sessionId,
         userEmail: userEmail || auth.currentUser?.email || "Anônimo",
         role: role,
         device: getDeviceType(),
         lastActive: new Date().toISOString(),
+        lastActiveTimestamp: Date.now(),
         updatedAt: serverTimestamp(),
       }, { merge: true });
       trackLocalDbOperation("write", 1);
@@ -209,36 +205,25 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
   // Immediate heartbeat on start
   updateHeartbeat();
 
-  // Pulse every 90 seconds (saves ~65% of Firestore writes while keeping online status fresh)
-  const intervalId = setInterval(updateHeartbeat, 90000);
+  // Pulse every 45 seconds to keep online status reliably fresh across devices
+  const intervalId = setInterval(updateHeartbeat, 45000);
 
-  // Resume heartbeat when tab becomes visible after being hidden
-  const handleVisibilityChange = () => {
+  // Resume heartbeat when tab becomes visible or gains focus
+  const handleVisibilityOrFocus = () => {
     if (document.visibilityState === "visible") {
       const elapsed = Date.now() - lastHeartbeatTime;
-      if (elapsed > 60000) {
+      if (elapsed > 30000) {
         updateHeartbeat();
       }
     }
   };
-  document.addEventListener("visibilitychange", handleVisibilityChange);
-
-  // Remove presence on window unload
-  const handleUnload = () => {
-    try {
-      deleteDoc(presenceDocRef);
-    } catch (e) {}
-  };
-
-  window.addEventListener("beforeunload", handleUnload);
+  document.addEventListener("visibilitychange", handleVisibilityOrFocus);
+  window.addEventListener("focus", handleVisibilityOrFocus);
 
   return () => {
     clearInterval(intervalId);
-    document.removeEventListener("visibilitychange", handleVisibilityChange);
-    window.removeEventListener("beforeunload", handleUnload);
-    try {
-      deleteDoc(presenceDocRef);
-    } catch (e) {}
+    document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
+    window.removeEventListener("focus", handleVisibilityOrFocus);
   };
 };
 
@@ -288,12 +273,10 @@ export const getFullTelemetryData = async (
     
     presenceSnap.forEach((d) => {
       const data = d.data();
-      let isActive = true;
-      if (data.lastActive) {
-        const lastActiveTime = new Date(data.lastActive).getTime();
-        if (now - lastActiveTime > 120 * 1000) {
-          isActive = false;
-        }
+      let isActive = false;
+      const ts = data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0);
+      if (ts && Math.abs(now - ts) < 240 * 1000) {
+        isActive = true;
       }
       if (isActive) validOnline++;
     });

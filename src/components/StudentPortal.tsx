@@ -793,6 +793,8 @@ export default function StudentPortal({
         setPastEvents(evts.filter((e) => e.status === "encerrado" && !e.isSeminary && !e.isDiocese && !e.dioceseId && (e as any).category !== "diocese" && (e as any).type !== "diocese"));
         setSeminaryAvailableEvents(evts.filter((e) => e.status === "aberto" && e.isSeminary && (!e.seminaryId || e.seminaryId === member.seminary || hasPrivilegedRole)));
         setSeminaryPastEvents(evts.filter((e) => e.status === "encerrado" && e.isSeminary && (!e.seminaryId || e.seminaryId === member.seminary || hasPrivilegedRole)));
+      }, (err) => {
+        console.warn("Notice in StudentPortal events listener:", err?.message || err);
       });
 
       const qAttendances = query(
@@ -802,6 +804,8 @@ export default function StudentPortal({
       unsubAttendances = onSnapshot(qAttendances, (snap) => {
         const list = snap.docs.map(d => d.data() as Attendance);
         setMyAttendances(list);
+      }, (err) => {
+        console.warn("Notice in StudentPortal attendances listener:", err?.message || err);
       });
 
       return () => {
@@ -1349,6 +1353,8 @@ export default function StudentPortal({
              return m;
            });
          }
+       }, (err) => {
+         console.warn("Notice in StudentPortal member listener:", err?.message || err);
        });
        return unsub;
     };

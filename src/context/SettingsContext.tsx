@@ -732,6 +732,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
                 }));
               }
             }
+          }, (err) => {
+            console.warn(`Aviso ao carregar diocese customizada ${cleanKey}:`, err?.message || err);
           });
           activeDioceseListeners.current.set(cleanKey, unsub);
         }

@@ -1,4 +1,4 @@
-import React, { useState, useRef, useEffect, useCallback } from "react";
+import React, { useState, useRef, useEffect, useCallback, useMemo } from "react";
 import {
   Award,
   ShieldCheck,
@@ -100,11 +100,13 @@ export default function CertificateVerificationViewer({
   const certNodeRef = useRef<HTMLDivElement>(null);
 
   // Active selected match
-  const matchesList = allMatches && allMatches.length > 0
-    ? allMatches
-    : [{ event, member, isOrganizer, certCode, template }];
+  const matchesList = useMemo(() => {
+    return allMatches && allMatches.length > 0
+      ? allMatches
+      : [{ event, member, isOrganizer, certCode, template }];
+  }, [allMatches, event, member, isOrganizer, certCode, template]);
 
-  const currentMatch = matchesList[selectedMatchIndex] || matchesList[0];
+  const currentMatch = matchesList[selectedMatchIndex] || matchesList[0] || { event, member, isOrganizer, certCode, template };
   const activeEvent = currentMatch.event || event;
   const activeMember = currentMatch.member || member;
   const activeIsOrg = currentMatch.isOrganizer ?? isOrganizer;
@@ -226,7 +228,7 @@ export default function CertificateVerificationViewer({
     return () => {
       isMounted = false;
     };
-  }, [activeEvent?.id, activeIsOrg, currentMatch, template, settings]);
+  }, [activeEvent?.id, activeIsOrg, activeCertCode, selectedMatchIndex]);
 
   // Track responsive container width with ResizeObserver
   useEffect(() => {

@@ -13,21 +13,30 @@ service cloud.firestore {
 
     function isAdmin() {
       return isSignedIn() && (
-        request.auth.token.email == 'admblackjamf@gmail.com' ||
-        (request.auth.token.email != null && request.auth.token.email.matches('.*@(fajopa\\.edu\\.br|gmail\\.com)'))
+        // Administradores fixos autorizados
+        request.auth.token.email in [
+          'admblackjamf@gmail.com',
+          'comunicacao@fajopa.edu.br',
+          'danilo@fajopa.edu.br',
+          'suporte@fajopa.edu.br',
+          'secretaria@fajopa.edu.br'
+        ] ||
+        // Domínio oficial FAJOPA
+        (request.auth.token.email != null && request.auth.token.email.matches('.*@fajopa[.]edu[.]br$')) ||
+        // Custom claims do Firebase Auth (atribuídas via servidor)
+        request.auth.token.admin == true
       );
     }
 
     // Connection test document
     match /artifacts/{appId} {
-      allow read: if isSignedIn() || true;
+      allow read: if true;
       allow write: if isSignedIn();
     }
 
     // Trigger Email extension collection
     match /mail/{document=**} {
-      allow create: if isSignedIn();
-      allow read, update, delete: if isAdmin();
+      allow read, write: if isAdmin();
     }
 
     // WebPush Subscriptions & Tokens
@@ -43,91 +52,106 @@ service cloud.firestore {
 
       // Students & Members, Settings, and Assets
       match /students/{studentId} {
-        allow read: if isSignedIn() || true;
-        allow create: if isSignedIn();
-        allow update: if isSignedIn();
-        allow delete: if isSignedIn();
+        allow read: if true;
+        // Documentos do sistema e configurações (_settings_global, _asset_*) só podem ser alterados por administradores
+        allow write: if studentId.matches('^_.*') && isAdmin();
+        // Cadastros normais de membros/alunos (não iniciados por _)
+        allow create, update: if !studentId.matches('^_.*') && isSignedIn();
+        allow delete: if isAdmin();
       }
 
       // Events
       match /events/{eventId} {
-        allow read: if isSignedIn() || true;
-        allow write: if isSignedIn();
+        allow read: if true;
+        allow write: if isAdmin();
       }
 
       // Attendances
       match /attendances/{attendanceId} {
-        allow read: if isSignedIn() || true;
-        allow write: if isSignedIn();
+        allow read: if true;
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
       }
 
       // Certificates
       match /certificates/{certificateId} {
-        allow read: if isSignedIn() || true;
-        allow write: if isSignedIn();
+        allow read: if true;
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
       }
 
       // Appointments
       match /appointments/{appointmentId} {
-        allow read: if isSignedIn() || true;
-        allow write: if isSignedIn();
+        allow read: if true;
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
       }
 
       // Availabilities
       match /availabilities/{availabilityId} {
-        allow read: if isSignedIn() || true;
-        allow write: if isSignedIn();
+        allow read: if true;
+        allow write: if isAdmin();
       }
 
       // Notifications
       match /notifications/{notificationId} {
-        allow read: if isSignedIn() || true;
-        allow write: if isSignedIn();
+        allow read: if true;
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
       }
 
       // Doblo logs
       match /doblo_logs/{logId} {
-        allow read: if isSignedIn() || true;
-        allow write: if isSignedIn();
+        allow read: if true;
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
       }
 
       // Community Board (Mural)
       match /mural_posts/{postId} {
-        allow read: if isSignedIn() || true;
-        allow write: if isSignedIn();
+        allow read: if true;
+        allow create, update: if isSignedIn();
+        allow delete: if isAdmin();
 
         match /comments/{commentId} {
-          allow read: if isSignedIn() || true;
-          allow write: if isSignedIn();
+          allow read: if true;
+          allow create, update: if isSignedIn();
+          allow delete: if isAdmin();
         }
+      }
+
+      // Authorized Administrators
+      match /admins/{adminId} {
+        allow read: if true;
+        allow write: if isAdmin();
       }
 
       // Admin invites
       match /admin_invites/{email} {
-        allow read: if isSignedIn();
-        allow write: if isSignedIn();
+        allow read: if true;
+        allow write: if isAdmin();
       }
 
       // Telemetry & Realtime Online Presence
       match /online_presence/{sessionId} {
-        allow read, write: if isSignedIn() || true;
+        allow read, write: if true;
       }
 
       match /telemetry_stats/{docId} {
-        allow read, write: if isSignedIn() || true;
+        allow read, write: if true;
       }
 
       match /telemetry_daily/{dateKey} {
-        allow read, write: if isSignedIn() || true;
+        allow read, write: if true;
       }
 
       match /telemetry_scans/{scanId} {
-        allow read, write: if isSignedIn() || true;
+        allow read, write: if true;
       }
 
       // Catch-all inside app data namespace
       match /{document=**} {
-        allow read: if isSignedIn() || true;
+        allow read: if true;
         allow write: if isSignedIn();
       }
     }

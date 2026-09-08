@@ -33,6 +33,8 @@ export default function EventsRecycleBin() {
           new Date(b.deletedAt!).getTime() - new Date(a.deletedAt!).getTime(),
       );
       setDeletedEvents(activeDeleted);
+    }, (err) => {
+      console.warn("Notice in EventsRecycleBin listener:", err?.message || err);
     });
 
     return () => unsub();

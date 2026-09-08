@@ -206,6 +206,8 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
         return aIsFuture ? -1 : 1;
       });
       setEvents(evts);
+    }, (err) => {
+      console.warn("Notice in EventsPage events listener:", err?.message || err);
     });
 
     return () => unsubEvents();
@@ -318,6 +320,8 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     const unsubAttendances = onSnapshot(qAttendances, (snap) => {
       const atts = snap.docs.map(d => d.data() as Attendance);
       setMyAttendances(atts);
+    }, (err) => {
+      console.warn("Notice in EventsPage attendances listener:", err?.message || err);
     });
 
     return () => unsubAttendances();

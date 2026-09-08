@@ -597,19 +597,37 @@ export async function resolveCertificate(
   // -------------------------------------------------------------
   if (matchedRecords.length === 0) {
     const runQueries = async () => {
-      const queryTasks = [
+      // 1. Try exact certificate code matches first
+      const codeQueries = [
         getDocs(query(certificatesCol, where("code", "==", cleanUpper))).catch(() => null),
         getDocs(query(certificatesCol, where("legacyCode", "==", cleanUpper))).catch(() => null),
-        getDocs(query(certificatesCol, where("memberRa", "==", code))).catch(() => null),
-        cleanAlpha !== code ? getDocs(query(certificatesCol, where("memberRa", "==", cleanAlpha))).catch(() => null) : null,
-        getDocs(query(certificatesCol, where("studentId", "==", code))).catch(() => null),
-        getDocs(query(certificatesCol, where("eventId", "==", code))).catch(() => null),
       ];
+      if (withoutPrefix !== cleanUpper) {
+        codeQueries.push(getDocs(query(certificatesCol, where("code", "==", withoutPrefix))).catch(() => null));
+        codeQueries.push(getDocs(query(certificatesCol, where("code", "==", `FAJ-${withoutPrefix}`))).catch(() => null));
+      }
 
-      const results = await Promise.all(queryTasks);
-      for (const snap of results) {
+      const codeResults = await Promise.all(codeQueries);
+      for (const snap of codeResults) {
         if (snap && !snap.empty) {
           snap.forEach((d) => addRecord(d.data() as CertificateRecord));
+        }
+      }
+
+      // 2. Only if no exact certificate was found by code, search by member RA / studentId / eventId
+      if (matchedRecords.length === 0) {
+        const studentTasks = [
+          getDocs(query(certificatesCol, where("memberRa", "==", code))).catch(() => null),
+          cleanAlpha !== code ? getDocs(query(certificatesCol, where("memberRa", "==", cleanAlpha))).catch(() => null) : null,
+          getDocs(query(certificatesCol, where("studentId", "==", code))).catch(() => null),
+          getDocs(query(certificatesCol, where("eventId", "==", code))).catch(() => null),
+        ];
+
+        const results = await Promise.all(studentTasks);
+        for (const snap of results) {
+          if (snap && !snap.empty) {
+            snap.forEach((d) => addRecord(d.data() as CertificateRecord));
+          }
         }
       }
     };
@@ -758,15 +776,28 @@ export async function resolveCertificate(
     const allItems = await Promise.all(matchedRecords.map(enrichRecord));
     // Sort so exact code matches or latest issued certificates come first
     allItems.sort((a, b) => {
-      if (a.certCode === cleanUpper) return -1;
-      if (b.certCode === cleanUpper) return 1;
+      const aCode = (a.certCode || "").toUpperCase();
+      const bCode = (b.certCode || "").toUpperCase();
+      if (aCode === cleanUpper) return -1;
+      if (bCode === cleanUpper) return 1;
+      if (aCode.includes(cleanUpper)) return -1;
+      if (bCode.includes(cleanUpper)) return 1;
       return 0;
     });
 
-    const primary = allItems[0];
+    const exactMatch = allItems.find(
+      (item) =>
+        item.certCode?.toUpperCase() === cleanUpper ||
+        item.certCode?.toUpperCase() === `FAJ-${cleanUpper}` ||
+        cleanUpper === `FAJ-${item.certCode?.toUpperCase()}`
+    );
+
+    const primary = exactMatch || allItems[0];
+    const candidateMatches = exactMatch ? [exactMatch] : allItems;
+
     return {
       ...primary,
-      allMatches: allItems.length > 1 ? allItems : undefined,
+      allMatches: candidateMatches.length > 1 ? candidateMatches : undefined,
     };
   }
 

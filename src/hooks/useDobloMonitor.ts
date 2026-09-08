@@ -73,6 +73,8 @@ export function useDobloMonitor(bondedId: string | null) {
         checkLogs();
         if (interval) clearInterval(interval);
         interval = setInterval(checkLogs, 60000);
+      }, (err) => {
+        console.warn("Notice in useDobloMonitor listener:", err?.message || err);
       });
     } catch (e) {
       console.error("Error monitoring doblo logs", e);

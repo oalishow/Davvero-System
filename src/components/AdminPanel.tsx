@@ -373,6 +373,8 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
         .map((d) => ({ id: d.id, ...d.data() }) as Member);
       setAllMembers(members);
       loadDashboardStats(members);
+    }, (err) => {
+      console.warn("Notice in AdminPanel members listener:", err?.message || err);
     });
 
     return () => unsub();

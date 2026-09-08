@@ -149,6 +149,18 @@
         "releasedAt": { "type": "string" },
         "legacyCode": { "type": "string", "maxLength": 128 }
       }
+    },
+    "Admin": {
+      "title": "Authorized Admin",
+      "description": "System administrator record",
+      "type": "object",
+      "properties": {
+        "email": { "type": "string", "format": "email" },
+        "role": { "type": "string" },
+        "createdAt": { "type": "string" },
+        "createdBy": { "type": "string" }
+      },
+      "required": ["email"]
     }
   },
   "firestore": {
@@ -195,6 +207,10 @@
     "/artifacts/{appId}/public/data/telemetry_scans": {
       "schema": { "$ref": "#/entities/TelemetryScan" },
       "description": "Recent QR code scan telemetry logs"
+    },
+    "/artifacts/{appId}/public/data/admins": {
+      "schema": { "$ref": "#/entities/Admin" },
+      "description": "Stores authorized administrator accounts and permissions"
     }
   }
 }

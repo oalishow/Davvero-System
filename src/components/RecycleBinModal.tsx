@@ -71,6 +71,8 @@ export default function RecycleBinModal({ onClose, initialTab = "members" }: { o
       }
       activeDeleted.sort((a,b) => new Date(b.deletedAt!).getTime() - new Date(a.deletedAt!).getTime());
       setDeletedDobloLogs(activeDeleted);
+    }, (err) => {
+      console.warn("Notice in RecycleBinModal doblo listener:", err?.message || err);
     });
 
     document.body.style.overflow = 'hidden';

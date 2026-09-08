@@ -182,6 +182,8 @@ export default function EventManagement({
         return aIsFuture ? -1 : 1;
       });
       setEvents(evts);
+    }, (err) => {
+      console.warn("Notice in EventManagement events listener:", err?.message || err);
     });
 
     const qAttendances = query(collection(db, `artifacts/${appId}/public/data/attendances`));
@@ -194,6 +196,8 @@ export default function EventManagement({
         }
       });
       setAttendancesCount(counts);
+    }, (err) => {
+      console.warn("Notice in EventManagement attendances listener:", err?.message || err);
     });
 
     // Periodic check every 25 seconds for scheduled end-time auto-close

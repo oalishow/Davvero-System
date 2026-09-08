@@ -8,6 +8,18 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v8.3b',
+      title: 'Presença Online em Tempo Real, Correção no Diploma do Certificado & Busca Exata de QR Code',
+      changes: [
+        'Usuários em Tempo Real Resilientes: sincronização do painel administrativo por timestamp numérico com tolerância ampliada para celulares e conexões móveis, atualizando as sessões ativas no exato instante da conexão.',
+        'Pulso de Heartbeat Dinâmico: intervalo de pulso de presença ajustado para 45 segundos com reativação imediata ao ganhar foco ou retornar à aba.',
+        'Fim da Piscada / Tremor no Diploma: estabilização do ciclo de vida e renderização em memória (useMemo) no visualizador oficial do certificado, eliminando loops de re-renderização e garantindo carregamento fluido.',
+        'Autenticação de QR Code sem Falsos Conflitos: busca e resolução priorizada pelo código exato do certificado, evitando que participantes com múltiplos certificados (ex.: ouvinte e organizador) sofram sobreposição indevida ao escanear o QR Code individual.',
+        'Estabilização de Ouvintes do Firestore: desacoplamento de listeners e salvamento idempotente no renderizador de certificados.',
+      ],
+      current: true,
+    },
+    {
       version: 'v8.2b',
       title: 'Impressão Isolada, Paridade no Verificador, Horário/Local e Banco de Logos Reutilizáveis',
       changes: [
@@ -19,7 +31,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Autenticação de Certificados via QR Code: resolução definitiva para a verificação e redirecionamento instantâneo ao escanear o código.',
         'Abertura no PWA e Notificações com Redirecionamento Direto: atalho para abrir no aplicativo instalado e cliques em notificações direcionando para os eventos e certificados correspondentes.'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v8.1b',

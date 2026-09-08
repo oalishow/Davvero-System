@@ -198,6 +198,9 @@ export function useNotifications(recipientInput: string | string[] | null) {
 
     // Consulta Firestore com suporte a múltiplos identificadores do usuário + broadcast 'todos'
     const queryIds = recipientIds.slice(0, 10); // Firestore 'in' limitation
+    if (queryIds.length === 0) {
+      return () => {};
+    }
     const q = query(
       collection(db, `artifacts/${appId}/public/data/notifications`),
       where("recipientId", "in", queryIds)

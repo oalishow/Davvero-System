@@ -1,5 +1,22 @@
 export const PASSWORD_STORAGE_KEY = "studentAdminPassword";
 export const DEFAULT_ADMIN_PASSWORD = "ADMIN";
+
+export const AUTHORIZED_ADMIN_EMAILS = [
+  'admblackjamf@gmail.com',
+  'comunicacao@fajopa.edu.br',
+  'danilo@fajopa.edu.br',
+  'suporte@fajopa.edu.br',
+  'secretaria@fajopa.edu.br'
+];
+
+export const isInstitutionalAdminEmail = (email?: string | null): boolean => {
+  if (!email) return false;
+  const clean = email.trim().toLowerCase();
+  return (
+    AUTHORIZED_ADMIN_EMAILS.includes(clean) ||
+    clean.endsWith('@fajopa.edu.br')
+  );
+};
 export const URL_STORAGE_KEY = "studentVerifierUrl";
 export const DEFAULT_PUBLIC_URL = "https://davvero.netlify.app";
 export const BACKUP_STORAGE_KEY = "davveroId_local_backup";
@@ -26,8 +43,8 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "8.2b";
-export const APP_BUILD = "07.09.2026";
+export const APP_VERSION = "8.3b";
+export const APP_BUILD = "08.09.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
@@ -182,6 +199,10 @@ export function safeSessionStorageSet(key: string, value: string): boolean {
 }
 
 export const CHANGELOG = [
+  "Versão 8.3b - Presença Online em Tempo Real, Correção no Diploma do Certificado & Busca Exata de QR Code",
+  "Sincronização de sessões ativas com tolerância a conexões móveis e pulso heartbeat dinâmico a cada 45s; estabilização da renderização do diploma oficial eliminando efeito de tela piscando/tremendo; e busca priorizada de autenticação por código exato ao escanear o QR Code de certificados individuais.",
+  "Versão 8.2b - Impressão Isolada, Paridade no Verificador, Horário/Local e Banco de Logos Reutilizáveis",
+  "Impressão A4 paisagem isolando o certificado oficial sem cabeçalhos ou menus; paridade completa e hidratação fiel entre o verificador público e a Minha ID; campos claros de horário e local em eventos presenciais; data oficial fixada no dia da liberação; biblioteca de logos reutilizáveis e atalhos diretos via PWA.",
   "Versão 8.1b - Gestão de Enquetes, Correção de Autenticidade de Certificados & Presença Multi-Dias",
   "Novo gerenciador de enquetes com imagens, votos anônimos, múltipla escolha e duração; correção total dos códigos e QR Code de autenticidade dos certificados (retroativo a certificados já emitidos); auto-liberação de certificados pós-evento; correção do download individual (PDF); presença diária para eventos de múltiplos dias; carteirinha dinâmica conforme cadastro (Doc. Universitário / Estudantil / Profissional da Educação); painel Novo Evento retrátil; visualização pública de cartazes de eventos.",
   "Versão 8.0b - Correção Geral de Assinaturas, Remoção do Mural & Atualização Sob Demanda",

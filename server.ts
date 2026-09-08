@@ -394,8 +394,32 @@ async function startServer() {
     return rawMsg;
   }
 
+  // Rate Limiting em memória para proteção contra disparos abusivos e esgotamento de cotas
+  const emailRateLimitMap = new Map<string, { count: number; resetTime: number }>();
+  function checkRateLimit(key: string, maxRequests = 40, windowMs = 60000): boolean {
+    const now = Date.now();
+    const entry = emailRateLimitMap.get(key);
+    if (!entry || now > entry.resetTime) {
+      emailRateLimitMap.set(key, { count: 1, resetTime: now + windowMs });
+      return true;
+    }
+    if (entry.count >= maxRequests) {
+      return false;
+    }
+    entry.count++;
+    return true;
+  }
+
   // Send Email Notification Endpoint
   app.post("/api/email/send", async (req, res) => {
+    const clientIp = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "client").split(",")[0].trim();
+    if (!checkRateLimit(`send-${clientIp}`, 40, 60000)) {
+      return res.status(429).json({ 
+        success: false, 
+        error: "Limite de envios por minuto atingido para proteger a cota institucional. Aguarde alguns instantes antes de enviar novos e-mails." 
+      });
+    }
+
     const { to, subject, html, text, customSmtp } = req.body;
 
     if (!to || !subject || (!html && !text)) {
@@ -466,6 +490,14 @@ async function startServer() {
 
   // Test SMTP Connection Endpoint
   app.post("/api/email/test-connection", async (req, res) => {
+    const clientIp = (req.headers["x-forwarded-for"] as string || req.socket.remoteAddress || "client").split(",")[0].trim();
+    if (!checkRateLimit(`test-${clientIp}`, 10, 60000)) {
+      return res.status(429).json({ 
+        success: false, 
+        error: "Muitas tentativas de teste de conexão SMTP. Aguarde um minuto antes de tentar novamente." 
+      });
+    }
+
     const { customSmtp, testRecipient } = req.body;
     try {
       const transporter = await getMailTransporter(customSmtp);

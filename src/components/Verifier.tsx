@@ -9,6 +9,7 @@ import {
   auth,
   registerVisitor,
   findMemberByCPF,
+  loginAnon,
 } from "../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import type { Member, Event, Attendance } from "../types";
@@ -602,7 +603,23 @@ export default function Verifier({
   useEffect(() => {
     // Populate cache for "offline fallback" strategy
     const loadCache = async (retries = 3) => {
+      // 1. Preload local cache immediately so the UI is responsive without waiting
       try {
+        const mCache = localStorage.getItem("davveroId_offline_members");
+        if (mCache) setMembersCache(JSON.parse(mCache));
+        const eCache = localStorage.getItem("davveroId_offline_events");
+        if (eCache) setEventsCache(JSON.parse(eCache));
+        const aCache = localStorage.getItem("davveroId_offline_attendances");
+        if (aCache) setAttendancesCache(JSON.parse(aCache));
+        if (mCache || eCache || aCache) {
+          setCacheLoaded(true);
+        }
+      } catch {}
+
+      try {
+        // 2. Ensure anonymous or existing authentication before querying Firestore
+        await loginAnon();
+
         const qStudents = query(
           collection(db, `artifacts/${appId}/public/data/students`),
         );
@@ -659,18 +676,20 @@ export default function Verifier({
         if (auth.currentUser) {
           syncAllExistingCertificates().catch(() => null);
         }
-      } catch (e) {
-        console.error("Cache load error", e);
+      } catch (e: any) {
         if (retries > 0) {
-          console.log(`Retrying cache load in 3s... (${retries} left)`);
-          setTimeout(() => loadCache(retries - 1), 3000);
+          console.warn(`Aviso no sincronismo de cache offline (${retries} tentativas restantes):`, e?.message || e);
+          setTimeout(() => loadCache(retries - 1), 2500);
         } else {
-          const mCache = localStorage.getItem("davveroId_offline_members");
-          if (mCache) setMembersCache(JSON.parse(mCache));
-          const eCache = localStorage.getItem("davveroId_offline_events");
-          if (eCache) setEventsCache(JSON.parse(eCache));
-          const aCache = localStorage.getItem("davveroId_offline_attendances");
-          if (aCache) setAttendancesCache(JSON.parse(aCache));
+          console.warn("Utilizando cache offline local após tentativa de sincronização:", e?.message || e);
+          try {
+            const mCache = localStorage.getItem("davveroId_offline_members");
+            if (mCache) setMembersCache(JSON.parse(mCache));
+            const eCache = localStorage.getItem("davveroId_offline_events");
+            if (eCache) setEventsCache(JSON.parse(eCache));
+            const aCache = localStorage.getItem("davveroId_offline_attendances");
+            if (aCache) setAttendancesCache(JSON.parse(aCache));
+          } catch {}
           setCacheLoaded(true); // Stop loading spinner even if failed to allow manual entry
         }
       }

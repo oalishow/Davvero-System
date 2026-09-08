@@ -1,13 +1,14 @@
 import { useState, useEffect } from "react";
 import { KeyRound, UserPlus, LogIn, ChevronRight, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { PASSWORD_STORAGE_KEY, DEFAULT_ADMIN_PASSWORD } from "../lib/constants";
+import { PASSWORD_STORAGE_KEY, DEFAULT_ADMIN_PASSWORD, isInstitutionalAdminEmail } from "../lib/constants";
 import { auth } from "../lib/firebase";
 import {
   signInWithEmailAndPassword,
   createUserWithEmailAndPassword,
   sendPasswordResetEmail,
   signInWithPopup,
+  signOut,
   GoogleAuthProvider
 } from "firebase/auth";
 
@@ -47,10 +48,11 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
 
     if (isRegister) {
       let skipMaster = false;
+      const emailClean = email.trim().toLowerCase();
       try {
         const { doc: getDocRef, getDoc } = await import("firebase/firestore");
         const { db, appId } = await import("../lib/firebase");
-        inviteDocRef = getDocRef(db, `artifacts/${appId}/public/data/admin_invites`, email.toLowerCase());
+        inviteDocRef = getDocRef(db, `artifacts/${appId}/public/data/admin_invites`, emailClean);
         const inviteSnap = await getDoc(inviteDocRef);
         if (inviteSnap.exists()) {
           skipMaster = true;
@@ -61,6 +63,12 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
       }
 
       if (!skipMaster) {
+        // Validação obrigatória de e-mail institucional ou autorizado caso não tenha convite emitido
+        if (!isInstitutionalAdminEmail(emailClean)) {
+          setError("Apenas e-mails institucionais autorizados (@fajopa.edu.br) ou e-mails com convite prévio emitido pela administração podem se registrar como administradores.");
+          return;
+        }
+
         if (!masterConfirm) {
            setError("A Senha Mestra é necessária para registrar.");
            return;
@@ -69,7 +77,7 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
         const storedMaster =
           localStorage.getItem(PASSWORD_STORAGE_KEY) || DEFAULT_ADMIN_PASSWORD;
         if (masterConfirm !== storedMaster) {
-          setError("Senha Mestra incorreta. Um convite prévio é necessário se não usar a senha mestra.");
+          setError("Senha Mestra incorreta.");
           return;
         }
       }
@@ -117,7 +125,6 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
 
   const handleGoogleAuth = async () => {
     const isRegister = activeTab === "register";
-    const inviteDocRef: any = null;
 
     if (isRegister) {
       if (!masterConfirm) {
@@ -140,6 +147,29 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
          prompt: 'select_account'
       });
       const result = await signInWithPopup(auth, provider);
+      const userEmail = result.user?.email?.toLowerCase() || "";
+
+      // Checar se o e-mail possui permissão institucional ou convite prévio
+      let hasInvite = false;
+      try {
+        const { doc: getDocRef, getDoc } = await import("firebase/firestore");
+        const { db, appId } = await import("../lib/firebase");
+        const invRef = getDocRef(db, `artifacts/${appId}/public/data/admin_invites`, userEmail);
+        const invSnap = await getDoc(invRef);
+        if (invSnap.exists()) {
+          hasInvite = true;
+          try {
+            const { deleteDoc } = await import("firebase/firestore");
+            await deleteDoc(invRef);
+          } catch {}
+        }
+      } catch {}
+
+      if (!hasInvite && !isInstitutionalAdminEmail(userEmail)) {
+        await signOut(auth);
+        setError(`A conta Google (${userEmail}) não possui autorização institucional (@fajopa.edu.br) nem convite prévio para acesso administrativo.`);
+        return;
+      }
       
       if (isRegister) {
         await showAlert("Administrador registrado com sucesso via Google!", { type: 'success' });
