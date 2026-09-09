@@ -15,6 +15,7 @@ import {
   CheckCheck, Globe, MapPin, Gauge
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
+import { SafeChartContainer } from "./SafeChartContainer";
 
 const COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6', '#ec4899', '#14b8a6', '#f97316', '#ef4444'];
 const SCAN_COLORS = ['#0ea5e9', '#10b981', '#f59e0b', '#8b5cf6'];
@@ -734,35 +735,31 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               </div>
             </div>
           </div>
-          <div className="h-[280px] w-full min-w-0 relative mt-2">
-            {chartsReady ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                <AreaChart data={telemetry.dailyMetrics} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                  <defs>
-                    <linearGradient id="accessGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
-                      <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
-                    </linearGradient>
-                    <linearGradient id="scansGrad" x1="0" y1="0" x2="0" y2="1">
-                      <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.5}/>
-                      <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
-                    </linearGradient>
-                  </defs>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <RechartsTooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Area type="monotone" dataKey="accesses" name="Acessos ao App" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#accessGrad)" />
-                  <Area type="monotone" dataKey="scans" name="Leituras de QR Code" stroke="#0ea5e9" strokeWidth={3} fillOpacity={1} fill="url(#scansGrad)" />
-                </AreaChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
-            )}
-          </div>
+          <SafeChartContainer height={280} minHeight={200} className="mt-2">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <AreaChart data={telemetry.dailyMetrics} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                <defs>
+                  <linearGradient id="accessGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#6366f1" stopOpacity={0.4}/>
+                    <stop offset="95%" stopColor="#6366f1" stopOpacity={0}/>
+                  </linearGradient>
+                  <linearGradient id="scansGrad" x1="0" y1="0" x2="0" y2="1">
+                    <stop offset="5%" stopColor="#0ea5e9" stopOpacity={0.5}/>
+                    <stop offset="95%" stopColor="#0ea5e9" stopOpacity={0}/>
+                  </linearGradient>
+                </defs>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <RechartsTooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                />
+                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                <Area type="monotone" dataKey="accesses" name="Acessos ao App" stroke="#6366f1" strokeWidth={2.5} fillOpacity={1} fill="url(#accessGrad)" />
+                <Area type="monotone" dataKey="scans" name="Leituras de QR Code" stroke="#0ea5e9" strokeWidth={3} fillOpacity={1} fill="url(#scansGrad)" />
+              </AreaChart>
+            </ResponsiveContainer>
+          </SafeChartContainer>
         </motion.div>
 
         {/* Gráfico: Leituras vs. Escritas no Firestore (Operações) */}
@@ -787,25 +784,21 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               </div>
             </div>
           </div>
-          <div className="h-[280px] w-full min-w-0 relative mt-2">
-            {chartsReady ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                <BarChart data={telemetry.dailyMetrics} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
-                  <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
-                  <XAxis dataKey="date" tick={{ fontSize: 10 }} />
-                  <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
-                  <RechartsTooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
-                  />
-                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
-                  <Bar dataKey="reads" name="Leituras (Reads)" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
-                  <Bar dataKey="writes" name="Escritas (Writes)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
-                </BarChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
-            )}
-          </div>
+          <SafeChartContainer height={280} minHeight={200} className="mt-2">
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <BarChart data={telemetry.dailyMetrics} margin={{ top: 10, right: 20, left: -10, bottom: 0 }}>
+                <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
+                <XAxis dataKey="date" tick={{ fontSize: 10 }} />
+                <YAxis allowDecimals={false} tick={{ fontSize: 11 }} />
+                <RechartsTooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 12px rgba(0,0,0,0.1)' }}
+                />
+                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '11px', paddingTop: '10px' }} />
+                <Bar dataKey="reads" name="Leituras (Reads)" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
+                <Bar dataKey="writes" name="Escritas (Writes)" fill="#f59e0b" radius={[4, 4, 0, 0]} />
+              </BarChart>
+            </ResponsiveContainer>
+          </SafeChartContainer>
         </motion.div>
       </div>
 
@@ -832,33 +825,29 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               </p>
             </div>
           </div>
-          <div className="h-[220px] w-full min-w-0 relative">
-            {chartsReady ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                <PieChart>
-                  <Pie
-                    data={scanTypesData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {scanTypesData.map((entry, index) => (
-                      <Cell key={`cell-${index}`} fill={SCAN_COLORS[index % SCAN_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                  />
-                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
-            )}
-          </div>
+          <SafeChartContainer height={220} minHeight={180}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <PieChart>
+                <Pie
+                  data={scanTypesData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  paddingAngle={3}
+                  dataKey="value"
+                >
+                  {scanTypesData.map((entry, index) => (
+                    <Cell key={`cell-${index}`} fill={SCAN_COLORS[index % SCAN_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                />
+                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </SafeChartContainer>
         </motion.div>
 
         {/* Dispositivos e Meios de Acesso */}
@@ -881,33 +870,29 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               </p>
             </div>
           </div>
-          <div className="h-[220px] w-full min-w-0 relative">
-            {chartsReady ? (
-              <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
-                <PieChart>
-                  <Pie
-                    data={deviceData}
-                    cx="50%"
-                    cy="50%"
-                    innerRadius={50}
-                    outerRadius={80}
-                    paddingAngle={3}
-                    dataKey="value"
-                  >
-                    {deviceData.map((entry, index) => (
-                      <Cell key={`cell-dev-${index}`} fill={DEVICE_COLORS[index % DEVICE_COLORS.length]} />
-                    ))}
-                  </Pie>
-                  <RechartsTooltip 
-                    contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
-                  />
-                  <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
-                </PieChart>
-              </ResponsiveContainer>
-            ) : (
-              <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
-            )}
-          </div>
+          <SafeChartContainer height={220} minHeight={180}>
+            <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
+              <PieChart>
+                <Pie
+                  data={deviceData}
+                  cx="50%"
+                  cy="50%"
+                  innerRadius={50}
+                  outerRadius={80}
+                  paddingAngle={3}
+                  dataKey="value"
+                >
+                  {deviceData.map((entry, index) => (
+                    <Cell key={`cell-dev-${index}`} fill={DEVICE_COLORS[index % DEVICE_COLORS.length]} />
+                  ))}
+                </Pie>
+                <RechartsTooltip 
+                  contentStyle={{ borderRadius: '12px', border: 'none', boxShadow: '0 4px 6px -1px rgba(0,0,0,0.1)' }}
+                />
+                <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
+              </PieChart>
+            </ResponsiveContainer>
+          </SafeChartContainer>
         </motion.div>
 
         {/* Últimas Leituras em Tempo Real (Feed) */}
@@ -983,9 +968,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Top funções e categorias</p>
             </div>
           </div>
-          <div className="h-[260px] w-full min-w-0 relative">
+          <div className="w-full min-w-0 relative">
             {memberMetrics.rolesDistribution.length > 0 ? (
-              chartsReady ? (
+              <SafeChartContainer height={260} minHeight={200}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={memberMetrics.rolesDistribution.slice(0, 8)} margin={{ top: 10, right: 30, left: -10, bottom: 25 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
@@ -998,11 +983,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
                     <Bar dataKey="value" name="Membros" fill="#0ea5e9" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
-              )
+              </SafeChartContainer>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
+              <div className="flex flex-col items-center justify-center h-[260px] text-slate-400 text-xs">
                 Nenhum cargo registrado nos cadastros.
               </div>
             )}
@@ -1025,9 +1008,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Top dioceses de origem</p>
             </div>
           </div>
-          <div className="h-[260px] w-full min-w-0 relative">
+          <div className="w-full min-w-0 relative">
             {memberMetrics.dioceseDistribution.length > 0 ? (
-              chartsReady ? (
+              <SafeChartContainer height={260} minHeight={200}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <BarChart data={memberMetrics.dioceseDistribution.slice(0, 8)} margin={{ top: 10, right: 30, left: -10, bottom: 25 }}>
                     <CartesianGrid strokeDasharray="3 3" opacity={0.15} vertical={false} />
@@ -1040,11 +1023,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
                     <Bar dataKey="value" name="Membros" fill="#10b981" radius={[4, 4, 0, 0]} />
                   </BarChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
-              )
+              </SafeChartContainer>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
+              <div className="flex flex-col items-center justify-center h-[260px] text-slate-400 text-xs">
                 Nenhuma diocese especificada nos membros cadastrados.
               </div>
             )}
@@ -1067,9 +1048,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Origem dos Membros</p>
             </div>
           </div>
-          <div className="h-[260px] w-full min-w-0 relative">
+          <div className="w-full min-w-0 relative">
             {memberMetrics.seminaryDistribution.length > 0 ? (
-              chartsReady ? (
+              <SafeChartContainer height={260} minHeight={200}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
@@ -1101,11 +1082,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
                     <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
                   </PieChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
-              )
+              </SafeChartContainer>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
+              <div className="flex flex-col items-center justify-center h-[260px] text-slate-400 text-xs">
                 Nenhum seminário/casa de formação registrado.
               </div>
             )}
@@ -1128,9 +1107,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               <p className="text-[10px] md:text-xs text-slate-500 dark:text-slate-400 font-bold uppercase tracking-wider">Presencial / Online / Híbrido</p>
             </div>
           </div>
-          <div className="h-[260px] w-full min-w-0 relative">
+          <div className="w-full min-w-0 relative">
             {dbData.eventFormats.length > 0 ? (
-              chartsReady ? (
+              <SafeChartContainer height={260} minHeight={200}>
                 <ResponsiveContainer width="100%" height="100%" minWidth={0} minHeight={0}>
                   <PieChart>
                     <Pie
@@ -1162,11 +1141,9 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
                     <Legend layout="horizontal" verticalAlign="bottom" align="center" wrapperStyle={{ fontSize: '10px' }} />
                   </PieChart>
                 </ResponsiveContainer>
-              ) : (
-                <div className="h-full w-full flex items-center justify-center animate-pulse bg-slate-50/50 dark:bg-slate-800/20 rounded-2xl" />
-              )
+              </SafeChartContainer>
             ) : (
-              <div className="flex flex-col items-center justify-center h-full text-slate-400 text-xs">
+              <div className="flex flex-col items-center justify-center h-[260px] text-slate-400 text-xs">
                 Nenhum evento registrado ainda.
               </div>
             )}

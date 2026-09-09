@@ -495,6 +495,17 @@ export const enrollStudent = async (attendanceData: Omit<Attendance, "id">) => {
       if (attendanceData.checkInDates && attendanceData.checkInDates.length > 0) {
         updates.checkInDates = arrayUnion(...attendanceData.checkInDates);
       }
+      if (attendanceData.checkInRecords && attendanceData.checkInRecords.length > 0) {
+        updates.checkInRecords = arrayUnion(...attendanceData.checkInRecords);
+      } else if (attendanceData.status === "presente" && attendanceData.checkInDates && attendanceData.checkInDates.length > 0) {
+        const autoRecords = attendanceData.checkInDates.map(d => ({
+          date: d,
+          timestamp: attendanceData.timestamp || new Date().toISOString(),
+          validatedBy: "self",
+          validatorName: "Pelo Próprio Participante",
+        }));
+        updates.checkInRecords = arrayUnion(...autoRecords);
+      }
       if (attendanceData.isOrganizer !== undefined) {
         updates.isOrganizer = attendanceData.isOrganizer;
       }
@@ -510,7 +521,15 @@ export const enrollStudent = async (attendanceData: Omit<Attendance, "id">) => {
 
     const cleanData = Object.fromEntries(
       Object.entries(attendanceData).filter(([_, v]) => v !== undefined),
-    );
+    ) as any;
+    if (cleanData.status === "presente" && cleanData.checkInDates && (!cleanData.checkInRecords || cleanData.checkInRecords.length === 0)) {
+      cleanData.checkInRecords = (cleanData.checkInDates as string[]).map(d => ({
+        date: d,
+        timestamp: (cleanData.timestamp as string) || new Date().toISOString(),
+        validatedBy: "self",
+        validatorName: "Pelo Próprio Participante",
+      }));
+    }
     const attendanceItem = { ...cleanData, id: attendanceId } as Attendance;
 
     // Optional constraint check, but not blocking offline local save.
@@ -546,16 +565,46 @@ export const updateAttendanceStatus = async (
   attendanceId: string,
   status: "inscrito" | "presente",
   dateString?: string,
+  validationDetails?: {
+    validatedBy?: "self" | "admin" | "secretaria" | string;
+    validatorName?: string;
+    timestamp?: string;
+  }
 ) => {
   try {
-    const { doc, updateDoc, arrayUnion } = await import("firebase/firestore");
+    const { doc, updateDoc, arrayUnion, getDoc } = await import("firebase/firestore");
     const attRef = doc(db, `artifacts/${appId}/public/data/attendances`, attendanceId);
     
     if (status === "presente" && dateString) {
-      await updateDoc(attRef, { 
-        status, 
-        checkInDates: arrayUnion(dateString) 
-      });
+      const snap = await getDoc(attRef);
+      const newRecord = {
+        date: dateString,
+        timestamp: validationDetails?.timestamp || new Date().toISOString(),
+        validatedBy: validationDetails?.validatedBy || "admin",
+        validatorName: validationDetails?.validatorName || (validationDetails?.validatedBy === "self" ? "Pelo Próprio Participante" : "Pelo Administrador")
+      };
+
+      if (snap.exists()) {
+        const data = snap.data();
+        const existingDates: string[] = Array.isArray(data.checkInDates) ? data.checkInDates : [];
+        const existingRecords: any[] = Array.isArray(data.checkInRecords) ? data.checkInRecords : [];
+
+        const nextDates = Array.from(new Set([...existingDates, dateString]));
+        const nextRecords = existingRecords.filter((r) => r.date !== dateString);
+        nextRecords.push(newRecord);
+
+        await updateDoc(attRef, {
+          status,
+          checkInDates: nextDates,
+          checkInRecords: nextRecords,
+        });
+      } else {
+        await updateDoc(attRef, { 
+          status, 
+          checkInDates: arrayUnion(dateString),
+          checkInRecords: arrayUnion(newRecord)
+        });
+      }
     } else {
       await updateDoc(attRef, { status });
     }
@@ -572,27 +621,31 @@ export const removeAttendancePresence = async (
   dateString?: string,
 ) => {
   try {
-    const { doc, updateDoc, arrayRemove, getDoc } = await import("firebase/firestore");
+    const { doc, updateDoc, getDoc } = await import("firebase/firestore");
     const attRef = doc(db, `artifacts/${appId}/public/data/attendances`, attendanceId);
     
     if (dateString) {
-      // Remover a data específica
-      await updateDoc(attRef, {
-        checkInDates: arrayRemove(dateString),
-      });
-      // Verificar se ainda existem datas, se não, voltar status para "inscrito"
       const snap = await getDoc(attRef);
       if (snap.exists()) {
         const data = snap.data();
-        if (!data.checkInDates || data.checkInDates.length === 0) {
-          await updateDoc(attRef, { status: "inscrito" });
+        const nextDates = (data.checkInDates || []).filter((d: string) => d !== dateString);
+        const nextRecords = (data.checkInRecords || []).filter((r: any) => r.date !== dateString);
+        
+        const updates: any = {
+          checkInDates: nextDates,
+          checkInRecords: nextRecords,
+        };
+        if (nextDates.length === 0) {
+          updates.status = "inscrito";
         }
+        await updateDoc(attRef, updates);
       }
     } else {
-      // Fallback antigo
+      // Fallback: limpa tudo e volta para inscrito
       await updateDoc(attRef, { 
         status: "inscrito",
-        checkInDates: [] 
+        checkInDates: [],
+        checkInRecords: []
       });
     }
   } catch (e: any) {

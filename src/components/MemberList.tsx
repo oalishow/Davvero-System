@@ -1,9 +1,9 @@
 import { useEffect, useState, useMemo } from 'react';
 import { collection, query, onSnapshot } from 'firebase/firestore';
-import { Search, Filter, ChevronLeft, ChevronRight, ArrowDownAZ, ArrowUpAZ, Calendar, RotateCcw, Building2, UserCheck, Layers } from 'lucide-react';
+import { Search, Filter, ChevronLeft, ChevronRight, ArrowDownAZ, ArrowUpAZ, Calendar, RotateCcw, Building2, UserCheck, Layers, Award } from 'lucide-react';
 import { db, appId } from '../lib/firebase';
 import type { Member } from '../types';
-import { CUSTOM_ROLES_KEY } from '../lib/constants';
+import { CUSTOM_ROLES_KEY, deduplicateList } from '../lib/constants';
 import MemberEditModal from './MemberEditModal';
 
 interface MemberListProps {
@@ -19,6 +19,7 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
   const [members, setMembers] = useState<Member[]>([]);
   const [loading, setLoading] = useState(true);
   const [editingMember, setEditingMember] = useState<Member | null>(null);
+  const [editingInitialTab, setEditingInitialTab] = useState<'cadastral' | 'certificates'>('cadastral');
 
   // Filtros principais
   const [searchTerm, setSearchTerm] = useState('');
@@ -39,7 +40,7 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
   });
 
   const baseRoles = ["ALUNO(A)", "PROFESSOR(A)", "PROFISSIONAL DA EDUCAÇÃO", "COLABORADOR(A)", "SEMINARISTA", "PADRE", "DIÁCONO", "BISPO", "DIRETOR", "VICE-DIRETOR", "RELIGIOSO(A)", "COORDENADOR(A)", "REITOR", "VICE-REITOR", "PSICÓLOGO(A)", "DIRETOR ESPIRITUAL"];
-  const availableRoles = [...baseRoles, ...customRoles];
+  const availableRoles = useMemo(() => deduplicateList(baseRoles, customRoles), [customRoles]);
 
   useEffect(() => {
     setFilterStatus(initialFilterStatus);
@@ -252,7 +253,7 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
             >
               <option value="">Todos os Vínculos</option>
               {availableRoles.map(role => (
-                <option key={role} value={role}>{role}</option>
+                <option key={`filter-role-${role}`} value={role}>{role}</option>
               ))}
             </select>
           </div>
@@ -269,7 +270,7 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
             >
               <option value="">Todas as Dioceses</option>
               {availableDioceses.map(dio => (
-                <option key={dio} value={dio}>{dio}</option>
+                <option key={`filter-dio-${dio}`} value={dio}>{dio}</option>
               ))}
             </select>
           </div>
@@ -451,9 +452,28 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
                       </div>
                     </div>
                     {adminAccessLevel !== "LEITOR" && (
-                      <button onClick={() => setEditingMember(member)} className="flex-shrink-0 py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg text-xs font-bold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-600/20 hover:bg-sky-500 hover:text-white border border-sky-300 dark:border-sky-500/30 transition-all no-print cursor-pointer">
-                        Gerir
-                      </button>
+                      <div className="flex items-center gap-1.5 flex-shrink-0 no-print">
+                        <button
+                          onClick={() => {
+                            setEditingInitialTab('certificates');
+                            setEditingMember(member);
+                          }}
+                          className="py-1.5 sm:py-2 px-2 sm:px-2.5 rounded-lg text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 hover:bg-amber-500 hover:text-white dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 transition-all cursor-pointer flex items-center gap-1"
+                          title="Ver e Baixar Certificados do Aluno (um por um ou em ZIP)"
+                        >
+                          <Award className="w-3.5 h-3.5" />
+                          <span className="hidden md:inline">Certificados</span>
+                        </button>
+                        <button
+                          onClick={() => {
+                            setEditingInitialTab('cadastral');
+                            setEditingMember(member);
+                          }}
+                          className="py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg text-xs font-bold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-600/20 hover:bg-sky-500 hover:text-white border border-sky-300 dark:border-sky-500/30 transition-all cursor-pointer"
+                        >
+                          Gerir
+                        </button>
+                      </div>
                     )}
                   </div>
                 </div>
@@ -490,6 +510,7 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
       {editingMember && (
         <MemberEditModal 
           member={editingMember} 
+          initialTab={editingInitialTab}
           onClose={() => setEditingMember(null)}
           onUpdate={handleUpdateClose}
         />

@@ -37,7 +37,7 @@ import { signOut } from "firebase/auth";
 import type { Member } from "../types";
 import { AVAILABLE_SEMINARIES } from "../types";
 import { useSettings } from "../context/SettingsContext";
-import { APP_VERSION } from "../lib/constants";
+import { APP_VERSION, deduplicateList } from "../lib/constants";
 import MemberList from "./MemberList";
 import SettingsModal from "./SettingsModal";
 import RecycleBinModal from "./RecycleBinModal";
@@ -215,7 +215,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
     "PSICÓLOGO(A)",
     "DIRETOR ESPIRITUAL",
   ];
-  const availableRoles = [...baseRoles, ...customRoles];
+  const availableRoles = deduplicateList(baseRoles, customRoles);
 
   const [newCourse, setNewCourse] = useState("");
   const baseCourses = [
@@ -224,7 +224,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
     "TEOLOGIA",
     "TEOLOGIA EAD",
   ];
-  const availableCourses = [...baseCourses, ...customCourses];
+  const availableCourses = deduplicateList(baseCourses, customCourses);
 
   const [newDiocese, setNewDiocese] = useState("");
   const baseDioceses = [
@@ -237,7 +237,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
     "ARAÇATUBA",
     "BOTUCATU",
   ];
-  const availableDioceses = [...baseDioceses, ...customDioceses];
+  const availableDioceses = deduplicateList(baseDioceses, customDioceses);
 
   const toggleRole = (role: string) => {
     setRoles((prev) =>
@@ -896,7 +896,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
                 <div className="flex flex-wrap gap-2 mb-3">
                   {availableRoles.map((role) => (
                     <button
-                      key={role}
+                      key={`admin-role-${role}`}
                       onClick={() => toggleRole(role)}
                       className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${roles.includes(role) ? "bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-500/50" : "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700"}`}
                     >
@@ -936,7 +936,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
                   >
                     <option value="">Selecione o Curso</option>
                     {availableCourses.map((c) => (
-                      <option key={c} value={c}>
+                      <option key={`admin-course-${c}`} value={c}>
                         {c}
                       </option>
                     ))}
@@ -975,7 +975,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
                   >
                     <option value="">Selecione a Diocese</option>
                     {availableDioceses.map((d) => (
-                      <option key={d} value={d}>
+                      <option key={`admin-diocese-${d}`} value={d}>
                         {d}
                       </option>
                     ))}

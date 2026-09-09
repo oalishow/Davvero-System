@@ -40,6 +40,7 @@ import { checkAutoApproval } from "../lib/approval";
 import { sendEmailNotification, generateEmailTemplate } from "../lib/emailService";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
+import { deduplicateList } from "../lib/constants";
 import type { Event, Member } from "../types";
 import PublicRequestModal from "./PublicRequestModal";
 import TermsOfUseModal from "./TermsOfUseModal";
@@ -136,9 +137,7 @@ export default function QuickEventEnrollModal({
   const [loading, setLoading] = useState(false);
   const [resolvedMember, setResolvedMember] = useState<Member | null>(null);
 
-  const availableRoles = Array.from(
-    new Set([...DEFAULT_ROLES, ...(settings?.customRoles || [])])
-  );
+  const availableRoles = deduplicateList(DEFAULT_ROLES, settings?.customRoles);
 
   // Step 1: Search existing member by CPF, RA, AlphaCode or Email
   const handleVerifyExisting = async (e?: React.FormEvent) => {
@@ -799,7 +798,7 @@ export default function QuickEventEnrollModal({
                   {availableRoles.map((role) => (
                     <button
                       type="button"
-                      key={role}
+                      key={`quick-role-${role}`}
                       onClick={() => {
                         setSelectedRole(role);
                         setIsCustomRole(false);

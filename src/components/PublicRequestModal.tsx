@@ -33,6 +33,7 @@ import { useSettings } from '../context/SettingsContext';
 import type { Member } from '../types';
 import ImageCropperModal from './ImageCropperModal';
 import { AVAILABLE_SEMINARIES } from '../types';
+import { deduplicateList } from '../lib/constants';
 import TermsOfUseModal from './TermsOfUseModal';
 import { playSound } from '../lib/sounds';
 
@@ -75,7 +76,7 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
   const [showTerms, setShowTerms] = useState(false);
 
   const baseCourses = ["FILOSOFIA", "FILOSOFIA EAD", "TEOLOGIA", "TEOLOGIA EAD"];
-  const availableCourses = [...baseCourses, ...(settings.customCourses || [])];
+  const availableCourses = deduplicateList(baseCourses, settings.customCourses);
 
   const baseRoles = [
     { id: "ALUNO(A)", label: "Aluno(a)", desc: "Graduação, Pós ou Extensão", icon: GraduationCap, color: "text-sky-500 bg-sky-50 dark:bg-sky-950/40 border-sky-200 dark:border-sky-800" },
@@ -89,7 +90,7 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
   ];
 
   const baseDioceses = ["MARÍLIA", "ASSIS", "LINS", "BAURU", "OURINHOS", "PRESIDENTE PRUDENTE", "ARAÇATUBA", "BOTUCATU"];
-  const availableDioceses = [...baseDioceses, ...(settings.customDioceses || [])];
+  const availableDioceses = deduplicateList(baseDioceses, settings.customDioceses);
 
   const toggleRole = (role: string) => {
     playSound('pop');
@@ -745,7 +746,7 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
                     >
                       <option value="">Nenhum / Não aplicável / Geral</option>
                       {availableCourses.map(c => (
-                        <option key={c} value={c}>{c}</option>
+                        <option key={`public-course-${c}`} value={c}>{c}</option>
                       ))}
                     </select>
                   </div>
@@ -765,7 +766,7 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
                   >
                     <option value="">Selecionar Diocese / Cidade</option>
                     {availableDioceses.map(d => (
-                      <option key={d} value={d}>{d}</option>
+                      <option key={`public-dio-${d}`} value={d}>{d}</option>
                     ))}
                   </select>
                   <div className="flex gap-1">

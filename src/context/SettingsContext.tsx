@@ -2,7 +2,7 @@ import React, { createContext, useContext, useState, useEffect, useRef } from 'r
 import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, appId, loginAnon } from '../lib/firebase';
-import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION, extractAssetString, safeLocalStorageSet, safeSessionStorageSet, purgeOversizedLocalStorage } from '../lib/constants';
+import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION, extractAssetString, safeLocalStorageSet, safeSessionStorageSet, purgeOversizedLocalStorage, deduplicateList } from '../lib/constants';
 import type { DioceseInfo } from '../data/diocesesData';
 import { AVAILABLE_DIOCESES, AVAILABLE_SEMINARIES, ProfessionalConfig } from '../types';
 
@@ -285,6 +285,9 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         const cached = localStorage.getItem('fajopa_settings');
         if (cached) {
           const parsed = JSON.parse(cached);
+          if (parsed.customRoles) parsed.customRoles = deduplicateList(parsed.customRoles);
+          if (parsed.customCourses) parsed.customCourses = deduplicateList(parsed.customCourses);
+          if (parsed.customDioceses) parsed.customDioceses = deduplicateList(parsed.customDioceses);
           base = {
             ...DEFAULT_SETTINGS,
             ...parsed,
@@ -517,6 +520,10 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         if (data.professionals) {
           data.professionals = normalizeProfessionals(data.professionals);
         }
+
+        if (data.customRoles) data.customRoles = deduplicateList(data.customRoles);
+        if (data.customCourses) data.customCourses = deduplicateList(data.customCourses);
+        if (data.customDioceses) data.customDioceses = deduplicateList(data.customDioceses);
 
         setSettings(prev => ({ 
           ...prev, 
@@ -766,8 +773,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
   }, [settings]);
 
   const updateSettings = async (newSettings: Partial<AppSettings>) => {
+    const sanitized = { ...newSettings };
+    if (sanitized.customRoles) sanitized.customRoles = deduplicateList(sanitized.customRoles);
+    if (sanitized.customCourses) sanitized.customCourses = deduplicateList(sanitized.customCourses);
+    if (sanitized.customDioceses) sanitized.customDioceses = deduplicateList(sanitized.customDioceses);
+
     // Optimistic UI update
-    setSettings(prev => ({ ...prev, ...newSettings }));
+    setSettings(prev => ({ ...prev, ...sanitized }));
 
     // Ensure user has valid authentication session before writing
     if (!auth.currentUser) {
@@ -779,7 +791,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
     }
 
     const docRef = doc(db, SETTINGS_DOC_PATH(appId));
-    const settingsToSave = { ...newSettings };
+    const settingsToSave = { ...sanitized };
     const assetOperations: Promise<any>[] = [];
 
     // 1. Tratamento seguro e particionado de diocesesConfig (Evita estourar o limite de 1MB por documento)

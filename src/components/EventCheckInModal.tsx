@@ -204,7 +204,11 @@ export default function EventCheckInModal({
             // Auto-check-in when redirected from QR code for today
             const nowStr = new Date().toLocaleString("pt-BR");
             const protocol = generateProtocol(activeMember.id);
-            await updateAttendanceStatus(att.id, "presente", todayStr);
+            await updateAttendanceStatus(att.id, "presente", todayStr, {
+              validatedBy: "self",
+              validatorName: "Pelo Próprio Participante (Auto-validação QR Code)",
+              timestamp: new Date().toISOString(),
+            });
             setDigitalSignatureProtocol(protocol);
             setSignatureTimestamp(nowStr);
             setSuccessCheckedIn(true);
@@ -225,6 +229,14 @@ export default function EventCheckInModal({
             studentId: activeMember.id,
             status: "presente",
             checkInDates: [todayStr],
+            checkInRecords: [
+              {
+                date: todayStr,
+                timestamp: new Date().toISOString(),
+                validatedBy: "self",
+                validatorName: "Pelo Próprio Participante (Auto-validação QR Code)",
+              },
+            ],
             timestamp: new Date().toISOString(),
           });
           setDigitalSignatureProtocol(protocol);
@@ -274,13 +286,25 @@ export default function EventCheckInModal({
       }
 
       if (existingAttendance) {
-        await updateAttendanceStatus(existingAttendance.id, "presente", todayStr);
+        await updateAttendanceStatus(existingAttendance.id, "presente", todayStr, {
+          validatedBy: "self",
+          validatorName: "Pelo Próprio Participante",
+          timestamp: new Date().toISOString(),
+        });
       } else {
         await enrollStudent({
           eventId: event.id,
           studentId: activeMember.id,
           status: "presente",
           checkInDates: [todayStr],
+          checkInRecords: [
+            {
+              date: todayStr,
+              timestamp: new Date().toISOString(),
+              validatedBy: "self",
+              validatorName: "Pelo Próprio Participante",
+            },
+          ],
           timestamp: new Date().toISOString(),
         });
       }
@@ -422,13 +446,25 @@ export default function EventCheckInModal({
           }
 
           // Se já estava inscrito ou faltava o dia de hoje, atualiza a presença existente
-          await updateAttendanceStatus(existing.id, "presente", todayStr);
+          await updateAttendanceStatus(existing.id, "presente", todayStr, {
+            validatedBy: "self",
+            validatorName: "Pelo Próprio Participante",
+            timestamp: new Date().toISOString(),
+          });
         } else {
           await enrollStudent({
             eventId: event.id,
             studentId: matched.id,
             status: "presente",
             checkInDates: [todayStr],
+            checkInRecords: [
+              {
+                date: todayStr,
+                timestamp: new Date().toISOString(),
+                validatedBy: "self",
+                validatorName: "Pelo Próprio Participante",
+              },
+            ],
             timestamp: new Date().toISOString(),
           });
         }
@@ -511,6 +547,14 @@ export default function EventCheckInModal({
         studentId: newVisitorId,
         status: "presente",
         checkInDates: [todayStr],
+        checkInRecords: [
+          {
+            date: todayStr,
+            timestamp: new Date().toISOString(),
+            validatedBy: "self",
+            validatorName: "Pelo Próprio Participante (Visitante)",
+          },
+        ],
         timestamp: new Date().toISOString(),
       });
 

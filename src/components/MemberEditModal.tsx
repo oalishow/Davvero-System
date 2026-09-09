@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, ChangeEvent } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Trash2, ShieldAlert, Download, Image as ImageIcon, Printer } from 'lucide-react';
+import { X, Save, Trash2, ShieldAlert, Download, Image as ImageIcon, Printer, Award, FileText } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, appId, createNotification } from '../lib/firebase';
 import { logAdminAction } from '../lib/audit';
@@ -8,19 +8,23 @@ import { useSettings } from '../context/SettingsContext';
 import { sendEmailNotification, getCompiledEmail } from '../lib/emailService';
 import { type Member, AVAILABLE_SEMINARIES } from '../types';
 import { QRCodeCanvas } from 'qrcode.react';
-import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL } from '../lib/constants';
+import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL, deduplicateList } from '../lib/constants';
 import ImageCropperModal from './ImageCropperModal';
 import Modal from './Modal';
 import DavveroLogo from './DavveroLogo';
+import StudentCertificatesManager from './StudentCertificatesManager';
 
 interface MemberEditModalProps {
   member: Member;
   onClose: () => void;
   onUpdate: () => void;
+  initialTab?: 'cadastral' | 'certificates';
 }
 
-export default function MemberEditModal({ member, onClose, onUpdate }: MemberEditModalProps) {
+export default function MemberEditModal({ member, onClose, onUpdate, initialTab = 'cadastral' }: MemberEditModalProps) {
   const { settings, updateSettings } = useSettings();
+  const [activeTab, setActiveTab] = useState<'cadastral' | 'certificates'>(initialTab);
+  const [certificatesCount, setCertificatesCount] = useState<number>(0);
   const [name, setName] = useState(member.name || '');
   const [ra, setRa] = useState(member.ra || '');
   const [cpf, setCpf] = useState(member.cpf || '');
@@ -50,13 +54,13 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
   const [newDiocese, setNewDiocese] = useState('');
 
   const baseCourses = ["FILOSOFIA", "FILOSOFIA EAD", "TEOLOGIA", "TEOLOGIA EAD"];
-  const availableCourses = [...baseCourses, ...settings.customCourses];
+  const availableCourses = deduplicateList(baseCourses, settings.customCourses);
 
   const baseRoles = ["ALUNO(A)", "PROFESSOR(A)", "PROFISSIONAL DA EDUCAÇÃO", "COLABORADOR(A)", "SEMINARISTA", "PADRE", "DIÁCONO", "BISPO", "DIRETOR", "VICE-DIRETOR", "RELIGIOSO(A)", "COORDENADOR(A)", "REITOR", "VICE-REITOR", "PSICÓLOGO(A)", "DIRETOR ESPIRITUAL"];
-  const availableRoles = [...baseRoles, ...settings.customRoles];
+  const availableRoles = deduplicateList(baseRoles, settings.customRoles);
 
   const baseDioceses = ["MARÍLIA", "ASSIS", "LINS", "BAURU", "OURINHOS", "PRESIDENTE PRUDENTE", "ARAÇATUBA", "BOTUCATU"];
-  const availableDioceses = [...baseDioceses, ...settings.customDioceses];
+  const availableDioceses = deduplicateList(baseDioceses, settings.customDioceses);
 
   const [photoBase64, setPhotoBase64] = useState<string | null>(null);
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
@@ -264,16 +268,78 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
       )}
       <div className="bg-white/95 dark:bg-slate-800/95 backdrop-blur-xl border border-slate-200 dark:border-slate-700/50 rounded-2xl shadow-[0_30px_60px_rgba(0,0,0,0.12)] p-4 sm:p-6 w-full max-w-4xl my-auto max-h-[95vh] overflow-y-auto custom-scrollbar animated-scale-in print:hidden">
         
-        <div className="flex justify-between items-center mb-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 sticky top-0 bg-white/5 dark:bg-slate-800/5 backdrop-blur-sm z-20">
-          <h2 className="text-xl font-bold text-sky-600 dark:text-sky-400">Ficha do Membro</h2>
-          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors no-print">
+        <div className="flex flex-wrap justify-between items-center mb-4 pb-3 border-b border-slate-100 dark:border-slate-700/60 sticky top-0 bg-white/95 dark:bg-slate-800/95 backdrop-blur-sm z-20 gap-3">
+          <div className="flex items-center gap-3">
+            <div className="flex bg-slate-100 dark:bg-slate-900/60 p-1 rounded-xl border border-slate-200 dark:border-slate-700/60">
+              <button
+                type="button"
+                onClick={() => setActiveTab('cadastral')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'cadastral'
+                    ? 'bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <FileText className="w-3.5 h-3.5" />
+                <span>Ficha Cadastral</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={() => setActiveTab('certificates')}
+                className={`px-3 py-1.5 rounded-lg text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  activeTab === 'certificates'
+                    ? 'bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 shadow-xs'
+                    : 'text-slate-600 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-200'
+                }`}
+              >
+                <Award className="w-3.5 h-3.5 text-amber-500" />
+                <span>Certificados do Aluno</span>
+                {certificatesCount > 0 && (
+                  <span className="ml-1 px-1.5 py-0.5 rounded-full text-[10px] font-black bg-sky-500 text-white">
+                    {certificatesCount}
+                  </span>
+                )}
+              </button>
+            </div>
+          </div>
+
+          <button onClick={onClose} className="p-2 rounded-full hover:bg-slate-100 dark:hover:bg-slate-700/50 transition-colors no-print" title="Fechar">
             <X className="w-5 h-5 text-slate-400 dark:text-slate-500" />
           </button>
         </div>
 
-        {error && <div className="mb-4 bg-rose-50 text-rose-600 p-3 rounded-xl text-sm font-medium">{error}</div>}
+        {activeTab === 'certificates' ? (
+          <div>
+            <StudentCertificatesManager
+              member={member}
+              onCountChange={setCertificatesCount}
+            />
 
-        <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
+            <div className="flex justify-between items-center mt-6 pt-5 border-t border-slate-200 dark:border-slate-700/60 gap-4 no-print">
+              <button
+                type="button"
+                onClick={() => setActiveTab('cadastral')}
+                className="btn-modern flex items-center gap-2 px-4 py-2.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-colors cursor-pointer"
+              >
+                <FileText className="w-4 h-4" />
+                <span>Voltar à Ficha Cadastral</span>
+              </button>
+
+              <button
+                type="button"
+                onClick={onClose}
+                className="btn-modern px-6 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold shadow-md shadow-sky-600/30 transition-all cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        ) : (
+          <>
+            {error && <div className="mb-4 bg-rose-50 text-rose-600 p-3 rounded-xl text-sm font-medium">{error}</div>}
+
+            <div className="grid grid-cols-1 md:grid-cols-12 gap-6">
           <div className="md:col-span-7 space-y-4">
             <div className="bg-slate-50 dark:bg-slate-900/30 p-4 rounded-xl border border-slate-200 dark:border-slate-700/30 space-y-3">
               <div>
@@ -341,7 +407,7 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
                   <select value={course} onChange={e => setCourse(e.target.value)} className="input-modern flex-1 rounded-lg py-1.5 px-3 text-sm">
                     <option value="">Selecione o Curso</option>
                     {availableCourses.map(c => (
-                      <option key={c} value={c}>{c}</option>
+                      <option key={`edit-course-${c}`} value={c}>{c}</option>
                     ))}
                   </select>
                   <input 
@@ -366,7 +432,7 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
                   <select value={diocese} onChange={e => setDiocese(e.target.value)} className="input-modern flex-1 rounded-lg py-1.5 px-3 text-sm">
                     <option value="">Selecione a Diocese</option>
                     {availableDioceses.map(d => (
-                      <option key={d} value={d}>{d}</option>
+                      <option key={`edit-dio-${d}`} value={d}>{d}</option>
                     ))}
                   </select>
                   <input 
@@ -414,7 +480,7 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
                 <label className="text-xs font-medium text-slate-500 mb-2 block">Vínculos</label>
                 <div className="flex flex-wrap gap-2 mb-3">
                   {availableRoles.map(role => (
-                    <button key={role} onClick={() => toggleRole(role)} className={`px-2 py-1 rounded text-[10px] font-medium border transition-all ${roles.includes(role) ? 'bg-sky-100 text-sky-700 border-sky-300' : 'bg-slate-100 text-slate-600 border-slate-300'}`}>
+                    <button key={`edit-role-${role}`} onClick={() => toggleRole(role)} className={`px-2 py-1 rounded text-[10px] font-medium border transition-all ${roles.includes(role) ? 'bg-sky-100 text-sky-700 border-sky-300' : 'bg-slate-100 text-slate-600 border-slate-300'}`}>
                       {role}
                     </button>
                   ))}
@@ -471,6 +537,14 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
             <button onClick={handlePrint} className="btn-modern flex items-center gap-2 py-2.5 px-4 bg-slate-800 hover:bg-slate-700 text-white text-sm font-bold rounded-xl shadow-sm w-full justify-center no-print">
               <Printer className="w-4 h-4" /> Imprimir Ficha
             </button>
+            <button
+              type="button"
+              onClick={() => setActiveTab('certificates')}
+              className="btn-modern flex items-center gap-2 py-2.5 px-4 bg-sky-50 hover:bg-sky-100 text-sky-700 dark:bg-sky-950/40 dark:text-sky-300 dark:hover:bg-sky-900/60 text-sm font-bold rounded-xl border border-sky-200 dark:border-sky-800/80 shadow-xs w-full justify-center mt-2 no-print cursor-pointer"
+            >
+              <Award className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+              <span>Certificados do Aluno {certificatesCount > 0 ? `(${certificatesCount})` : ''}</span>
+            </button>
           </div>
         </div>
 
@@ -485,6 +559,8 @@ export default function MemberEditModal({ member, onClose, onUpdate }: MemberEdi
             </button>
           </div>
         </div>
+        </>
+        )}
 
       </div>
 

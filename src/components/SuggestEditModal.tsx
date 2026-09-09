@@ -5,6 +5,7 @@ import { doc, updateDoc } from 'firebase/firestore';
 import { db, appId, createNotification } from '../lib/firebase';
 import { useSettings } from '../context/SettingsContext';
 import { AVAILABLE_SEMINARIES, type Member } from '../types';
+import { deduplicateList } from '../lib/constants';
 import ImageCropperModal from './ImageCropperModal';
 import { sendEmailNotification, getCompiledEmail, parseEmailList } from '../lib/emailService';
 
@@ -42,13 +43,13 @@ export default function SuggestEditModal({ member, onClose, onSubmitSuccess }: S
   const [error, setError] = useState('');
 
   const baseRoles = ["ALUNO(A)", "PROFESSOR(A)", "PROFISSIONAL DA EDUCAÇÃO", "COLABORADOR(A)", "SEMINARISTA", "PADRE", "DIÁCONO", "BISPO", "DIRETOR", "VICE-DIRETOR", "RELIGIOSO(A)", "COORDENADOR(A)", "REITOR", "VICE-REITOR", "PSICÓLOGO(A)", "DIRETOR ESPIRITUAL"];
-  const availableRoles = [...baseRoles, ...settings.customRoles];
+  const availableRoles = deduplicateList(baseRoles, settings.customRoles);
 
   const baseCourses = ["FILOSOFIA", "FILOSOFIA EAD", "TEOLOGIA", "TEOLOGIA EAD"];
-  const availableCourses = [...baseCourses, ...settings.customCourses];
+  const availableCourses = deduplicateList(baseCourses, settings.customCourses);
 
   const baseDioceses = ["MARÍLIA", "ASSIS", "LINS", "BAURU", "OURINHOS", "PRESIDENTE PRUDENTE", "ARAÇATUBA", "BOTUCATU"];
-  const availableDioceses = [...baseDioceses, ...settings.customDioceses];
+  const availableDioceses = deduplicateList(baseDioceses, settings.customDioceses);
 
   const toggleRole = (role: string) => {
     setRoles(prev => prev.includes(role) ? prev.filter(r => r !== role) : [...prev, role]);
@@ -244,7 +245,7 @@ export default function SuggestEditModal({ member, onClose, onSubmitSuccess }: S
               <div className="flex flex-wrap gap-2">
                 {availableRoles.map(role => (
                   <button
-                    key={role}
+                    key={`suggest-role-${role}`}
                     onClick={() => toggleRole(role)}
                     className={`px-3 py-1.5 rounded-lg text-xs font-medium border transition-all ${roles.includes(role) ? 'bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-300 border-sky-300 dark:border-sky-500/50' : 'bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 border-slate-300 dark:border-slate-700'}`}
                   >
@@ -275,7 +276,7 @@ export default function SuggestEditModal({ member, onClose, onSubmitSuccess }: S
               <select value={course} onChange={e => setCourse(e.target.value)} className="input-modern w-full rounded-xl py-3 px-4 text-sm">
                   <option value="">Nenhum / Não aplicável</option>
                   {availableCourses.map(c => (
-                    <option key={c} value={c}>{c}</option>
+                    <option key={`suggest-course-${c}`} value={c}>{c}</option>
                   ))}
               </select>
           </div>
@@ -285,7 +286,7 @@ export default function SuggestEditModal({ member, onClose, onSubmitSuccess }: S
                 <select value={diocese} onChange={e => setDiocese(e.target.value)} className="input-modern flex-1 rounded-xl py-3 px-4 text-sm">
                     <option value="">Nenhum / Não aplicável</option>
                     {availableDioceses.map(d => (
-                      <option key={d} value={d}>{d}</option>
+                      <option key={`suggest-dio-${d}`} value={d}>{d}</option>
                     ))}
                 </select>
                 <div className="flex gap-1.5">

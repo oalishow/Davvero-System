@@ -50,6 +50,8 @@ export interface Member {
   emailNotificationsEnabled?: boolean;
   emailUnsubscribedAt?: string;
   acceptedTermsVersion?: number;
+  revokedCertKeys?: string[];
+  revokedCertificateCodes?: string[];
   externalCertificates?: {
     id: string;
     title: string;
@@ -196,12 +198,20 @@ export interface Event {
   presenceConfig?: EventPresenceConfig;
 }
 
+export interface CheckInRecord {
+  date: string; // YYYY-MM-DD referente ao dia do evento
+  timestamp: string; // ISO string de quando a validação ocorreu
+  validatedBy: "self" | "admin" | "secretaria" | string; // "self" = pela própria pessoa (QR code / portal), "admin" = pelo administrador / secretaria
+  validatorName?: string; // Descrição legível: "Pelo Próprio Participante", "Pelo Administrador", etc.
+}
+
 export interface Attendance {
   id: string;
   eventId: string;
   studentId: string;
   status: "inscrito" | "presente" | "apto_para_certificado" | "cancelado";
   checkInDates?: string[]; // Array of YYYY-MM-DD
+  checkInRecords?: CheckInRecord[]; // Carimbos detalhados de cada check-in (data/hora e quem validou)
   isOrganizer?: boolean;
   timestamp: string;
   certificateReleasedAt?: string; // Data/hora em que o participante foi liberado para certificado
@@ -209,7 +219,11 @@ export interface Attendance {
   paymentStatus?: "pendente" | "pago" | "isento";
   transactionId?: string;
   paymentMethod?: "mercadopago" | "paypal" | "pix_manual";
+  revokedParticipantCert?: boolean; // Se o certificado de participante foi revogado administrativamente
+  revokedOrgCert?: boolean; // Se o certificado de organizador foi revogado administrativamente
 }
+
+export type AttendanceWithMember = Attendance & { member?: Member; allDocIds?: string[] };
 
 export interface Notification {
   id: string;

@@ -7,34 +7,45 @@ import { generateCertificateCode, registerCertificateRecord, resolveCertificateR
 
 interface CertificateRendererProps {
   event: Event;
-  template: CertificateTemplate;
+  template?: CertificateTemplate;
   member: Partial<Member>;
   isOrganizer?: boolean;
   id?: string;
 }
 
 export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendererProps>(
-  ({ event, template, member, isOrganizer, id }, ref) => {
+  ({ event, template: propTemplate, member = {} as Partial<Member>, isOrganizer, id }, ref) => {
     const { settings } = useSettings();
 
+    if (!event) return null;
+
+    const rawTemplate = propTemplate || 
+      (isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate);
+
+    const template: CertificateTemplate = (rawTemplate && typeof rawTemplate === 'object') ? rawTemplate : ({
+      bgStyle: 'theme-classic',
+      titleText: 'CERTIFICADO',
+      bodyText: '',
+    } as CertificateTemplate);
+
     // Signatures URLs and names fallback
-    const isDioceseEvent = Boolean(event.isDiocese || event.dioceseId);
+    const isDioceseEvent = Boolean(event?.isDiocese || event?.dioceseId);
 
     const localDirectorSig = typeof window !== "undefined" ? extractAssetString(localStorage.getItem("davveroId_director_signature") || sessionStorage.getItem("davveroId_director_signature")) : null;
     const localRectorSig = typeof window !== "undefined" ? extractAssetString(localStorage.getItem("davveroId_rector_signature") || sessionStorage.getItem("davveroId_rector_signature")) : null;
 
-    const showFajopaDirector = template.showFajopaDirectorSignature !== undefined 
+    const showFajopaDirector = template?.showFajopaDirectorSignature !== undefined 
       ? template.showFajopaDirectorSignature 
-      : (!isDioceseEvent || Boolean(template.fajopaDirectorSignatureUrl || template.fajopaDirectorName));
+      : (!isDioceseEvent || Boolean(template?.fajopaDirectorSignatureUrl || template?.fajopaDirectorName));
 
-    const showSeminarRector = template.showSeminarRectorSignature !== undefined 
+    const showSeminarRector = template?.showSeminarRectorSignature !== undefined 
       ? template.showSeminarRectorSignature 
-      : (!isDioceseEvent || Boolean(template.seminarRectorSignatureUrl || template.seminarRectorName));
+      : (!isDioceseEvent || Boolean(template?.seminarRectorSignatureUrl || template?.seminarRectorName));
 
-    const fajopaSigUrl = extractAssetString(template.fajopaDirectorSignatureUrl || (showFajopaDirector ? (settings.instSignature || localDirectorSig) : undefined));
-    const rectorSigUrl = extractAssetString(template.seminarRectorSignatureUrl || (showSeminarRector ? (settings.rectorSignature || localRectorSig) : undefined));
-    const fajopaName = template.fajopaDirectorName || settings.directorName || "Diretor FAJOPA";
-    const rectorName = template.seminarRectorName || settings.rectorName || "Reitor";
+    const fajopaSigUrl = extractAssetString(template?.fajopaDirectorSignatureUrl || (showFajopaDirector ? (settings.instSignature || localDirectorSig) : undefined));
+    const rectorSigUrl = extractAssetString(template?.seminarRectorSignatureUrl || (showSeminarRector ? (settings.rectorSignature || localRectorSig) : undefined));
+    const fajopaName = template?.fajopaDirectorName || settings.directorName || "Diretor FAJOPA";
+    const rectorName = template?.seminarRectorName || settings.rectorName || "Reitor";
 
     // Custom / Diocese Responsibles with Diocese Config Fallbacks
     const dioceseConfig = isDioceseEvent ? (
@@ -43,9 +54,9 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
       (settings.diocesesConfig ? (Object.values(settings.diocesesConfig) as any[]).find(d => d?.name?.toUpperCase() === event.diocese?.toUpperCase()) : undefined)
     ) : undefined;
 
-    const sig1Name = template.signature1Name ?? template.signatureName ?? (isDioceseEvent ? (dioceseConfig as any)?.bishopName || (dioceseConfig as any)?.responsibleName : undefined);
-    const sig1Role = template.signature1Role ?? template.signatureRole ?? (isDioceseEvent ? (dioceseConfig as any)?.bishopTitle || (dioceseConfig as any)?.responsibleRole || "Bispo Diocesano" : undefined);
-    const sig1Url = extractAssetString(template.signature1Url || template.signatureUrl || (isDioceseEvent ? ((dioceseConfig as any)?.bishopSignatureUrl || (dioceseConfig as any)?.signatureUrl || (dioceseConfig as any)?.signature || (dioceseConfig as any)?.bishopSignature || (dioceseConfig as any)?.responsibleSignature) : undefined));
+    const sig1Name = template.signature1Name ?? (template as any).signatureName ?? (isDioceseEvent ? (dioceseConfig as any)?.bishopName || (dioceseConfig as any)?.responsibleName : undefined);
+    const sig1Role = template.signature1Role ?? (template as any).signatureRole ?? (isDioceseEvent ? (dioceseConfig as any)?.bishopTitle || (dioceseConfig as any)?.responsibleRole || "Bispo Diocesano" : undefined);
+    const sig1Url = extractAssetString(template.signature1Url || (template as any).signatureUrl || (isDioceseEvent ? ((dioceseConfig as any)?.bishopSignatureUrl || (dioceseConfig as any)?.signatureUrl || (dioceseConfig as any)?.signature || (dioceseConfig as any)?.bishopSignature || (dioceseConfig as any)?.responsibleSignature) : undefined));
     const showSig1 = template.showSignature1 !== undefined 
       ? template.showSignature1 
       : (isDioceseEvent || Boolean(sig1Name || sig1Role || sig1Url));

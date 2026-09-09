@@ -255,3 +255,26 @@ export const CHANGELOG = [
   "Versão 5.3b - Agendamentos e Trocas de Horário",
   "Atendimentos: Visualização de horários vagos e alteração de data/hora pelo aluno com notificação ao profissional.",
 ];
+
+/**
+ * Deduplica arrays de strings de forma case-insensitive, preservando a ordem
+ * e removendo valores nulos, vazios ou indefinidos.
+ */
+export function deduplicateList(...lists: (string[] | undefined | null)[]): string[] {
+  const seen = new Set<string>();
+  const result: string[] = [];
+  for (const list of lists) {
+    if (!list || !Array.isArray(list)) continue;
+    for (const item of list) {
+      if (typeof item === 'string' && item.trim()) {
+        const clean = item.trim();
+        const key = clean.toUpperCase();
+        if (!seen.has(key)) {
+          seen.add(key);
+          result.push(clean);
+        }
+      }
+    }
+  }
+  return result;
+}

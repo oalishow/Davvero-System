@@ -2659,8 +2659,10 @@ export default function StudentPortal({
                       if (!attendance) return false;
                       const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
                       const isEligible = attendance.status === "presente" || attendance.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
-                      const hasPartCert = isReleased && isEligible;
-                      const hasOrgCert = isReleased && attendance.isOrganizer === true;
+                      const isPartRevoked = attendance.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_participant`);
+                      const isOrgRevoked = attendance.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_organizer`);
+                      const hasPartCert = isReleased && isEligible && !isPartRevoked;
+                      const hasOrgCert = isReleased && attendance.isOrganizer === true && !isOrgRevoked;
                       return hasPartCert || hasOrgCert;
                     }).length > 0 ? (
                       <div className="space-y-4">
@@ -2669,8 +2671,10 @@ export default function StudentPortal({
                             if (!attendance) return false;
                             const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
                             const isEligible = attendance.status === "presente" || attendance.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
-                            const hasPartCert = isReleased && isEligible;
-                            const hasOrgCert = isReleased && attendance.isOrganizer === true;
+                            const isPartRevoked = attendance.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_participant`);
+                            const isOrgRevoked = attendance.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_organizer`);
+                            const hasPartCert = isReleased && isEligible && !isPartRevoked;
+                            const hasOrgCert = isReleased && attendance.isOrganizer === true && !isOrgRevoked;
                             return hasPartCert || hasOrgCert;
                           })
                           .map((event) => {
@@ -2681,8 +2685,10 @@ export default function StudentPortal({
                             const attendance = myAttendances.find((a) => a.eventId === event.id);
                             const isReleased = event.status === "encerrado" || isEventCertificateReleased(event) || event.isCertificateReleased === true;
                             const isEligible = attendance?.status === "presente" || attendance?.status === "apto_para_certificado" || event.allowAllRegisteredCertificates;
-                            const hasPartCert = isReleased && isEligible;
-                            const hasOrgCert = isReleased && attendance?.isOrganizer === true;
+                            const isPartRevoked = attendance?.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${event.id}_participant`);
+                            const isOrgRevoked = attendance?.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${event.id}_organizer`);
+                            const hasPartCert = isReleased && isEligible && !isPartRevoked;
+                            const hasOrgCert = isReleased && attendance?.isOrganizer === true && !isOrgRevoked;
                             const releaseInfo = resolveCertificateReleaseDate(event, undefined, member);
 
                             return (

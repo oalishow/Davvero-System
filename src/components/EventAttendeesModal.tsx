@@ -24,9 +24,22 @@ import {
   Filter,
   Printer,
   Download,
-  FileText
+  FileText,
+  Calendar,
+  CalendarDays,
+  CalendarPlus,
+  Users,
+  CheckSquare,
+  Layers,
+  Sparkle,
+  ShieldCheck,
+  Building,
+  GraduationCap,
+  Loader2,
+  Ban,
+  Award
 } from "lucide-react";
-import type { Event, Attendance, Member } from "../types";
+import type { Event, Attendance, Member, CheckInRecord, AttendanceWithMember } from "../types";
 import {
   db,
   appId,
@@ -78,8 +91,22 @@ export default function EventAttendeesModal({
     }
     return false;
   }, [isAdmin]);
+  // Modo Principal: "inscritos" (gestão de inscritos) vs "presencas" (controle detalhado de presenças e dias de check-in)
+  const [mainView, setMainView] = useState<"inscritos" | "presencas">("inscritos");
+
+  // Filtros e estados na aba de presenças
+  const [selectedPresenceDay, setSelectedPresenceDay] = useState<string>("all");
+  const [presenceFilterStatus, setPresenceFilterStatus] = useState<"all" | "present" | "absent">("all");
+  const [presenceDateModalAttendee, setPresenceDateModalAttendee] = useState<(Attendance & { member?: Member; allDocIds?: string[] }) | null>(null);
+  const [customPresenceDate, setCustomPresenceDate] = useState<string>(new Date().toISOString().split("T")[0]);
+
+  // Modal e estado para Check-in de Todos de Uma Vez
+  const [showBulkCheckInModal, setShowBulkCheckInModal] = useState(false);
+  const [bulkCheckInTargetDay, setBulkCheckInTargetDay] = useState<string>(new Date().toISOString().split("T")[0]);
+  const [isExecutingBulkCheckIn, setIsExecutingBulkCheckIn] = useState(false);
+
   const [attendees, setAttendees] = useState<
-    (Attendance & { member?: Member })[]
+    (Attendance & { member?: Member; allDocIds?: string[] })[]
   >([]);
   const [loading, setLoading] = useState(true);
   const [isSendingEmails, setIsSendingEmails] = useState(false);
@@ -112,6 +139,10 @@ export default function EventAttendeesModal({
     course: "Visitante",
   });
 
+  // Estados para Remoção de Certificado pelo Administrador
+  const [certRevokeTarget, setCertRevokeTarget] = useState<AttendanceWithMember | null>(null);
+  const [isRevokingCert, setIsRevokingCert] = useState(false);
+
   // Real-time synchronization without quota delays
   useEffect(() => {
     setMounted(true);
@@ -121,11 +152,93 @@ export default function EventAttendeesModal({
     let currentMembersDict: Record<string, Member> = {};
 
     const recomputeAttendees = () => {
-      const enriched = currentAttendances.map((a: Attendance) => ({
-        ...a,
-        member: currentMembersDict[a.studentId],
-      }));
-      setAttendees(enriched);
+      // DEDUPLICAÇÃO E CONSOLIDAÇÃO:
+      // Se a pessoa se inscreveu e também escaneou o QR code (ou foi registrada mais de uma vez),
+      // mesclamos em um único registro do aluno, consolidando todas as datas de check-in (checkInDates).
+      const mapByStudent = new Map<string, Attendance & { member?: Member; allDocIds?: string[] }>();
+
+      currentAttendances.forEach((a: Attendance) => {
+        let mbr = currentMembersDict[a.studentId];
+        if (!mbr) {
+          mbr = Object.values(currentMembersDict).find(
+            (m) =>
+              m.id === a.studentId ||
+              m.alphaCode === a.studentId ||
+              (m.ra && m.ra === a.studentId) ||
+              ((a as any).memberRa && (a as any).memberRa === m.ra) ||
+              ((m as any).cpf && (a as any).memberCpf === (m as any).cpf)
+          );
+        }
+
+        const uniqueKey = mbr?.id || a.studentId || a.id;
+
+        const currentDates = Array.isArray(a.checkInDates) ? [...a.checkInDates] : [];
+        const currentRecords: CheckInRecord[] = Array.isArray(a.checkInRecords) ? [...a.checkInRecords] : [];
+        currentDates.forEach((d) => {
+          if (!currentRecords.some((r) => r.date === d)) {
+            currentRecords.push({
+              date: d,
+              timestamp: a.timestamp || new Date().toISOString(),
+              validatedBy: "self",
+              validatorName: "Validação Registrada",
+            });
+          }
+        });
+
+        if (!mapByStudent.has(uniqueKey)) {
+          mapByStudent.set(uniqueKey, {
+            ...a,
+            member: mbr,
+            checkInDates: currentDates,
+            checkInRecords: currentRecords,
+            allDocIds: [a.id],
+          });
+        } else {
+          // Consolida registro prévio com o novo (ex: escaneamento via QR code)
+          const existing = mapByStudent.get(uniqueKey)!;
+          const mergedDates = Array.from(
+            new Set([
+              ...(existing.checkInDates || []),
+              ...currentDates,
+            ])
+          );
+
+          const recordsMap = new Map<string, CheckInRecord>();
+          (existing.checkInRecords || []).forEach((r) => recordsMap.set(r.date, r));
+          currentRecords.forEach((r) => recordsMap.set(r.date, r));
+          mergedDates.forEach((d) => {
+            if (!recordsMap.has(d)) {
+              recordsMap.set(d, {
+                date: d,
+                timestamp: existing.timestamp || a.timestamp || new Date().toISOString(),
+                validatedBy: "self",
+                validatorName: "Validação Registrada",
+              });
+            }
+          });
+
+          const isPresent =
+            existing.status === "presente" ||
+            a.status === "presente" ||
+            mergedDates.length > 0;
+          const isOrg = Boolean(existing.isOrganizer || a.isOrganizer);
+
+          mapByStudent.set(uniqueKey, {
+            ...existing,
+            member: existing.member || mbr,
+            status: isPresent ? "presente" : existing.status,
+            isOrganizer: isOrg,
+            checkInDates: mergedDates,
+            checkInRecords: Array.from(recordsMap.values()),
+            revokedParticipantCert: Boolean(existing.revokedParticipantCert || a.revokedParticipantCert),
+            revokedOrgCert: Boolean(existing.revokedOrgCert || a.revokedOrgCert),
+            allDocIds: Array.from(new Set([...(existing.allDocIds || [existing.id]), a.id])),
+          });
+        }
+      });
+
+      const consolidated = Array.from(mapByStudent.values());
+      setAttendees(consolidated);
       setLoading(false);
     };
 
@@ -203,7 +316,7 @@ export default function EventAttendeesModal({
     });
   };
 
-  const handleCancelCheckIn = (attendanceId: string, memberName: string) => {
+  const handleCancelCheckIn = (attendanceId: string, memberName: string, docIds?: string[]) => {
     setConfirmModal({
       isOpen: true,
       title: "Cancelar Check-in",
@@ -211,7 +324,10 @@ export default function EventAttendeesModal({
       message: `Deseja cancelar o check-in de "${memberName}"? A presença será desfeita e o status retornará para "Inscrito".`,
       onConfirm: async () => {
         try {
-          await removeAttendancePresence(attendanceId);
+          const targets = docIds && docIds.length > 0 ? docIds : [attendanceId];
+          await Promise.all(
+            targets.map((id) => removeAttendancePresence(id).catch(console.warn))
+          );
           await loadData();
           showAlert(`Check-in de "${memberName}" cancelado com sucesso. Status revertido para inscrito.`, { type: 'success' });
         } catch (err) {
@@ -225,19 +341,75 @@ export default function EventAttendeesModal({
     handleCancelEnrollment(eventId, studentId, "este participante");
   };
 
-  const handleRemovePresence = async (attendanceId: string) => {
-    handleCancelCheckIn(attendanceId, "este participante");
+  const handleRemovePresence = async (attendanceId: string, docIds?: string[]) => {
+    handleCancelCheckIn(attendanceId, "este participante", docIds);
   };
 
-  const handleMarkPresent = async (attendanceId: string) => {
+  const handleMarkPresent = async (attendanceId: string, docIds?: string[], dateStr?: string) => {
     try {
-      const todayStr = new Date().toISOString().split("T")[0];
-      await updateAttendanceStatus(attendanceId, "presente", todayStr);
-      loadData();
-      showAlert("Presença registrada via painel.", { type: 'success' });
+      const todayStr = dateStr || new Date().toISOString().split("T")[0];
+      const targets = docIds && docIds.length > 0 ? docIds : [attendanceId];
+      await Promise.all(
+        targets.map((id) =>
+          updateAttendanceStatus(id, "presente", todayStr, {
+            validatedBy: "admin",
+            validatorName: "Pelo Administrador",
+            timestamp: new Date().toISOString(),
+          }).catch(console.warn)
+        )
+      );
+      await loadData();
+      showAlert("Presença confirmada pelo administrador com sucesso.", { type: 'success' });
     } catch (err) {
       showAlert("Erro ao marcar presença.", { type: 'error' });
     }
+  };
+
+  const handleAddPresenceDate = async (att: Attendance & { allDocIds?: string[] }, dateStr: string) => {
+    if (!dateStr) return;
+    try {
+      const targets = att.allDocIds && att.allDocIds.length > 0 ? att.allDocIds : [att.id];
+      await Promise.all(
+        targets.map((id) =>
+          updateAttendanceStatus(id, "presente", dateStr, {
+            validatedBy: "admin",
+            validatorName: "Pelo Administrador",
+            timestamp: new Date().toISOString(),
+          }).catch(console.warn)
+        )
+      );
+      await loadData();
+      const [y, m, d] = dateStr.split('-');
+      showAlert(`Presença de "${att.member?.name || 'participante'}" confirmada para o dia ${d}/${m}/${y}!`, { type: 'success' });
+      setPresenceDateModalAttendee(null);
+    } catch (err) {
+      console.error("Erro ao adicionar data de presença:", err);
+      showAlert("Erro ao adicionar data de presença.", { type: 'error' });
+    }
+  };
+
+  const handleRemovePresenceDate = (att: Attendance & { allDocIds?: string[] }, dateStr: string) => {
+    const [y, m, d] = dateStr.split('-');
+    const formatted = `${d}/${m}/${y}`;
+    setConfirmModal({
+      isOpen: true,
+      title: "Remover Presença do Dia",
+      confirmVariant: "danger",
+      message: `Deseja remover o registro de presença de "${att.member?.name || 'participante'}" no dia ${formatted}?`,
+      onConfirm: async () => {
+        try {
+          const targets = att.allDocIds && att.allDocIds.length > 0 ? att.allDocIds : [att.id];
+          await Promise.all(
+            targets.map((id) => removeAttendancePresence(id, dateStr).catch(console.warn))
+          );
+          await loadData();
+          showAlert(`Presença do dia ${formatted} removida com sucesso.`, { type: 'success' });
+        } catch (err) {
+          console.error("Erro ao remover presença do dia:", err);
+          showAlert("Erro ao remover data de presença.", { type: 'error' });
+        }
+      },
+    });
   };
 
   const handleToggleOrganizer = async (eventId: string, studentId: string, currentStatus: boolean) => {
@@ -249,43 +421,56 @@ export default function EventAttendeesModal({
     }
   };
 
-  const handleCheckInAll = async () => {
-    const unconfirmed = attendees.filter((a) => a.status !== "presente" && a.member?.isActive !== false);
-    if (unconfirmed.length === 0) {
-      showAlert("Todos os participantes ativos deste evento já estão com presença confirmada!", { type: "info" });
+  const handleCheckInAll = () => {
+    setBulkCheckInTargetDay(selectedPresenceDay !== "all" ? selectedPresenceDay : todayStr);
+    setShowBulkCheckInModal(true);
+  };
+
+  const handleExecuteBulkCheckIn = async () => {
+    if (!bulkCheckInTargetDay) return;
+    const targetAttendees = attendees.filter(
+      (a) => a.member?.isActive !== false && !(a.checkInDates || []).includes(bulkCheckInTargetDay)
+    );
+
+    if (targetAttendees.length === 0) {
+      showAlert("Todos os participantes ativos deste evento já possuem presença registrada para esta data!", { type: "info" });
+      setShowBulkCheckInModal(false);
       return;
     }
 
-    const todayStr = new Date().toISOString().split("T")[0];
-    const todayFormatted = new Date().toLocaleDateString("pt-BR");
+    try {
+      setIsExecutingBulkCheckIn(true);
+      const auditPayload = {
+        validatedBy: "admin" as const,
+        validatorName: "Pelo Administrador (Check-in em Massa)",
+        timestamp: new Date().toISOString(),
+      };
 
-    setConfirmModal({
-      isOpen: true,
-      title: "Check-in de Todos",
-      confirmVariant: "primary",
-      message: `Deseja realizar o check-in e confirmar a presença de TODOS os ${unconfirmed.length} participante(s) pendente(s) com a data de hoje (${todayFormatted})?`,
-      onConfirm: async () => {
-        try {
-          setLoading(true);
-          const updatePromises = unconfirmed.map((a) =>
-            updateAttendanceStatus(a.id, "presente", todayStr).catch((err) => {
-              console.warn("Error updating individual attendance:", a.id, err);
+      const updatePromises = targetAttendees.map((a) => {
+        const targets = a.allDocIds && a.allDocIds.length > 0 ? a.allDocIds : [a.id];
+        return Promise.all(
+          targets.map((docId) =>
+            updateAttendanceStatus(docId, "presente", bulkCheckInTargetDay, auditPayload).catch((err) => {
+              console.warn("Error in bulk check-in doc:", docId, err);
             })
-          );
-          await Promise.all(updatePromises);
-          await loadData();
-          showAlert(
-            `Check-in de todos realizado com sucesso! (${unconfirmed.length} presenças confirmadas).`,
-            { type: "success" }
-          );
-        } catch (err) {
-          console.error("Erro ao fazer check-in de todos:", err);
-          showAlert("Ocorreu um erro ao processar o check-in em massa.", { type: "error" });
-        } finally {
-          setLoading(false);
-        }
-      },
-    });
+          )
+        );
+      });
+
+      await Promise.all(updatePromises);
+      await loadData();
+      const [y, m, d] = bulkCheckInTargetDay.split("-");
+      showAlert(
+        `Check-in de todos concluído com sucesso para o dia ${d}/${m}/${y}! (${targetAttendees.length} presenças confirmadas com carimbo de auditoria).`,
+        { type: "success" }
+      );
+      setShowBulkCheckInModal(false);
+    } catch (err) {
+      console.error("Erro ao fazer check-in de todos:", err);
+      showAlert("Ocorreu um erro ao processar o check-in em massa.", { type: "error" });
+    } finally {
+      setIsExecutingBulkCheckIn(false);
+    }
   };
 
   const handleEnrollMember = async (mbr: Member, markPresentImmediately: boolean = false) => {
@@ -374,6 +559,86 @@ export default function EventAttendeesModal({
       showAlert("Erro ao cadastrar visitante: " + (err.message || ""), { type: "error" });
     } finally {
       setIsAdding(false);
+    }
+  };
+
+  const handleToggleCertificateRevocation = async (
+    attendee: AttendanceWithMember,
+    revoke: boolean
+  ) => {
+    setIsRevokingCert(true);
+    try {
+      const studentId = attendee.member?.id || attendee.studentId;
+      const certKey = `${event.id}_participant`;
+      const certOrgKey = `${event.id}_organizer`;
+
+      const { doc, updateDoc, arrayUnion, arrayRemove, collection, query, where, getDocs, deleteDoc } = await import("firebase/firestore");
+
+      // 1. Atualizar documento do aluno
+      if (studentId) {
+        const studentRef = doc(db, `artifacts/${appId}/public/data/students`, studentId);
+        if (revoke) {
+          await updateDoc(studentRef, {
+            revokedCertKeys: arrayUnion(certKey, certOrgKey),
+          }).catch(console.warn);
+        } else {
+          await updateDoc(studentRef, {
+            revokedCertKeys: arrayRemove(certKey, certOrgKey),
+          }).catch(console.warn);
+        }
+      }
+
+      // 2. Atualizar documento(s) de presença
+      const docIds =
+        attendee.allDocIds && attendee.allDocIds.length > 0
+          ? attendee.allDocIds
+          : [attendee.id];
+
+      for (const dId of docIds) {
+        if (!dId) continue;
+        const attRef = doc(db, `artifacts/${appId}/public/data/attendances`, dId);
+        if (revoke) {
+          await updateDoc(attRef, {
+            revokedParticipantCert: true,
+            revokedOrgCert: attendee.isOrganizer ? true : false,
+          }).catch(console.warn);
+        } else {
+          await updateDoc(attRef, {
+            revokedParticipantCert: false,
+            revokedOrgCert: false,
+          }).catch(console.warn);
+        }
+      }
+
+      // 3. Se for revogação, remove também da coleção de certificados emitidos se existir
+      if (revoke && studentId) {
+        const certsCol = collection(db, `artifacts/${appId}/public/data/certificates`);
+        const q = query(
+          certsCol,
+          where("eventId", "==", event.id),
+          where("studentId", "in", [studentId, attendee.studentId].filter(Boolean))
+        );
+        const snap = await getDocs(q).catch(() => null);
+        if (snap && !snap.empty) {
+          for (const docItem of snap.docs) {
+            await deleteDoc(docItem.ref).catch(console.warn);
+          }
+        }
+      }
+
+      showAlert(
+        revoke
+          ? `Certificado de ${attendee.member?.name || "participante"} removido com sucesso!`
+          : `Certificado de ${attendee.member?.name || "participante"} restaurado com sucesso!`,
+        { type: "success" }
+      );
+
+      setCertRevokeTarget(null);
+    } catch (err) {
+      console.error("Erro ao alterar revogação de certificado:", err);
+      showAlert("Falha ao atualizar status do certificado do participante.", { type: "error" });
+    } finally {
+      setIsRevokingCert(false);
     }
   };
 
@@ -646,6 +911,164 @@ export default function EventAttendeesModal({
     printDocumentHtml(`Lista de Presença - ${event?.title || "Evento"}`, printContent);
   };
 
+  const handlePrintPresenceAuditList = (targetDay: string | "all") => {
+    const isSingleDay = targetDay !== "all";
+    const [y, m, d] = isSingleDay ? targetDay.split("-") : ["", "", ""];
+    const formattedTargetDay = isSingleDay ? `${d}/${m}/${y}` : "Todos os Dias do Evento";
+
+    let listToPrint = attendees.filter((a) => a.member?.isActive !== false);
+
+    if (listToPrint.length === 0) {
+      showAlert("Nenhum participante ativo encontrado para impressão da lista de presença.", { type: "warning" });
+      return;
+    }
+
+    // Ordena alfabeticamente por nome
+    listToPrint = [...listToPrint].sort((a, b) =>
+      (a.member?.name || "").localeCompare(b.member?.name || "", "pt-BR")
+    );
+
+    let trs = "";
+    let totalPresentInReport = 0;
+
+    listToPrint.forEach((sub, idx) => {
+      const rolesText = [
+        ...(sub.member?.roles || []),
+        sub.member?.course || "",
+        sub.member?.diocese ? `Diocese: ${sub.member?.diocese}` : "",
+      ].filter(Boolean).join(" • ");
+
+      if (isSingleDay) {
+        const isPresentOnDay = (sub.checkInDates || []).includes(targetDay);
+        if (isPresentOnDay) totalPresentInReport++;
+
+        const rec = sub.checkInRecords?.find((r) => r.date === targetDay);
+        const timeStr = rec?.timestamp
+          ? new Date(rec.timestamp).toLocaleString("pt-BR")
+          : (isPresentOnDay ? "Horário registrado" : "-");
+        const validator = rec?.validatorName || (rec?.validatedBy === "self" ? "Pelo Próprio Participante" : (isPresentOnDay ? "Pelo Administrador" : "-"));
+
+        trs += `
+          <tr>
+            <td class="border border-black p-2 text-center font-bold">${idx + 1}</td>
+            <td class="border border-black p-2 uppercase font-semibold text-xs">${sub.member?.name || "Desconhecido"}</td>
+            <td class="border border-black p-2 text-center text-xs">${sub.member?.ra || (sub.member as any)?.cpf || "-"}</td>
+            <td class="border border-black p-2 text-[10px] uppercase">${rolesText || "-"}</td>
+            <td class="border border-black p-2 text-center font-bold text-xs ${isPresentOnDay ? 'text-emerald-800 bg-emerald-50' : 'text-gray-500'}">
+              ${isPresentOnDay ? "✓ PRESENTE" : "PENDENTE / AUSENTE"}
+            </td>
+            <td class="border border-black p-2 text-center text-[10px] font-mono">${timeStr}</td>
+            <td class="border border-black p-2 text-center text-[10px] font-semibold">${validator}</td>
+            <td class="border border-black p-2 align-bottom">
+              ${isPresentOnDay 
+                ? '<div class="text-[9px] text-center font-bold text-emerald-800">VALIDAÇÃO CONFIRMADA</div>'
+                : '<div class="w-full h-7 border-b border-black border-dashed opacity-50"></div>'
+              }
+            </td>
+          </tr>
+        `;
+      } else {
+        const totalDaysPresent = sub.checkInDates?.length || (sub.status === "presente" ? 1 : 0);
+        if (totalDaysPresent > 0) totalPresentInReport++;
+
+        const recordsDetail = (sub.checkInDates && sub.checkInDates.length > 0)
+          ? sub.checkInDates.map((dStr) => {
+              const [dy, dm, dd] = dStr.split("-");
+              const rec = sub.checkInRecords?.find((r) => r.date === dStr);
+              const timeStr = rec?.timestamp ? new Date(rec.timestamp).toLocaleTimeString("pt-BR", { hour: "2-digit", minute: "2-digit" }) : "";
+              const who = rec?.validatedBy === "self" ? "Próprio" : "Admin";
+              return `${dd}/${dm} (${who}${timeStr ? ` às ${timeStr}` : ''})`;
+            }).join("; ")
+          : "-";
+
+        trs += `
+          <tr>
+            <td class="border border-black p-2 text-center font-bold">${idx + 1}</td>
+            <td class="border border-black p-2 uppercase font-semibold text-xs">${sub.member?.name || "Desconhecido"}</td>
+            <td class="border border-black p-2 text-center text-xs">${sub.member?.ra || (sub.member as any)?.cpf || "-"}</td>
+            <td class="border border-black p-2 text-[10px] uppercase">${rolesText || "-"}</td>
+            <td class="border border-black p-2 text-center font-bold text-xs ${totalDaysPresent > 0 ? 'text-emerald-800 bg-emerald-50' : 'text-gray-500'}">
+              ${totalDaysPresent > 0 ? `PRESENTE (${totalDaysPresent} dia${totalDaysPresent > 1 ? 's' : ''})` : "SEM PRESENÇA"}
+            </td>
+            <td class="border border-black p-2 text-[10px]">${recordsDetail}</td>
+            <td class="border border-black p-2 align-bottom">
+              <div class="w-full h-7 border-b border-black border-dashed opacity-50"></div>
+            </td>
+          </tr>
+        `;
+      }
+    });
+
+    const davveoIconSvg = settings.instLogo 
+      ? `<img src="${settings.instLogo}" style="width: 38px; height: 38px; object-fit: contain;" alt="Logo" />` 
+      : getDavveroSvgHtml('#0f172a', 38);
+
+    const printContent = `
+      <div class="text-center mb-6">
+        <div style="display: flex; align-items: center; justify-content: center; gap: 10px; margin-bottom: 8px;">
+          ${davveoIconSvg}
+          <div style="text-align: left;">
+            <div style="font-size: 16px; font-weight: 900; letter-spacing: 0.1em; text-transform: uppercase;">${settings.instName || "DAVVERO SYSTEM"}</div>
+            <div style="font-size: 9px; font-weight: bold; color: #475569; text-transform: uppercase; letter-spacing: 0.05em;">Gestão Oficial de Eventos e Controle de Frequência</div>
+          </div>
+        </div>
+        <h2 class="text-xl font-black uppercase tracking-widest border-b-2 border-black pb-2">
+          Lista Oficial de Presença e Validação de Check-in
+        </h2>
+        <p class="text-sm font-bold mt-2 uppercase">${event?.title}</p>
+        <div style="display: flex; justify-content: center; gap: 15px; font-size: 11px; margin-top: 6px; font-weight: 600; color: #334155;">
+          <span>Referência: <strong>${formattedTargetDay}</strong></span>
+          <span>•</span>
+          <span>Total Inscritos: <strong>${listToPrint.length}</strong></span>
+          <span>•</span>
+          <span>Presentes Confirmados: <strong>${totalPresentInReport}</strong></span>
+          <span>•</span>
+          <span>Emissão: <strong>${new Date().toLocaleString("pt-BR")}</strong></span>
+        </div>
+      </div>
+
+      <table class="w-full border-collapse border border-black text-xs">
+        <thead>
+          <tr class="bg-gray-100">
+            <th class="border border-black p-2 w-8 text-center">#</th>
+            <th class="border border-black p-2 text-left">NOME DO PARTICIPANTE</th>
+            <th class="border border-black p-2 w-24 text-center">R.A. / CPF</th>
+            <th class="border border-black p-2 text-left">VÍNCULO / DIOCESE</th>
+            <th class="border border-black p-2 text-center w-28">STATUS</th>
+            ${isSingleDay ? `
+              <th class="border border-black p-2 text-center w-36">CARIMBO (DATA/HORA)</th>
+              <th class="border border-black p-2 text-center w-36">VALIDADO POR</th>
+              <th class="border border-black p-2 text-center w-36">RUBRICA / ASSINATURA</th>
+            ` : `
+              <th class="border border-black p-2 text-left">DIAS & CARIMBOS DE AUDITORIA</th>
+              <th class="border border-black p-2 text-center w-36">ASSINATURA / RUBRICA</th>
+            `}
+          </tr>
+        </thead>
+        <tbody>
+          ${trs}
+        </tbody>
+      </table>
+
+      <div style="margin-top: 35px; display: flex; justify-content: space-around; font-size: 10px; text-transform: uppercase;">
+        <div style="text-align: center; width: 230px;">
+          <div style="border-bottom: 1px solid black; margin-bottom: 5px;"></div>
+          <strong>Coordenação do Evento</strong>
+        </div>
+        <div style="text-align: center; width: 230px;">
+          <div style="border-bottom: 1px solid black; margin-bottom: 5px;"></div>
+          <strong>Secretaria Acadêmica / Direção</strong>
+        </div>
+      </div>
+
+      <div class="mt-8 pt-4 border-t border-black text-center text-[10px] uppercase tracking-widest">
+        Documento Oficial Gerado pelo DAVVERO System • Faculdade João Paulo II (FAJOPA)
+      </div>
+    `;
+
+    printDocumentHtml(`Lista de Presenca - ${formattedTargetDay} - ${event?.title || "Evento"}`, printContent);
+  };
+
   const handleExportCSV = () => {
     let toPrint = attendees;
     if (activeTab === "alunos") {
@@ -866,11 +1289,105 @@ export default function EventAttendeesModal({
     );
   });
 
+  const eventDays = useMemo(() => {
+    const daysSet = new Set<string>();
+    if (event.startDate) {
+      const start = new Date(event.startDate + "T00:00:00");
+      const end = event.endDate ? new Date(event.endDate + "T00:00:00") : start;
+      if (!isNaN(start.getTime())) {
+        const cur = new Date(start);
+        const maxDays = 31;
+        let count = 0;
+        while (cur <= end && count < maxDays) {
+          daysSet.add(cur.toISOString().split("T")[0]);
+          cur.setDate(cur.getDate() + 1);
+          count++;
+        }
+      }
+    }
+    attendees.forEach((a) => {
+      if (a.checkInDates && Array.isArray(a.checkInDates)) {
+        a.checkInDates.forEach((d) => {
+          if (d && typeof d === "string" && d.length === 10) daysSet.add(d);
+        });
+      }
+    });
+    return Array.from(daysSet).sort();
+  }, [event.startDate, event.endDate, attendees]);
+
+  const attendeesWithPresence = useMemo(() => {
+    return attendees.filter(
+      (a) =>
+        a.status === "presente" ||
+        a.status === "apto_para_certificado" ||
+        (a.checkInDates && a.checkInDates.length > 0)
+    );
+  }, [attendees]);
+
+  const todayStr = useMemo(() => new Date().toISOString().split("T")[0], []);
+
+  const todayCheckInCount = useMemo(() => {
+    return attendees.filter((a) => a.checkInDates && a.checkInDates.includes(todayStr)).length;
+  }, [attendees, todayStr]);
+
+  const totalCheckInsCount = useMemo(() => {
+    return attendees.reduce(
+      (acc, a) => acc + (a.checkInDates?.length || (a.status === "presente" ? 1 : 0)),
+      0
+    );
+  }, [attendees]);
+
+  // Contagem de presenças por dia
+  const presenceCountByDay = useMemo(() => {
+    const map: Record<string, number> = {};
+    eventDays.forEach((day) => {
+      map[day] = attendees.filter((a) => a.checkInDates && a.checkInDates.includes(day)).length;
+    });
+    return map;
+  }, [eventDays, attendees]);
+
+  const filteredPresences = useMemo(() => {
+    return attendees.filter((a) => {
+      // Regra de inativos
+      if (a.member?.isActive === false) return false;
+
+      // Filtro de status de presença
+      const isPresent =
+        a.status === "presente" ||
+        a.status === "apto_para_certificado" ||
+        (a.checkInDates && a.checkInDates.length > 0);
+
+      if (presenceFilterStatus === "present" && !isPresent) return false;
+      if (presenceFilterStatus === "absent" && isPresent) return false;
+
+      // Filtro por dia específico
+      if (selectedPresenceDay !== "all") {
+        if (!a.checkInDates || !a.checkInDates.includes(selectedPresenceDay)) {
+          return false;
+        }
+      }
+
+      // Filtro de busca
+      if (!searchTerm) return true;
+      const term = searchTerm.toLowerCase();
+      return (
+        (a.member?.name || "").toLowerCase().includes(term) ||
+        (a.member?.ra || "").toLowerCase().includes(term) ||
+        (a.member as any)?.cpf?.includes(term)
+      );
+    }).sort((a, b) => {
+      const datesA = a.checkInDates?.length || 0;
+      const datesB = b.checkInDates?.length || 0;
+      if (datesB !== datesA) return datesB - datesA;
+      return (a.member?.name || "").localeCompare(b.member?.name || "", "pt-BR");
+    });
+  }, [attendees, presenceFilterStatus, selectedPresenceDay, searchTerm]);
+
   if (!mounted) return null;
 
   return createPortal(
     <div className="fixed inset-0 z-[100] flex items-end sm:items-center justify-center p-0 sm:p-4 bg-slate-900/60 backdrop-blur-sm print:static print:bg-transparent print:p-0 overflow-hidden">
-      <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-3xl border border-slate-200 dark:border-slate-700/50 flex flex-col h-[94dvh] sm:h-auto sm:max-h-[92vh] print:hidden overflow-hidden">
+      <div className="bg-white dark:bg-slate-900 rounded-t-3xl sm:rounded-3xl shadow-2xl w-full max-w-4xl lg:max-w-5xl border border-slate-200 dark:border-slate-700/50 flex flex-col h-[94dvh] sm:h-auto sm:max-h-[92vh] print:hidden overflow-hidden">
         <div className="p-4 sm:p-6 border-b border-slate-200 dark:border-slate-800 flex justify-between items-center bg-slate-50/50 dark:bg-slate-800/20 shrink-0">
           <div>
             <h3 className="text-lg sm:text-xl font-black text-slate-800 dark:text-white">
@@ -888,7 +1405,44 @@ export default function EventAttendeesModal({
           </button>
         </div>
 
-        <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 mx-3 sm:mx-4 mt-3 rounded-xl overflow-x-auto no-scrollbar shrink-0 gap-1">
+        {/* Alternador Principal: Lista de Inscritos vs Lista de Presenças */}
+        <div className="flex border-b border-slate-200 dark:border-slate-800 px-3 sm:px-4 bg-slate-50/60 dark:bg-slate-900/40 shrink-0">
+          <button
+            type="button"
+            onClick={() => setMainView("inscritos")}
+            className={`flex items-center gap-2 py-3 px-4 border-b-2 font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+              mainView === "inscritos"
+                ? "border-sky-600 text-sky-600 dark:text-sky-400 bg-white/70 dark:bg-slate-800/60 rounded-t-lg shadow-2xs"
+                : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            <Users className="w-4 h-4" />
+            <span>Lista de Inscritos</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-slate-200 dark:bg-slate-700 text-slate-700 dark:text-slate-300">
+              {attendees.length}
+            </span>
+          </button>
+
+          <button
+            type="button"
+            onClick={() => setMainView("presencas")}
+            className={`flex items-center gap-2 py-3 px-4 border-b-2 font-bold text-xs sm:text-sm transition-all cursor-pointer ${
+              mainView === "presencas"
+                ? "border-emerald-600 text-emerald-600 dark:text-emerald-400 bg-white/70 dark:bg-slate-800/60 rounded-t-lg shadow-2xs"
+                : "border-transparent text-slate-500 hover:text-slate-700 dark:hover:text-slate-300"
+            }`}
+          >
+            <CheckCircle2 className="w-4 h-4" />
+            <span>Lista de Presenças</span>
+            <span className="px-2 py-0.5 rounded-full text-[10px] font-black bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+              {attendeesWithPresence.length}
+            </span>
+          </button>
+        </div>
+
+        {mainView === "inscritos" ? (
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            <div className="flex bg-slate-100 dark:bg-slate-800/50 p-1 mx-3 sm:mx-4 mt-3 rounded-xl overflow-x-auto no-scrollbar shrink-0 gap-1">
           <button
             onClick={() => setActiveTab("all")}
             className={`shrink-0 sm:flex-1 whitespace-nowrap px-3 py-1.5 sm:py-2 text-xs sm:text-sm font-bold rounded-lg transition-colors ${
@@ -1265,109 +1819,118 @@ export default function EventAttendeesModal({
                       </div>
                     )}
                     <div
-                      className="bg-white dark:bg-slate-800/80 p-4 rounded-xl border border-slate-200 dark:border-slate-700 flex flex-col sm:flex-row justify-between sm:items-center gap-3"
+                      className="bg-white dark:bg-slate-800/90 p-4 sm:p-5 rounded-2xl border border-slate-200 dark:border-slate-700/80 flex flex-col md:flex-row md:items-center justify-between gap-4 shadow-2xs hover:border-sky-300 dark:hover:border-sky-700/60 transition-all"
                     >
-                  <div className="flex items-center gap-3">
+                  <div className="flex items-center gap-3.5 min-w-0">
                     {a.member?.photoUrl ? (
                       <img
                         src={a.member.photoUrl}
                         alt={a.member?.name}
-                        className="w-12 h-12 rounded-full object-cover border-2 border-slate-100 dark:border-slate-700"
+                        className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-slate-100 dark:border-slate-700 shrink-0 shadow-2xs"
                       />
                     ) : (
-                      <div className="w-12 h-12 rounded-full bg-slate-100 dark:bg-slate-700 flex items-center justify-center text-slate-500 dark:text-slate-400 text-xl font-bold">
+                      <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-sky-50 to-indigo-100 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center text-sky-800 dark:text-sky-300 text-xl font-black shrink-0 border border-sky-100 dark:border-slate-600 shadow-2xs">
                         {a.member?.name?.charAt(0).toUpperCase() || "?"}
                       </div>
                     )}
-                    <div>
-                      <h4 className="font-bold text-slate-800 dark:text-slate-200">
-                        {a.member?.name || "Aluno Excluído"}
-                      </h4>
-                      <div className="text-[10px] text-slate-500 dark:text-slate-400 font-medium mt-1 flex flex-wrap gap-x-2 gap-y-1">
-                        {a.member?.ra && <span>RA: {a.member.ra}</span>}
-                        {(a.member as any)?.cpf && <span>CPF: {(a.member as any).cpf}</span>}
-                        {a.member?.alphaCode && (
-                          <span>ID: {a.member.alphaCode}</span>
-                        )}
-                        {a.member?.course && (
-                          <span>
-                            <span className="text-slate-300 dark:text-slate-600 px-1">
-                              •
-                            </span>
-                            {a.member.course}
-                          </span>
-                        )}
-                        {a.member?.roles && a.member.roles.length > 0 && (
-                          <span>
-                            <span className="text-slate-300 dark:text-slate-600 px-1">
-                              •
-                            </span>
-                            {a.member.roles.join(", ")}
-                          </span>
-                        )}
-                        {a.member?.diocese && (
-                          <span>
-                            <span className="text-slate-300 dark:text-slate-600 px-1">
-                              •
-                            </span>
-                            Diocese: {a.member.diocese}
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="font-black text-base sm:text-lg text-slate-900 dark:text-slate-100 tracking-tight leading-snug break-words">
+                          {a.member?.name || "Aluno Excluído"}
+                        </h4>
+                        {a.isOrganizer && (
+                          <span className="inline-flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                            <Star className="w-3 h-3 fill-amber-500" /> Org
                           </span>
                         )}
                         {a.member?.isActive === false && (
-                          <span className="inline-flex items-center gap-1 text-[10px] font-bold px-1.5 py-0.5 rounded bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
+                          <span className="inline-flex items-center gap-1 text-xs font-bold px-2 py-0.5 rounded-lg bg-rose-100 dark:bg-rose-950/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-800">
                             <AlertTriangle className="w-3 h-3" /> Inativo
+                          </span>
+                        )}
+                      </div>
+                      <div className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {a.member?.ra && (
+                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold">
+                            RA: <strong>{a.member.ra}</strong>
+                          </span>
+                        )}
+                        {(a.member as any)?.cpf && (
+                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold">
+                            CPF: <strong>{(a.member as any).cpf}</strong>
+                          </span>
+                        )}
+                        {a.member?.alphaCode && (
+                          <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400">
+                            ID: {a.member.alphaCode}
+                          </span>
+                        )}
+                        {a.member?.course && (
+                          <span className="bg-sky-50 dark:bg-sky-950/40 px-2 py-0.5 rounded-md border border-sky-200 dark:border-sky-800/80 text-sky-800 dark:text-sky-300 font-semibold">
+                            {a.member.course}
+                          </span>
+                        )}
+                        {a.member?.diocese && (
+                          <span className="bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded-md border border-purple-200 dark:border-purple-800/80 text-purple-800 dark:text-purple-300 font-semibold">
+                            Diocese: {a.member.diocese}
+                          </span>
+                        )}
+                        {a.member?.roles && a.member.roles.length > 0 && (
+                          <span className="bg-slate-100 dark:bg-slate-800/70 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 text-[11px]">
+                            {a.member.roles.join(", ")}
                           </span>
                         )}
                       </div>
                     </div>
                   </div>
-                  <div className="flex items-center justify-end gap-2 mt-2 sm:mt-0 flex-wrap">
+                  <div className="flex items-center justify-end gap-2 shrink-0 flex-wrap">
                     <button
                       onClick={() => handleToggleOrganizer(event.id, a.studentId, !!a.isOrganizer)}
-                      className={`p-1.5 rounded-lg border transition-colors flex items-center gap-1.5 px-2.5 py-1.5 text-xs font-bold ${
+                      className={`p-2 rounded-xl border transition-all flex items-center gap-1.5 px-3 py-2 text-xs font-bold ${
                         a.isOrganizer
-                          ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/20 hover:bg-amber-100"
-                          : "bg-slate-50 dark:bg-slate-800 text-slate-400 border-slate-200 dark:border-slate-700 hover:text-amber-500"
+                          ? "bg-amber-50 dark:bg-amber-500/10 text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-500/30 hover:bg-amber-100"
+                          : "bg-slate-50 dark:bg-slate-800 text-slate-500 dark:text-slate-400 border-slate-200 dark:border-slate-700 hover:text-amber-600 hover:bg-amber-50/50"
                       }`}
                       title={a.isOrganizer ? "Remover da equipe de organização" : "Adicionar à equipe de organização"}
                     >
-                      <Star className={`w-3.5 h-3.5 ${a.isOrganizer ? "fill-amber-500" : ""}`} /> Org
+                      <Star className={`w-4 h-4 ${a.isOrganizer ? "fill-amber-500" : ""}`} />
+                      <span>{a.isOrganizer ? "Organizador" : "Org"}</span>
                     </button>
                     {a.member?.isActive === false ? (
                       <div className="flex items-center gap-1.5 flex-wrap">
-                        <span className="inline-flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 text-xs font-bold rounded-lg border border-rose-300 dark:border-rose-800">
-                          <AlertTriangle className="w-3.5 h-3.5 text-rose-600 shrink-0" />
+                        <span className="inline-flex items-center gap-1 px-3 py-2 bg-rose-50 dark:bg-rose-950/50 text-rose-700 dark:text-rose-300 text-xs font-bold rounded-xl border border-rose-300 dark:border-rose-800">
+                          <AlertTriangle className="w-4 h-4 text-rose-600 shrink-0" />
                           Cadastro Inativo
                         </span>
                         {a.status === "presente" && (
                           <button
                             onClick={() => handleCancelCheckIn(a.id, a.member?.name || "Participante")}
-                            className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                            className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                             title="Cancelar Check-in: Reverte a presença deste membro inativo"
                           >
-                            <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                            <span className="hidden sm:inline">Cancelar Check-in</span>
+                            <RotateCcw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            <span>Desfazer Presença</span>
                           </button>
                         )}
                         <button
                           onClick={() => handleCancelEnrollment(event.id, a.studentId, a.member?.name || "Participante")}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                           title="Cancelar Inscrição: Remove este membro inativo do evento"
                         >
-                          <UserX className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                          <span className="hidden sm:inline">Cancelar Inscrição</span>
+                          <UserX className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                          <span>Remover</span>
                         </button>
                       </div>
                     ) : a.status === "presente" ||
                     a.status === "apto_para_certificado" ? (
                       <>
                         <div className="flex flex-col items-end gap-1 mr-1">
-                          <span className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 text-xs font-bold rounded-lg border border-emerald-200 dark:border-emerald-500/20">
-                            <CheckCircle className="w-3.5 h-3.5" /> Presente
+                          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 text-xs font-bold rounded-xl border border-emerald-200 dark:border-emerald-500/20">
+                            <CheckCircle className="w-4 h-4" /> Presente
                           </span>
                           {a.checkInDates && a.checkInDates.length > 0 && (
-                            <span className="text-[10px] text-slate-500 font-medium whitespace-nowrap">
-                              Dia(s): {a.checkInDates.map(d => {
+                            <span className="text-[11px] text-slate-500 dark:text-slate-400 font-semibold whitespace-nowrap">
+                              {a.checkInDates.length} dia{a.checkInDates.length > 1 ? 's' : ''}: {a.checkInDates.map(d => {
                                 const [y,m,day] = d.split('-');
                                 return `${day}/${m}`;
                               }).join(', ')}
@@ -1376,38 +1939,67 @@ export default function EventAttendeesModal({
                         </div>
                         <button
                           onClick={() => handleCancelCheckIn(a.id, a.member?.name || "Participante")}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                           title="Cancelar Check-in: Reverte a presença para inscrito caso tenha marcado por engano"
                         >
-                          <RotateCcw className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" />
-                          <span className="hidden sm:inline">Cancelar Check-in</span>
+                          <RotateCcw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                          <span className="hidden sm:inline">Desfazer Presença</span>
                         </button>
+
+                        {/* Remover ou Restaurar Certificado do Aluno */}
+                        {(() => {
+                          const certKey = `${event.id}_participant`;
+                          const isCertRevoked = a.revokedParticipantCert === true || (a.member as any)?.revokedCertKeys?.includes(certKey);
+                          if (isCertRevoked) {
+                            return (
+                              <button
+                                onClick={() => handleToggleCertificateRevocation(a, false)}
+                                className="flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                                title="Restaurar certificado deste participante para este evento"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                                <span className="hidden sm:inline">Restaurar Certificado</span>
+                              </button>
+                            );
+                          }
+                          return (
+                            <button
+                              onClick={() => setCertRevokeTarget(a)}
+                              className="flex items-center gap-1.5 px-2.5 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                              title="Remover certificado deste participante para este evento"
+                            >
+                              <Award className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                              <span className="hidden sm:inline">Remover Certificado</span>
+                            </button>
+                          );
+                        })()}
+
                         <button
                           onClick={() => handleCancelEnrollment(event.id, a.studentId, a.member?.name || "Participante")}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                           title="Cancelar Inscrição: Remove o participante do evento"
                         >
-                          <UserX className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                          <span className="hidden sm:inline">Cancelar Inscrição</span>
+                          <UserX className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                          <span className="hidden sm:inline">Remover</span>
                         </button>
                       </>
                     ) : (
                       <>
                         <button
                           onClick={() => handleMarkPresent(a.id)}
-                          className="inline-flex items-center gap-1.5 px-2.5 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg transition-all shadow-xs cursor-pointer"
+                          className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-xl transition-all shadow-xs cursor-pointer"
                           title="Fazer Check-in manual / Confirmar presença"
                         >
-                          <CheckCircle2 className="w-3.5 h-3.5" />
+                          <CheckCircle2 className="w-4 h-4" />
                           <span>Fazer Check-in</span>
                         </button>
                         <button
                           onClick={() => handleCancelEnrollment(event.id, a.studentId, a.member?.name || "Participante")}
-                          className="flex items-center gap-1 px-2.5 py-1.5 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 rounded-lg text-xs font-bold transition-all shadow-xs cursor-pointer"
+                          className="flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-300 dark:border-rose-700 rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
                           title="Cancelar Inscrição: Remove o participante do evento"
                         >
-                          <UserX className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
-                          <span className="hidden sm:inline">Cancelar Inscrição</span>
+                          <UserX className="w-4 h-4 text-rose-600 dark:text-rose-400" />
+                          <span className="hidden sm:inline">Remover</span>
                         </button>
                       </>
                     )}
@@ -1419,6 +2011,445 @@ export default function EventAttendeesModal({
         </div>
           )}
         </div>
+      </div>
+        ) : (
+          /* ======================================================== */
+          /* ABA DEDICADA DE PRESENÇAS / CHECK-INS POR DIA */
+          /* ======================================================== */
+          <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
+            {/* 1. Métricas de Presença */}
+            <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 p-3 sm:p-4 bg-slate-50 dark:bg-slate-800/40 border-b border-slate-200 dark:border-slate-800 shrink-0">
+              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Compareceram</span>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-lg font-black text-emerald-600 dark:text-emerald-400">{attendeesWithPresence.length}</span>
+                  <span className="text-xs text-slate-400 font-medium">/ {attendees.length}</span>
+                </div>
+                <div className="w-full bg-slate-100 dark:bg-slate-700 h-1.5 rounded-full mt-1.5 overflow-hidden">
+                  <div 
+                    className="bg-emerald-500 h-full rounded-full transition-all"
+                    style={{ width: `${attendees.length > 0 ? (attendeesWithPresence.length / attendees.length) * 100 : 0}%` }}
+                  />
+                </div>
+              </div>
+
+              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Presenças Hoje</span>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-lg font-black text-sky-600 dark:text-sky-400">{todayCheckInCount}</span>
+                  <span className="text-[10px] text-slate-400 font-medium">({new Date().toLocaleDateString('pt-BR')})</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Check-ins efetuados hoje</p>
+              </div>
+
+              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Total de Check-ins</span>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-lg font-black text-indigo-600 dark:text-indigo-400">{totalCheckInsCount}</span>
+                  <span className="text-[10px] text-slate-400 font-medium">registros</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Soma de todos os dias</p>
+              </div>
+
+              <div className="bg-white dark:bg-slate-800 p-2.5 rounded-xl border border-slate-200 dark:border-slate-700 shadow-2xs">
+                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 block">Sem Presença</span>
+                <div className="flex items-baseline gap-1 mt-0.5">
+                  <span className="text-lg font-black text-amber-600 dark:text-amber-400">{attendees.length - attendeesWithPresence.length}</span>
+                  <span className="text-[10px] text-slate-400 font-medium">pendentes</span>
+                </div>
+                <p className="text-[10px] text-slate-400 mt-1">Nenhum check-in registrado</p>
+              </div>
+            </div>
+
+            {/* 2. Seletor de Dias do Evento */}
+            {eventDays.length > 0 && (
+              <div className="px-3 sm:px-4 py-2 bg-slate-100/70 dark:bg-slate-900/60 border-b border-slate-200 dark:border-slate-800 shrink-0">
+                <div className="flex items-center gap-2 overflow-x-auto no-scrollbar py-1">
+                  <span className="text-xs font-bold text-slate-500 dark:text-slate-400 whitespace-nowrap flex items-center gap-1 shrink-0">
+                    <CalendarDays className="w-3.5 h-3.5 text-slate-400" />
+                    Filtrar por Dia:
+                  </span>
+                  <button
+                    type="button"
+                    onClick={() => setSelectedPresenceDay("all")}
+                    className={`shrink-0 px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                      selectedPresenceDay === "all"
+                        ? "bg-emerald-600 text-white shadow-xs"
+                        : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                    }`}
+                  >
+                    Todos os Dias ({attendeesWithPresence.length})
+                  </button>
+                  {eventDays.map((day) => {
+                    const [y, m, d] = day.split("-");
+                    const formatted = `${d}/${m}`;
+                    const count = presenceCountByDay[day] || 0;
+                    const isSelected = selectedPresenceDay === day;
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setSelectedPresenceDay(day)}
+                        className={`shrink-0 flex items-center gap-1.5 px-2.5 py-1 text-xs font-bold rounded-lg transition-all cursor-pointer ${
+                          isSelected
+                            ? "bg-emerald-600 text-white shadow-xs"
+                            : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700 hover:border-slate-300"
+                        }`}
+                      >
+                        <span>{formatted}</span>
+                        <span className={`text-[10px] px-1.5 py-0.2 rounded-full font-black ${
+                          isSelected ? "bg-white/20 text-white" : "bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300"
+                        }`}>
+                          {count}
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            {/* 3. Barra de Controles e Filtros de Presença */}
+            <div className="px-3 sm:px-4 py-2.5 border-b border-slate-200 dark:border-slate-800 flex flex-col sm:flex-row items-stretch sm:items-center justify-between gap-2 shrink-0 bg-white dark:bg-slate-900">
+              <div className="relative flex-1">
+                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                <input
+                  type="text"
+                  placeholder="Buscar presente por nome, RA ou CPF..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl pl-9 pr-3 py-1.5 text-xs sm:text-sm outline-none focus:border-emerald-500 text-slate-800 dark:text-slate-100"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 shrink-0 flex-wrap sm:flex-nowrap">
+                <div className="flex bg-slate-100 dark:bg-slate-800 p-0.5 rounded-lg border border-slate-200 dark:border-slate-700 text-xs font-semibold">
+                  <button
+                    type="button"
+                    onClick={() => setPresenceFilterStatus("all")}
+                    className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                      presenceFilterStatus === "all"
+                        ? "bg-white dark:bg-slate-700 text-slate-800 dark:text-white shadow-2xs font-bold"
+                        : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    Todos ({attendees.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPresenceFilterStatus("present")}
+                    className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                      presenceFilterStatus === "present"
+                        ? "bg-emerald-600 text-white shadow-2xs font-bold"
+                        : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    Presentes ({attendeesWithPresence.length})
+                  </button>
+                  <button
+                    type="button"
+                    onClick={() => setPresenceFilterStatus("absent")}
+                    className={`px-2.5 py-1 rounded-md transition-all cursor-pointer ${
+                      presenceFilterStatus === "absent"
+                        ? "bg-amber-600 text-white shadow-2xs font-bold"
+                        : "text-slate-500 hover:text-slate-700 dark:hover:text-slate-200"
+                    }`}
+                  >
+                    Ausentes ({attendees.length - attendeesWithPresence.length})
+                  </button>
+                </div>
+
+                <button
+                  type="button"
+                  onClick={() => handlePrintPresenceAuditList(selectedPresenceDay)}
+                  className="px-3 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-lg border border-slate-200 dark:border-slate-700 shadow-2xs transition-all flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  title="Imprimir lista oficial de presença com carimbos e auditoria"
+                >
+                  <Printer className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                  <span className="hidden md:inline">Imprimir Lista</span>
+                  <span className="md:hidden">Imprimir</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={handleCheckInAll}
+                  className="px-3 py-1.5 bg-emerald-600 hover:bg-emerald-500 text-white text-xs font-bold rounded-lg shadow-xs transition-colors flex items-center gap-1.5 cursor-pointer whitespace-nowrap"
+                  title="Fazer check-in em massa de todos os participantes para um dia selecionado"
+                >
+                  <CheckCircle2 className="w-3.5 h-3.5" />
+                  <span className="hidden md:inline">Check-in de Todos</span>
+                  <span className="md:hidden">Todos</span>
+                </button>
+
+                <button
+                  type="button"
+                  onClick={() => setShowQrModal(true)}
+                  className="p-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-lg text-xs font-bold transition-all border border-slate-200 dark:border-slate-700 flex items-center gap-1.5 cursor-pointer"
+                  title="Abrir QR Code para escaneamento de presença pelos participantes"
+                >
+                  <ScanLine className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
+                  <span className="hidden sm:inline">QR Code</span>
+                </button>
+              </div>
+            </div>
+
+            {/* 4. Lista de Participantes e Histórico de Presenças */}
+            <div className="flex-1 overflow-y-auto p-3 sm:p-4 space-y-3">
+              {filteredPresences.length === 0 ? (
+                <div className="text-center py-12 text-slate-400">
+                  <CheckCircle className="w-10 h-10 mx-auto mb-2 opacity-30 text-emerald-500" />
+                  <p className="font-bold text-sm text-slate-600 dark:text-slate-400">Nenhum registro de presença encontrado.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">Tente ajustar os filtros de busca ou de dias do evento.</p>
+                </div>
+              ) : (
+                filteredPresences.map((a, index) => {
+                  const isPresent =
+                    a.status === "presente" ||
+                    a.status === "apto_para_certificado" ||
+                    (a.checkInDates && a.checkInDates.length > 0);
+                  const datesList = a.checkInDates && Array.isArray(a.checkInDates) ? a.checkInDates : [];
+                  const hasToday = datesList.includes(todayStr);
+
+                  return (
+                    <div
+                      key={a.studentId || a.id}
+                      className={`p-4 sm:p-5 rounded-2xl border transition-all flex flex-col lg:flex-row lg:items-start justify-between gap-4 ${
+                        isPresent
+                          ? "bg-white dark:bg-slate-800/90 border-emerald-300/80 dark:border-emerald-800/60 shadow-2xs"
+                          : "bg-white dark:bg-slate-800/50 border-slate-200 dark:border-slate-700/60"
+                      }`}
+                    >
+                      {/* Lado Esquerdo: Identificação do Aluno */}
+                      <div className="flex items-start gap-3.5 min-w-0 flex-1">
+                        <div className="text-xs font-black text-slate-400 w-5 text-right shrink-0 mt-3">
+                          {index + 1}.
+                        </div>
+
+                        {a.member?.photoUrl ? (
+                          <img
+                            src={a.member.photoUrl}
+                            alt={a.member.name}
+                            className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl object-cover border-2 border-slate-100 dark:border-slate-700 shrink-0 shadow-2xs"
+                          />
+                        ) : (
+                          <div className="w-13 h-13 sm:w-14 sm:h-14 rounded-2xl bg-gradient-to-br from-emerald-50 to-teal-100 dark:from-slate-800 dark:to-slate-700 flex items-center justify-center text-emerald-800 dark:text-emerald-300 text-xl font-black shrink-0 border border-emerald-100 dark:border-slate-600 shadow-2xs">
+                            {a.member?.name ? a.member.name.substring(0, 1).toUpperCase() : <User className="w-6 h-6" />}
+                          </div>
+                        )}
+
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <h4 className="font-black text-base sm:text-lg text-slate-900 dark:text-slate-100 tracking-tight leading-snug break-words">
+                              {a.member?.name || "Participante"}
+                            </h4>
+
+                            {a.isOrganizer && (
+                              <span className="inline-flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">
+                                <Star className="w-3 h-3 fill-amber-500" /> Org
+                              </span>
+                            )}
+
+                            {isPresent ? (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-emerald-100/80 dark:bg-emerald-950/60 text-emerald-800 dark:text-emerald-300 border border-emerald-300 dark:border-emerald-800">
+                                <CheckCircle className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                                Presente ({datesList.length || 1} dia{datesList.length > 1 ? "s" : ""})
+                              </span>
+                            ) : (
+                              <span className="inline-flex items-center gap-1.5 text-xs font-bold px-2.5 py-0.5 rounded-full bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-400 border border-slate-200 dark:border-slate-600">
+                                <Clock className="w-3.5 h-3.5" /> Sem presença registrada
+                              </span>
+                            )}
+                          </div>
+
+                          <div className="text-xs text-slate-600 dark:text-slate-300 font-medium mt-1.5 flex flex-wrap items-center gap-1.5">
+                            {a.member?.ra && (
+                              <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold">
+                                RA: <strong>{a.member.ra}</strong>
+                              </span>
+                            )}
+                            {(a.member as any)?.cpf && (
+                              <span className="bg-slate-100 dark:bg-slate-800 px-2 py-0.5 rounded-md border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-semibold">
+                                CPF: <strong>{(a.member as any).cpf}</strong>
+                              </span>
+                            )}
+                            {a.member?.course && (
+                              <span className="bg-sky-50 dark:bg-sky-950/40 px-2 py-0.5 rounded-md border border-sky-200 dark:border-sky-800/80 text-sky-800 dark:text-sky-300 font-semibold">
+                                {a.member.course}
+                              </span>
+                            )}
+                            {a.member?.diocese && (
+                              <span className="bg-purple-50 dark:bg-purple-950/40 px-2 py-0.5 rounded-md border border-purple-200 dark:border-purple-800/80 text-purple-800 dark:text-purple-300 font-semibold">
+                                Diocese: {a.member.diocese}
+                              </span>
+                            )}
+                          </div>
+
+                          {/* Exibição dos Dias de Check-in com Carimbo de Auditoria */}
+                          <div className="mt-3 pt-2.5 border-t border-slate-100 dark:border-slate-800">
+                            <div className="text-xs font-bold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-1.5 flex items-center gap-1.5">
+                              <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                              <span>Presenças Registradas & Auditoria de Validação:</span>
+                            </div>
+
+                            {datesList.length === 0 ? (
+                              <span className="text-xs text-slate-400 italic">Nenhum check-in efetuado ainda</span>
+                            ) : (
+                              <div className="flex flex-wrap gap-2">
+                                {datesList.map((dateStr) => {
+                                  const [y, m, d] = dateStr.split("-");
+                                  const formatted = `${d}/${m}/${y}`;
+                                  const rec = a.checkInRecords?.find((r) => r.date === dateStr);
+                                  const isValidatedBySelf = rec?.validatedBy === "self";
+                                  const timeFormatted = rec?.timestamp
+                                    ? new Date(rec.timestamp).toLocaleString("pt-BR")
+                                    : null;
+
+                                  return (
+                                    <div
+                                      key={dateStr}
+                                      className="inline-flex items-center gap-2 px-3 py-1.5 bg-slate-50 dark:bg-slate-800/90 border border-slate-200 dark:border-slate-700/90 rounded-xl text-xs font-semibold shadow-2xs flex-wrap"
+                                    >
+                                      {/* Data do Evento */}
+                                      <div className="flex items-center gap-1 text-slate-800 dark:text-slate-100 font-bold">
+                                        <Calendar className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+                                        <span>Dia {formatted}</span>
+                                      </div>
+
+                                      <span className="text-slate-300 dark:text-slate-600">•</span>
+
+                                      {/* Por quem foi validado */}
+                                      {isValidatedBySelf ? (
+                                        <span
+                                          className="inline-flex items-center gap-1 text-[11px] font-bold text-emerald-800 dark:text-emerald-300 bg-emerald-100/90 dark:bg-emerald-950/60 px-2 py-0.5 rounded-lg border border-emerald-300 dark:border-emerald-800"
+                                          title="Validado pelo próprio aluno escaneando o QR Code"
+                                        >
+                                          <ScanLine className="w-3 h-3 text-emerald-600 dark:text-emerald-400" />
+                                          Pelo Próprio Aluno
+                                        </span>
+                                      ) : (
+                                        <span
+                                          className="inline-flex items-center gap-1 text-[11px] font-bold text-indigo-800 dark:text-indigo-300 bg-indigo-100/90 dark:bg-indigo-950/60 px-2 py-0.5 rounded-lg border border-indigo-300 dark:border-indigo-800"
+                                          title="Validado pelo Administrador / Secretaria"
+                                        >
+                                          <ShieldCheck className="w-3 h-3 text-indigo-600 dark:text-indigo-400" />
+                                          {rec?.validatorName || "Pelo Administrador"}
+                                        </span>
+                                      )}
+
+                                      {/* Carimbo de Horário */}
+                                      {timeFormatted && (
+                                        <span
+                                          className="inline-flex items-center gap-1 text-[11px] font-medium text-slate-600 dark:text-slate-400 bg-white dark:bg-slate-700 px-2 py-0.5 rounded-lg border border-slate-200 dark:border-slate-600"
+                                          title={`Carimbo exato de validação: ${timeFormatted}`}
+                                        >
+                                          <Clock className="w-3 h-3 text-slate-400 shrink-0" />
+                                          <span>{timeFormatted}</span>
+                                        </span>
+                                      )}
+
+                                      {/* Botão Remover Data */}
+                                      <button
+                                        type="button"
+                                        onClick={() => handleRemovePresenceDate(a, dateStr)}
+                                        className="hover:bg-rose-100 dark:hover:bg-rose-950/60 text-slate-400 hover:text-rose-600 dark:hover:text-rose-400 rounded-lg p-1 transition-colors cursor-pointer ml-0.5"
+                                        title={`Remover presença do dia ${formatted}`}
+                                      >
+                                        <X className="w-3.5 h-3.5" />
+                                      </button>
+                                    </div>
+                                  );
+                                })}
+                              </div>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+
+                      {/* Lado Direito: Ações de Presença */}
+                      <div className="flex items-center gap-2 shrink-0 self-end lg:self-center flex-wrap pt-2 lg:pt-0">
+                        {/* Botão + Adicionar Data */}
+                        <button
+                          type="button"
+                          onClick={() => {
+                            setPresenceDateModalAttendee(a);
+                            setCustomPresenceDate(todayStr);
+                          }}
+                          className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all border border-slate-200 dark:border-slate-600 cursor-pointer"
+                          title="Adicionar uma data específica de presença para este participante"
+                        >
+                          <CalendarPlus className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                          <span>+ Data</span>
+                        </button>
+
+                        {/* Botão Check-in Hoje */}
+                        {!hasToday && (
+                          <button
+                            type="button"
+                            onClick={() => handleMarkPresent(a.id, a.allDocIds, todayStr)}
+                            className="inline-flex items-center gap-1.5 px-3.5 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs cursor-pointer"
+                            title={`Registrar presença para a data de hoje (${new Date().toLocaleDateString('pt-BR')})`}
+                          >
+                            <CheckCircle2 className="w-4 h-4" />
+                            <span>Check-in Hoje</span>
+                          </button>
+                        )}
+
+                        {/* Botão Cancelar Check-in */}
+                        {isPresent && (
+                          <button
+                            type="button"
+                            onClick={() => handleCancelCheckIn(a.id, a.member?.name || "Participante", a.allDocIds)}
+                            className="inline-flex items-center gap-1.5 px-3 py-2 bg-amber-50 hover:bg-amber-100 dark:bg-amber-950/40 dark:hover:bg-amber-900/60 text-amber-700 dark:text-amber-300 border border-amber-300 dark:border-amber-700 rounded-xl text-xs font-bold transition-all cursor-pointer"
+                            title="Cancelar todas as presenças deste participante (retornar para inscrito)"
+                          >
+                            <RotateCcw className="w-4 h-4 text-amber-600 dark:text-amber-400" />
+                            <span>Desfazer Presenças</span>
+                          </button>
+                        )}
+
+                        {/* Gestão de Certificado no Evento: Remover ou Restaurar */}
+                        {(() => {
+                          const certKey = `${event.id}_participant`;
+                          const isCertRevoked = a.revokedParticipantCert === true || (a.member as any)?.revokedCertKeys?.includes(certKey);
+
+                          if (isCertRevoked) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => handleToggleCertificateRevocation(a, false)}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 border border-slate-200 dark:border-slate-600 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                                title="Restaurar certificado do participante para este evento"
+                              >
+                                <RotateCcw className="w-3.5 h-3.5 text-emerald-600" />
+                                <span>Restaurar Certificado</span>
+                              </button>
+                            );
+                          }
+
+                          if (isPresent) {
+                            return (
+                              <button
+                                type="button"
+                                onClick={() => setCertRevokeTarget(a)}
+                                className="inline-flex items-center gap-1.5 px-3 py-2 bg-rose-50 hover:bg-rose-100 dark:bg-rose-950/40 dark:hover:bg-rose-900/60 text-rose-700 dark:text-rose-300 border border-rose-200 dark:border-rose-800/60 rounded-xl text-xs font-bold transition-all cursor-pointer shadow-2xs"
+                                title="Remover certificado deste participante para este evento"
+                              >
+                                <Award className="w-3.5 h-3.5 text-rose-600 dark:text-rose-400" />
+                                <span>Remover Certificado</span>
+                              </button>
+                            );
+                          }
+
+                          return null;
+                        })()}
+                      </div>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* --- ÁREA DE IMPRESSÃO (Oculta na tela, Visível apenas na impressora) --- */}
@@ -1754,6 +2785,290 @@ export default function EventAttendeesModal({
           onClose={() => setShowQrModal(false)}
           onEventUpdated={(updated) => setCurrentEvent(updated)}
         />
+      )}
+
+      {presenceDateModalAttendee && (
+        <div className="fixed inset-0 z-[110] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl max-w-md w-full p-5 border border-slate-200 dark:border-slate-800 shadow-2xl space-y-4">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-200 dark:border-slate-800">
+              <div>
+                <h4 className="font-bold text-base text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <CalendarPlus className="w-5 h-5 text-emerald-600 dark:text-emerald-400" />
+                  Adicionar Presença por Data
+                </h4>
+                <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+                  {presenceDateModalAttendee.member?.name || "Participante"}
+                </p>
+              </div>
+              <button
+                type="button"
+                onClick={() => setPresenceDateModalAttendee(null)}
+                className="text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 p-1 rounded-lg cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            {eventDays.length > 0 && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                  Dias do Evento (Selecione para registrar):
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {eventDays.map((day) => {
+                    const [y, m, d] = day.split("-");
+                    const isAlreadyPresent = presenceDateModalAttendee.checkInDates?.includes(day);
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => handleAddPresenceDate(presenceDateModalAttendee, day)}
+                        disabled={isAlreadyPresent}
+                        className={`p-2.5 rounded-xl text-xs font-bold flex items-center justify-between transition-all border ${
+                          isAlreadyPresent
+                            ? "bg-slate-100 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-800 cursor-not-allowed"
+                            : "bg-emerald-50 hover:bg-emerald-100 dark:bg-emerald-950/40 dark:hover:bg-emerald-900/60 text-emerald-700 dark:text-emerald-300 border-emerald-200 dark:border-emerald-800 cursor-pointer"
+                        }`}
+                      >
+                        <span>📅 {d}/{m}/{y}</span>
+                        {isAlreadyPresent ? (
+                          <span className="text-[10px] text-emerald-600 dark:text-emerald-400 font-bold">Presente</span>
+                        ) : (
+                          <Plus className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" />
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Ou selecione outra data:
+              </label>
+              <div className="flex items-center gap-2">
+                <input
+                  type="date"
+                  value={customPresenceDate}
+                  onChange={(e) => setCustomPresenceDate(e.target.value)}
+                  className="flex-1 bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-emerald-500"
+                />
+                <button
+                  type="button"
+                  onClick={() => handleAddPresenceDate(presenceDateModalAttendee, customPresenceDate)}
+                  disabled={!customPresenceDate}
+                  className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-xs disabled:opacity-50 cursor-pointer"
+                >
+                  Confirmar
+                </button>
+              </div>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex justify-end">
+              <button
+                type="button"
+                onClick={() => setPresenceDateModalAttendee(null)}
+                className="px-3.5 py-1.5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
+              >
+                Fechar
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+      {/* --- MODAL DE CHECK-IN EM MASSA (TODOS DE UMA VEZ) --- */}
+      {showBulkCheckInModal && (
+        <div className="fixed inset-0 z-[120] flex items-center justify-center p-4 bg-slate-900/70 backdrop-blur-xs">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-5 sm:p-6 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4 animate-in fade-in zoom-in-95 duration-150">
+            <div className="flex items-center justify-between pb-3 border-b border-slate-100 dark:border-slate-800">
+              <div className="flex items-center gap-2.5">
+                <div className="w-10 h-10 rounded-xl bg-emerald-50 dark:bg-emerald-950/50 flex items-center justify-center text-emerald-600 dark:text-emerald-400">
+                  <CheckCircle2 className="w-5 h-5" />
+                </div>
+                <div>
+                  <h4 className="font-black text-slate-800 dark:text-slate-100 text-base">
+                    Check-in de Todos de Uma Vez
+                  </h4>
+                  <p className="text-xs text-slate-500 dark:text-slate-400">
+                    Validação coletiva de presenças
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowBulkCheckInModal(false)}
+                disabled={isExecutingBulkCheckIn}
+                className="p-1.5 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 cursor-pointer"
+              >
+                <X className="w-5 h-5" />
+              </button>
+            </div>
+
+            <p className="text-xs sm:text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
+              Selecione o dia do evento para o qual deseja registrar a presença de todos os participantes ativos. Cada registro receberá o <strong>carimbo do administrador</strong> e data/hora oficial no relatório.
+            </p>
+
+            {eventDays.length > 0 && (
+              <div>
+                <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-2">
+                  Dias do Evento:
+                </label>
+                <div className="grid grid-cols-2 gap-2">
+                  {eventDays.map((day) => {
+                    const [y, m, d] = day.split("-");
+                    const formatted = `${d}/${m}/${y}`;
+                    const isSelected = bulkCheckInTargetDay === day;
+                    const countPresent = attendees.filter((a) => a.checkInDates?.includes(day)).length;
+                    const pendingCount = attendees.filter((a) => a.member?.isActive !== false && !a.checkInDates?.includes(day)).length;
+
+                    return (
+                      <button
+                        key={day}
+                        type="button"
+                        onClick={() => setBulkCheckInTargetDay(day)}
+                        className={`p-2.5 rounded-xl border text-left transition-all cursor-pointer flex flex-col justify-between ${
+                          isSelected
+                            ? "bg-emerald-50 dark:bg-emerald-950/40 border-emerald-500 text-emerald-900 dark:text-emerald-100 ring-2 ring-emerald-500/20"
+                            : "bg-slate-50 dark:bg-slate-800/60 border-slate-200 dark:border-slate-700 hover:border-slate-300 text-slate-700 dark:text-slate-200"
+                        }`}
+                      >
+                        <div className="flex items-center justify-between">
+                          <span className="font-bold text-xs">{formatted}</span>
+                          {isSelected && <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600" />}
+                        </div>
+                        <span className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+                          {pendingCount} pendente{pendingCount !== 1 ? 's' : ''} ({countPresent} já presente{countPresent !== 1 ? 's' : ''})
+                        </span>
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+
+            <div>
+              <label className="block text-xs font-bold text-slate-700 dark:text-slate-300 mb-1.5">
+                Data do Check-in:
+              </label>
+              <input
+                type="date"
+                value={bulkCheckInTargetDay}
+                onChange={(e) => setBulkCheckInTargetDay(e.target.value)}
+                className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 py-2 text-sm text-slate-800 dark:text-slate-100 outline-none focus:border-emerald-500"
+              />
+            </div>
+
+            <div className="p-3 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl text-xs text-amber-800 dark:text-amber-200 flex items-start gap-2">
+              <ShieldCheck className="w-4 h-4 text-amber-600 shrink-0 mt-0.5" />
+              <span>
+                Esta ação registrará presença imediata para todos os participantes que ainda não possuem check-in na data escolhida, gerando o carimbo de validação com auditoria.
+              </span>
+            </div>
+
+            <div className="pt-2 border-t border-slate-200 dark:border-slate-800 flex items-center justify-end gap-2">
+              <button
+                type="button"
+                onClick={() => setShowBulkCheckInModal(false)}
+                disabled={isExecutingBulkCheckIn}
+                className="px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer disabled:opacity-50"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                onClick={handleExecuteBulkCheckIn}
+                disabled={!bulkCheckInTargetDay || isExecutingBulkCheckIn}
+                className="px-4 py-2 bg-emerald-600 hover:bg-emerald-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center gap-2 cursor-pointer disabled:opacity-50"
+              >
+                {isExecutingBulkCheckIn ? (
+                  <>
+                    <Loader2 className="w-4 h-4 animate-spin" />
+                    <span>Processando...</span>
+                  </>
+                ) : (
+                  <>
+                    <CheckCircle2 className="w-4 h-4" />
+                    <span>Confirmar Check-in de Todos</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Modal de Confirmação de Remoção de Certificado do Aluno */}
+      {certRevokeTarget && (
+        <div className="fixed inset-0 z-[220] flex items-center justify-center p-4 bg-black/60 backdrop-blur-xs animate-in fade-in duration-200">
+          <div className="bg-white dark:bg-slate-900 rounded-3xl p-6 max-w-md w-full shadow-2xl border border-slate-200 dark:border-slate-800 space-y-4">
+            <div className="flex items-center gap-3 text-rose-600 dark:text-rose-400">
+              <div className="p-3 bg-rose-100 dark:bg-rose-950/60 rounded-2xl">
+                <AlertTriangle className="w-6 h-6" />
+              </div>
+              <div>
+                <h3 className="text-lg font-black tracking-tight text-slate-900 dark:text-white">
+                  Remover Certificado do Aluno?
+                </h3>
+                <p className="text-xs text-slate-500 dark:text-slate-400">
+                  Revogação do certificado para este evento
+                </p>
+              </div>
+            </div>
+
+            <div className="bg-slate-50 dark:bg-slate-800/60 rounded-2xl p-4 border border-slate-200 dark:border-slate-700/60 space-y-2 text-xs">
+              <div>
+                <span className="text-slate-400 font-bold uppercase text-[10px]">Aluno:</span>
+                <p className="font-bold text-slate-800 dark:text-slate-200">
+                  {certRevokeTarget.member?.name || "Participante"}
+                </p>
+              </div>
+              <div>
+                <span className="text-slate-400 font-bold uppercase text-[10px]">Evento:</span>
+                <p className="font-bold text-slate-800 dark:text-slate-200">{event.title}</p>
+              </div>
+              <div className="flex justify-between items-center pt-1 border-t border-slate-200 dark:border-slate-700/50">
+                <span className="text-slate-400 font-bold uppercase text-[10px]">Situação:</span>
+                <span className="px-2 py-0.5 rounded-md font-bold text-[10px] bg-emerald-100 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300">
+                  {certRevokeTarget.status === "apto_para_certificado" ? "Apto para certificado" : "Presença confirmada"}
+                </span>
+              </div>
+            </div>
+
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
+              Tem certeza de que deseja remover o certificado de <strong>{certRevokeTarget.member?.name || "participante"}</strong> deste evento? Ele não poderá mais visualizar nem baixar o documento. Você poderá restaurar a qualquer momento.
+            </p>
+
+            <div className="flex gap-3 pt-2">
+              <button
+                type="button"
+                disabled={isRevokingCert}
+                onClick={() => setCertRevokeTarget(null)}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-slate-700 dark:text-slate-300 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 transition-all cursor-pointer"
+              >
+                Cancelar
+              </button>
+              <button
+                type="button"
+                disabled={isRevokingCert}
+                onClick={() => handleToggleCertificateRevocation(certRevokeTarget, true)}
+                className="flex-1 py-2.5 px-4 rounded-xl text-xs font-bold text-white bg-rose-600 hover:bg-rose-500 shadow-md shadow-rose-600/20 transition-all flex items-center justify-center gap-1.5 cursor-pointer disabled:opacity-50"
+              >
+                {isRevokingCert ? (
+                  <>
+                    <Loader2 className="w-3.5 h-3.5 animate-spin" />
+                    <span>Removendo...</span>
+                  </>
+                ) : (
+                  <>
+                    <Trash2 className="w-3.5 h-3.5" />
+                    <span>Confirmar Remoção</span>
+                  </>
+                )}
+              </button>
+            </div>
+          </div>
+        </div>
       )}
     </div>,
     document.body
