@@ -341,10 +341,21 @@ export default function QuickEventEnrollModal({
           .join("");
 
       if (!targetMember) {
+        if (ra.trim()) {
+          const cleanRa = ra.trim().toUpperCase();
+          const qRa = query(studentsRef, where("ra", "==", cleanRa));
+          const snapRa = await getDocs(qRa);
+          if (!snapRa.empty && snapRa.docs.some((d) => !d.data().deletedAt)) {
+            showAlert(`O RA informado (${cleanRa}) já pertence a outro participante cadastrado no sistema.`, { type: 'error' });
+            setLoading(false);
+            return;
+          }
+        }
+
         // Check auto-approval rules from settings
         const isAutoApproved = checkAutoApproval(
           {
-            name: name.trim(),
+            name: name.trim().toUpperCase(),
             cpf: cleanCpf,
             email: cleanEmail,
             alphaCode: generatedAlphaCode,
@@ -354,10 +365,10 @@ export default function QuickEventEnrollModal({
 
         // Create new member record (RA é opcional)
         const newStudentPayload: Omit<Member, "id"> = {
-          name: name.trim(),
+          name: name.trim().toUpperCase(),
           cpf: cleanCpf,
           email: cleanEmail,
-          ra: ra.trim() ? ra.trim() : undefined,
+          ra: ra.trim() ? ra.trim().toUpperCase() : undefined,
           whatsappNumber: phone.trim() ? phone.trim() : undefined,
           roles: [roleToUse],
           isApproved: isAutoApproved,
@@ -753,9 +764,9 @@ export default function QuickEventEnrollModal({
                     type="text"
                     required
                     value={name}
-                    onChange={(e) => setName(e.target.value)}
-                    placeholder="Ex: João da Silva Santos"
-                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-all"
+                    onChange={(e) => setName(e.target.value.toUpperCase())}
+                    placeholder="Ex: JOÃO DA SILVA SANTOS"
+                    className="w-full pl-10 pr-4 py-2.5 bg-slate-50 dark:bg-slate-800/80 border border-slate-200 dark:border-slate-700 rounded-xl text-sm font-medium uppercase text-slate-800 dark:text-slate-100 focus:ring-2 focus:ring-sky-500 focus:outline-none transition-all"
                   />
                 </div>
               </div>

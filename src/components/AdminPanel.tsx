@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useMemo } from "react";
 import { createPortal } from "react-dom";
 import { playSound } from "../lib/sounds";
 import {
@@ -19,6 +19,7 @@ import {
   Check,
   ChevronDown,
   ChevronUp,
+  Sparkles,
 } from "lucide-react";
 import {
   doc,
@@ -55,6 +56,8 @@ import NotificationsManager from "./NotificationsManager";
 import AdminAppointments from "./AdminAppointments";
 import DashboardPanel from "./DashboardPanel";
 import AdminPolls from "./AdminPolls";
+import DuplicateMembersModal from "./DuplicateMembersModal";
+import { checkMemberDuplicates, findDuplicateGroups } from "../lib/memberDeduplication";
 import { performAutoBackupIfDue } from "../lib/autoBackup";
 import { Calendar, BriefcaseMedical, LayoutDashboard, Vote } from "lucide-react";
 
@@ -109,7 +112,12 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const [showPrintReport, setShowPrintReport] = useState(false);
   const [isRegistrationOpen, setIsRegistrationOpen] = useState(false);
   const [isVisitorOpen, setIsVisitorOpen] = useState(false);
+  const [showDuplicateModal, setShowDuplicateModal] = useState(false);
   const [allMembers, setAllMembers] = useState<Member[]>([]);
+
+  const duplicateGroupsCount = useMemo(() => {
+    return findDuplicateGroups(allMembers).length;
+  }, [allMembers]);
 
   const [stats, setStats] = useState({
     totalActive: 0,
@@ -409,27 +417,25 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
     setStatus({ msg: "A processar registo...", type: "loading" });
 
     try {
-      const formattedRa = ra.trim();
+      const formattedRa = ra.trim().toUpperCase();
+      const cleanCpf = cpf ? cpf.replace(/\D/g, "") : "";
+      const upperName = name.trim().toUpperCase();
+
+      // Verificação abrangente de duplicatas (CPF e RA)
+      const duplicateCheck = await checkMemberDuplicates(cleanCpf, formattedRa);
+      if (duplicateCheck.hasDuplicate) {
+        setStatus({
+          msg: duplicateCheck.message || "Já existe um cadastro com este CPF ou RA. Não é permitido criar duplicatas.",
+          type: "error",
+        });
+        setTimeout(() => setStatus(null), 6000);
+        return;
+      }
+
       const membersRef = collection(
         db,
         `artifacts/${appId}/public/data/students`,
       );
-
-      const qRa = query(membersRef, where("ra", "==", formattedRa));
-      const raSnapshot = await getDocs(qRa);
-      // Fazer check localmente para ignorar docs deletados, apesar que RAs únicos não deveriam duplicar nem com os deletados
-      const existingActive = raSnapshot.docs.find(
-        (doc) => !doc.data().deletedAt,
-      );
-
-      if (existingActive) {
-        setStatus({
-          msg: `Este RA (${formattedRa}) já está cadastrado no sistema. Não é possível cadastrar duplicatas.`,
-          type: "error",
-        });
-        setTimeout(() => setStatus(null), 5000);
-        return;
-      }
 
       const alphaCode = Array(6)
         .fill(0)
@@ -442,9 +448,9 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
         .join("");
 
       const docRef = await addDoc(membersRef, {
-        name: name.trim(),
+        name: upperName,
         ra: formattedRa,
-        cpf: cpf ? cpf.replace(/\D/g, "") : "",
+        cpf: cleanCpf,
         birthdate,
         validityDate: validity,
         alphaCode,
@@ -460,7 +466,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
       const memberId = docRef.id;
 
-      await logAdminAction("MEMBER_CREATED", `Criou nova carteirinha para ${name.trim()} (RA: ${formattedRa})`, memberId);
+      await logAdminAction("MEMBER_CREATED", `Criou nova carteirinha para ${upperName} (RA: ${formattedRa})`, memberId);
 
       // Notificar o novo membro (embora ele precise logar para ver, a notificação estará lá)
       await createNotification({
@@ -507,7 +513,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
     setStatus({ msg: "Cadastrando visitante...", type: "loading" });
     try {
-      const visitor = await registerVisitor(visitorName.trim(), cleanCPF);
+      const visitor = await registerVisitor(visitorName.trim().toUpperCase(), cleanCPF);
       setStatus({ msg: `Visitante cadastrado com sucesso! Posição/Código: ${visitor.alphaCode}`, type: "success" });
       setVisitorName("");
       setVisitorCpf("");
@@ -808,9 +814,45 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
             </button>
           </div>
 
-          <div className="mb-8">
+          <div className="mb-8 space-y-4">
             {adminAccessLevel !== "LEITOR" && (
-              <ImportExportMembers members={allMembers} onImportComplete={() => {}} />
+              <>
+                <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/20 dark:to-orange-950/20 p-4 rounded-2xl border border-amber-200 dark:border-amber-800/40 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 shadow-sm">
+                  <div className="flex items-center gap-3">
+                    <div className="w-10 h-10 rounded-xl bg-amber-500/10 text-amber-600 dark:text-amber-400 flex items-center justify-center shrink-0">
+                      <Users className="w-5 h-5" />
+                    </div>
+                    <div>
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <h4 className="text-sm font-bold text-slate-800 dark:text-slate-100">
+                          Detecção e Unificação de Duplicatas
+                        </h4>
+                        {duplicateGroupsCount > 0 ? (
+                          <span className="px-2 py-0.5 text-[10px] font-black uppercase tracking-wider rounded-full bg-amber-500 text-white animate-pulse">
+                            {duplicateGroupsCount} {duplicateGroupsCount === 1 ? "grupo detectado" : "grupos detectados"}
+                          </span>
+                        ) : (
+                          <span className="px-2 py-0.5 text-[10px] font-bold text-emerald-600 dark:text-emerald-400 bg-emerald-100 dark:bg-emerald-900/30 rounded-full">
+                            Sem duplicatas
+                          </span>
+                        )}
+                      </div>
+                      <p className="text-xs text-slate-600 dark:text-slate-400 mt-0.5">
+                        Verifique cadastros repetidos por CPF ou RA, unifique em um único cadastro e padronize todos os nomes em maiúsculas.
+                      </p>
+                    </div>
+                  </div>
+                  <button
+                    onClick={() => setShowDuplicateModal(true)}
+                    className="px-4 py-2.5 bg-amber-600 hover:bg-amber-700 active:scale-95 text-white text-xs font-bold rounded-xl transition flex items-center gap-2 shrink-0 shadow-sm"
+                  >
+                    <Sparkles className="w-4 h-4" />
+                    Gerenciar Duplicatas {duplicateGroupsCount > 0 ? `(${duplicateGroupsCount})` : ""}
+                  </button>
+                </div>
+
+                <ImportExportMembers members={allMembers} onImportComplete={() => {}} />
+              </>
             )}
           </div>
 
@@ -1265,6 +1307,14 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
       )}
       {showPrintReport && (
         <PrintReportModal onClose={() => setShowPrintReport(false)} />
+      )}
+      {showDuplicateModal && (
+        <DuplicateMembersModal
+          isOpen={showDuplicateModal}
+          onClose={() => setShowDuplicateModal(false)}
+          members={allMembers}
+          currentAdminName={adminMember?.name || "Administrador"}
+        />
       )}
       
     </div>

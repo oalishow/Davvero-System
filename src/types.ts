@@ -196,6 +196,8 @@ export interface Event {
   certificateReleasedAt?: string; // Data/hora em que os certificados do evento foram liberados
   closedAt?: string; // Data/hora em que o evento foi encerrado
   presenceConfig?: EventPresenceConfig;
+  createdAt?: string; // Data de criação do evento
+  isCertificateReleased?: boolean; // Se certificados foram liberados
 }
 
 export interface CheckInRecord {
@@ -209,8 +211,12 @@ export interface Attendance {
   id: string;
   eventId: string;
   studentId: string;
+  studentName?: string;
+  studentCpf?: string;
+  studentRa?: string;
   status: "inscrito" | "presente" | "apto_para_certificado" | "cancelado";
   checkInDates?: string[]; // Array of YYYY-MM-DD
+  checkInDays?: string[]; // Compatibilidade com registros legados
   checkInRecords?: CheckInRecord[]; // Carimbos detalhados de cada check-in (data/hora e quem validou)
   isOrganizer?: boolean;
   timestamp: string;

@@ -34,6 +34,7 @@ import type { Member } from '../types';
 import ImageCropperModal from './ImageCropperModal';
 import { AVAILABLE_SEMINARIES } from '../types';
 import { deduplicateList } from '../lib/constants';
+import { checkMemberDuplicates } from '../lib/memberDeduplication';
 import TermsOfUseModal from './TermsOfUseModal';
 import { playSound } from '../lib/sounds';
 
@@ -188,37 +189,23 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
     setLoading(true);
 
     try {
-      const formattedRa = ra.trim();
+      const formattedRa = ra.trim().toUpperCase();
       const cleanCpf = cpf.trim().replace(/\D/g, "");
-      const membersRef = collection(db, `artifacts/${appId}/public/data/students`);
+      const upperName = name.trim().toUpperCase();
 
-      if (formattedRa) {
-        const qRa = query(membersRef, where('ra', '==', formattedRa));
-        const raSnapshot = await getDocs(qRa);
-        const existingActive = raSnapshot.docs.find(doc => !doc.data().deletedAt);
-        if (existingActive) {
-          setError(`Este RA (${formattedRa}) já está cadastrado no sistema.`);
-          setLoading(false);
-          return;
-        }
-      }
-
-      if (cleanCpf) {
-        const qCpf = query(membersRef, where('cpf', '==', cleanCpf));
-        const cpfSnapshot = await getDocs(qCpf);
-        const existingCpf = cpfSnapshot.docs.find(doc => !doc.data().deletedAt);
-        if (existingCpf) {
-          setError(`Este CPF (${cpf.trim()}) já possui cadastro no sistema. Acesse a aba "MINHA ID" para consultar sua carteirinha ou solicite ajuda à secretaria.`);
-          setLoading(false);
-          return;
-        }
+      // Verificação abrangente de duplicatas (CPF e RA)
+      const duplicateCheck = await checkMemberDuplicates(cleanCpf, formattedRa);
+      if (duplicateCheck.hasDuplicate) {
+        setError(duplicateCheck.message || "Você já possui cadastro no sistema com este CPF ou RA. Acesse a aba 'MINHA ID' para consultar sua carteirinha ou solicite ajuda à secretaria.");
+        setLoading(false);
+        return;
       }
 
       const alphaCode = Array(6).fill(0).map(() => 'ABCDEFGHIJKLMNOPQRSTUVWXYZ0123456789'[Math.floor(Math.random() * 36)]).join('');
 
       const isAutoApproved = checkAutoApproval(
         {
-          name: name.trim(),
+          name: upperName,
           cpf: cleanCpf,
           ra: formattedRa,
           email: email.trim().toLowerCase(),
@@ -230,7 +217,7 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
       const isVisitor = roles.includes("VISITANTE") || roles.length === 0;
 
       const payload: Partial<Member> = {
-        name: name.trim(),
+        name: upperName,
         ra: formattedRa,
         email: email.trim().toLowerCase(),
         phone: phone.trim(),
@@ -647,9 +634,9 @@ export default function PublicRequestModal({ onClose, onSubmitSuccess, eventId, 
                 <input 
                   type="text" 
                   value={name} 
-                  onChange={e => setName(e.target.value)} 
+                  onChange={e => setName(e.target.value.toUpperCase())} 
                   placeholder="Seu nome completo" 
-                  className="input-modern w-full rounded-xl py-2.5 px-3.5 text-sm bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700" 
+                  className="input-modern w-full rounded-xl py-2.5 px-3.5 text-sm uppercase bg-white dark:bg-slate-800 border-slate-200 dark:border-slate-700" 
                 />
               </div>
 

@@ -33,6 +33,9 @@ import {
   Maximize2,
   MoveHorizontal,
   Printer,
+  Search,
+  Filter,
+  Calendar,
 } from "lucide-react";
 import { printCertificateNode } from "../lib/certificatePrint";
 import { isEventCertificateReleased, getDefaultCertificateTemplate, resolveCertificateReleaseDate } from "../lib/certificateAuth";
@@ -678,6 +681,11 @@ export default function StudentPortal({
     event: Event;
     type: "participant" | "organizer";
   } | null>(null);
+
+  // Estados para organização e filtragem por semestre de certificados
+  const [certSearchTerm, setCertSearchTerm] = useState("");
+  const [certSemesterFilter, setCertSemesterFilter] = useState<string>("all");
+  const [certTypeFilter, setCertTypeFilter] = useState<"all" | "participant" | "organizer">("all");
 
   const portalContainerRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -1458,7 +1466,7 @@ export default function StudentPortal({
     setVisitorRegistering(true);
     try {
       const { registerVisitor } = await import("../lib/firebase");
-      const newMember = await registerVisitor(visitorName.trim(), visitorCPF.trim());
+      const newMember = await registerVisitor(visitorName.trim().toUpperCase(), visitorCPF.trim());
       if (newMember?.alphaCode) {
          setAlphaCode(newMember.alphaCode);
       }
@@ -2654,113 +2662,333 @@ export default function StudentPortal({
                       </div>
                     </div>
 
-                    {allEvents.filter((e) => {
-                      const attendance = myAttendances.find((a) => a.eventId === e.id);
-                      if (!attendance) return false;
-                      const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
-                      const isEligible = attendance.status === "presente" || attendance.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
-                      const isPartRevoked = attendance.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_participant`);
-                      const isOrgRevoked = attendance.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_organizer`);
-                      const hasPartCert = isReleased && isEligible && !isPartRevoked;
-                      const hasOrgCert = isReleased && attendance.isOrganizer === true && !isOrgRevoked;
-                      return hasPartCert || hasOrgCert;
-                    }).length > 0 ? (
-                      <div className="space-y-4">
-                        {allEvents.filter((e) => {
-                            const attendance = myAttendances.find((a) => a.eventId === e.id);
-                            if (!attendance) return false;
-                            const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
-                            const isEligible = attendance.status === "presente" || attendance.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
-                            const isPartRevoked = attendance.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_participant`);
-                            const isOrgRevoked = attendance.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_organizer`);
-                            const hasPartCert = isReleased && isEligible && !isPartRevoked;
-                            const hasOrgCert = isReleased && attendance.isOrganizer === true && !isOrgRevoked;
-                            return hasPartCert || hasOrgCert;
-                          })
-                          .map((event) => {
-                            const startStr = new Date(event.startDate).toLocaleDateString("pt-BR");
-                            const endStr = event.endDate ? new Date(event.endDate).toLocaleDateString("pt-BR") : startStr;
-                            const periodText = startStr === endStr ? startStr : `${startStr} a ${endStr}`;
-                            const formatText = event.format === "online" ? "Online" : event.format === "hibrido" ? "Híbrido" : "Presencial";
-                            const attendance = myAttendances.find((a) => a.eventId === event.id);
-                            const isReleased = event.status === "encerrado" || isEventCertificateReleased(event) || event.isCertificateReleased === true;
-                            const isEligible = attendance?.status === "presente" || attendance?.status === "apto_para_certificado" || event.allowAllRegisteredCertificates;
-                            const isPartRevoked = attendance?.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${event.id}_participant`);
-                            const isOrgRevoked = attendance?.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${event.id}_organizer`);
-                            const hasPartCert = isReleased && isEligible && !isPartRevoked;
-                            const hasOrgCert = isReleased && attendance?.isOrganizer === true && !isOrgRevoked;
-                            const releaseInfo = resolveCertificateReleaseDate(event, undefined, member);
+                    {/* Filtros e Barra de Pesquisa de Certificados */}
+                    {(() => {
+                      const eligibleEvents = allEvents.filter((e) => {
+                        const attendance = myAttendances.find((a) => a.eventId === e.id);
+                        if (!attendance) return false;
+                        const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
+                        const isEligible = attendance.status === "presente" || attendance.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
+                        const isPartRevoked = attendance.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_participant`);
+                        const isOrgRevoked = attendance.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_organizer`);
+                        const hasPartCert = isReleased && isEligible && !isPartRevoked;
+                        const hasOrgCert = isReleased && attendance.isOrganizer === true && !isOrgRevoked;
+                        return hasPartCert || hasOrgCert;
+                      });
 
-                            return (
-                              <div key={event.id} className="bg-white dark:bg-slate-800 p-6 rounded-3xl border border-slate-200 dark:border-slate-700 text-left shadow-sm flex flex-col gap-3">
-                                <div>
-                                  <h4 className="font-bold text-slate-800 dark:text-slate-100 text-base leading-snug mb-1">{event.title}</h4>
-                                  <div className="flex flex-wrap gap-2 mt-2">
-                                    <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{formatText}</span>
-                                    <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{periodText}</span>
-                                    <span className="text-[10px] font-bold uppercase bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-lg">{event.hours || 0} horas</span>
-                                    <span className="text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg">Liberado em {releaseInfo.formattedDate}</span>
-                                  </div>
-                                </div>
+                      const getSemesterInfo = (ev: Event) => {
+                        const dateStr = ev.startDate || ev.createdAt;
+                        const d = dateStr ? new Date(dateStr) : new Date();
+                        const year = isNaN(d.getFullYear()) ? new Date().getFullYear() : d.getFullYear();
+                        const month = isNaN(d.getMonth()) ? 1 : d.getMonth() + 1;
+                        const semNum = month <= 6 ? 1 : 2;
+                        return {
+                          key: `${year}.${semNum}`,
+                          label: `${year}.${semNum} (${semNum}º Semestre de ${year})`,
+                          year,
+                          semNum
+                        };
+                      };
 
-                                 <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex flex-col sm:flex-row gap-2">
-                                  {hasPartCert && (
-                                    <div className="flex-1 flex gap-2">
-                                      <button 
-                                        onClick={() => {
-                                          if (downloadingCertKey) return;
-                                          handleDownloadCertificate(event, "participant");
-                                        }} 
-                                        disabled={downloadingCertKey === `${event.id}_participant`}
-                                        className={`flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 cursor-pointer ${
-                                          downloadingCertKey === `${event.id}_participant` ? "opacity-75 pointer-events-none" : ""
-                                        }`}
-                                      >
-                                        {downloadingCertKey === `${event.id}_participant` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Certificado (PDF)</>}
-                                      </button>
-                                      <button 
-                                        onClick={() => setPreviewCertEvent({ event, type: "participant" })}
-                                        className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
-                                        title="Visualizar Certificado"
-                                      >
-                                        <Eye className="w-4 h-4" /> Visualizar
-                                      </button>
-                                    </div>
-                                  )}
-                                  {hasOrgCert && (
-                                    <div className="flex-1 flex gap-2">
-                                      <button 
-                                        onClick={() => {
-                                          if (downloadingCertKey) return;
-                                          handleDownloadCertificate(event, "organizer");
-                                        }} 
-                                        disabled={downloadingCertKey === `${event.id}_organizer`}
-                                        className={`flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-400 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 cursor-pointer ${
-                                          downloadingCertKey === `${event.id}_organizer` ? "opacity-75 pointer-events-none" : ""
-                                        }`}
-                                      >
-                                        {downloadingCertKey === `${event.id}_organizer` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Organização (PDF)</>}
-                                      </button>
-                                      <button 
-                                        onClick={() => setPreviewCertEvent({ event, type: "organizer" })}
-                                        className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
-                                        title="Visualizar Certificado de Organização"
-                                      >
-                                        <Eye className="w-4 h-4" /> Visualizar
-                                      </button>
-                                    </div>
-                                  )}
+                      // Obter lista única de semestres disponíveis
+                      const semesterMap = new Map<string, { key: string; label: string; year: number; semNum: number; count: number }>();
+                      eligibleEvents.forEach(e => {
+                        const info = getSemesterInfo(e);
+                        const existing = semesterMap.get(info.key);
+                        if (existing) {
+                          existing.count++;
+                        } else {
+                          semesterMap.set(info.key, { ...info, count: 1 });
+                        }
+                      });
+
+                      const availableSemesters = Array.from(semesterMap.values()).sort((a, b) => b.key.localeCompare(a.key));
+
+                      // Filtrar por busca, tipo e semestre
+                      const filteredEvents = eligibleEvents.filter(e => {
+                        const semInfo = getSemesterInfo(e);
+                        if (certSemesterFilter !== "all" && semInfo.key !== certSemesterFilter) {
+                          return false;
+                        }
+
+                        const attendance = myAttendances.find((a) => a.eventId === e.id);
+                        const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
+                        const isEligible = attendance?.status === "presente" || attendance?.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
+                        const isPartRevoked = attendance?.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_participant`);
+                        const isOrgRevoked = attendance?.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_organizer`);
+                        const hasPart = isReleased && isEligible && !isPartRevoked;
+                        const hasOrg = isReleased && attendance?.isOrganizer === true && !isOrgRevoked;
+
+                        if (certTypeFilter === "participant" && !hasPart) return false;
+                        if (certTypeFilter === "organizer" && !hasOrg) return false;
+
+                        if (certSearchTerm.trim()) {
+                          const term = certSearchTerm.toLowerCase();
+                          const matchTitle = e.title?.toLowerCase().includes(term);
+                          const matchHours = (e.hours?.toString() || "").includes(term);
+                          const matchFormat = e.format?.toLowerCase().includes(term);
+                          const matchSem = semInfo.label.toLowerCase().includes(term) || semInfo.key.includes(term);
+                          return matchTitle || matchHours || matchFormat || matchSem;
+                        }
+
+                        return true;
+                      });
+
+                      // Agrupar eventos filtrados por semestre
+                      const groupedBySemester = new Map<string, { info: { key: string; label: string; year: number; semNum: number }; events: Event[] }>();
+                      const sortedEvents = [...filteredEvents].sort((a, b) => {
+                        const da = new Date(a.startDate || 0).getTime();
+                        const db = new Date(b.startDate || 0).getTime();
+                        return db - da;
+                      });
+
+                      sortedEvents.forEach(e => {
+                        const info = getSemesterInfo(e);
+                        const group = groupedBySemester.get(info.key) || { info, events: [] };
+                        group.events.push(e);
+                        groupedBySemester.set(info.key, group);
+                      });
+
+                      const semesterGroups = Array.from(groupedBySemester.values());
+
+                      if (eligibleEvents.length === 0) {
+                        return (
+                          <div className="bg-slate-50 dark:bg-slate-800/30 p-10 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
+                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2">Nenhum certificado disponível</p>
+                            <p className="text-xs text-slate-500">Os certificados aparecem aqui após a confirmação da sua participação e aprovação do modelo pelo administrador.</p>
+                          </div>
+                        );
+                      }
+
+                      return (
+                        <div className="space-y-6">
+                          {/* Barra de Busca e Filtros de Semestre */}
+                          <div className="bg-slate-50/80 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-200 dark:border-slate-700/60 space-y-3">
+                            <div className="flex flex-col sm:flex-row gap-2.5">
+                              {/* Campo de Pesquisa */}
+                              <div className="relative flex-1">
+                                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                                <input
+                                  type="text"
+                                  placeholder="Buscar certificado por nome do evento, carga horária..."
+                                  value={certSearchTerm}
+                                  onChange={(e) => setCertSearchTerm(e.target.value)}
+                                  className="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                />
+                                {certSearchTerm && (
+                                  <button
+                                    onClick={() => setCertSearchTerm("")}
+                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1"
+                                  >
+                                    ✕
+                                  </button>
+                                )}
+                              </div>
+
+                              {/* Filtro de Semestre Dropdown */}
+                              <div className="flex items-center gap-2">
+                                <div className="relative min-w-[170px] sm:w-56">
+                                  <select
+                                    value={certSemesterFilter}
+                                    onChange={(e) => setCertSemesterFilter(e.target.value)}
+                                    className="w-full py-2.5 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
+                                  >
+                                    <option value="all">Todos os Semestres ({eligibleEvents.length})</option>
+                                    {availableSemesters.map((sem) => (
+                                      <option key={sem.key} value={sem.key}>
+                                        Semestre {sem.key} ({sem.count})
+                                      </option>
+                                    ))}
+                                  </select>
                                 </div>
                               </div>
-                            );
-                          })}
-                      </div>
-                    ) : (
-                      <div className="bg-slate-50 dark:bg-slate-800/30 p-10 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2">Nenhum certificado disponível</p>
-                        <p className="text-xs text-slate-500">Os certificados aparecem aqui após a confirmação da sua participação e aprovação do modelo pelo administrador.</p>
-                      </div>
-                    )}
+                            </div>
+
+                            {/* Filtro por Tipo de Certificado */}
+                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
+                              <div className="flex flex-wrap gap-1.5 items-center">
+                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
+                                  <Filter className="w-3 h-3" /> Tipo:
+                                </span>
+                                <button
+                                  onClick={() => setCertTypeFilter("all")}
+                                  className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                                    certTypeFilter === "all"
+                                      ? "bg-sky-600 text-white shadow-sm"
+                                      : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  Todos
+                                </button>
+                                <button
+                                  onClick={() => setCertTypeFilter("participant")}
+                                  className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                                    certTypeFilter === "participant"
+                                      ? "bg-sky-600 text-white shadow-sm"
+                                      : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  Participante
+                                </button>
+                                <button
+                                  onClick={() => setCertTypeFilter("organizer")}
+                                  className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
+                                    certTypeFilter === "organizer"
+                                      ? "bg-amber-500 text-white shadow-sm"
+                                      : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
+                                  }`}
+                                >
+                                  Organização
+                                </button>
+                              </div>
+
+                              <span className="text-[10px] font-medium text-slate-500">
+                                Exibindo <strong>{filteredEvents.length}</strong> de {eligibleEvents.length} certificados
+                              </span>
+                            </div>
+                          </div>
+
+                          {/* Lista de Certificados Agrupados por Semestre */}
+                          {semesterGroups.length > 0 ? (
+                            <div className="space-y-6">
+                              {semesterGroups.map(({ info, events }) => {
+                                const totalHours = events.reduce((acc, ev) => acc + (Number(ev.hours) || 0), 0);
+
+                                return (
+                                  <div key={info.key} className="space-y-3">
+                                    {/* Cabeçalho do Semestre */}
+                                    <div className="flex items-center justify-between px-2 py-1.5 bg-gradient-to-r from-sky-50 to-indigo-50 dark:from-sky-950/30 dark:to-indigo-950/30 rounded-2xl border border-sky-100 dark:border-sky-900/40">
+                                      <div className="flex items-center gap-2">
+                                        <div className="w-7 h-7 rounded-xl bg-sky-500 text-white flex items-center justify-center font-black text-xs shadow-sm">
+                                          <Calendar className="w-3.5 h-3.5" />
+                                        </div>
+                                        <div>
+                                          <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">
+                                            Semestre {info.key} <span className="font-medium text-[11px] text-slate-500 dark:text-slate-400">({info.semNum}º Semestre de {info.year})</span>
+                                          </h4>
+                                        </div>
+                                      </div>
+
+                                      <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-extrabold uppercase bg-sky-100 dark:bg-sky-900/50 text-sky-800 dark:text-sky-300 px-2 py-0.5 rounded-lg">
+                                          {events.length} {events.length === 1 ? 'Certificado' : 'Certificados'}
+                                        </span>
+                                        {totalHours > 0 && (
+                                          <span className="text-[10px] font-extrabold uppercase bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300 px-2 py-0.5 rounded-lg">
+                                            {totalHours} horas
+                                          </span>
+                                        )}
+                                      </div>
+                                    </div>
+
+                                    {/* Cards de Certificados deste Semestre */}
+                                    <div className="space-y-3">
+                                      {events.map((event) => {
+                                        const startStr = new Date(event.startDate).toLocaleDateString("pt-BR");
+                                        const endStr = event.endDate ? new Date(event.endDate).toLocaleDateString("pt-BR") : startStr;
+                                        const periodText = startStr === endStr ? startStr : `${startStr} a ${endStr}`;
+                                        const formatText = event.format === "online" ? "Online" : event.format === "hibrido" ? "Híbrido" : "Presencial";
+                                        const attendance = myAttendances.find((a) => a.eventId === event.id);
+                                        const isReleased = event.status === "encerrado" || isEventCertificateReleased(event) || event.isCertificateReleased === true;
+                                        const isEligible = attendance?.status === "presente" || attendance?.status === "apto_para_certificado" || event.allowAllRegisteredCertificates;
+                                        const isPartRevoked = attendance?.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${event.id}_participant`);
+                                        const isOrgRevoked = attendance?.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${event.id}_organizer`);
+                                        const hasPartCert = isReleased && isEligible && !isPartRevoked;
+                                        const hasOrgCert = isReleased && attendance?.isOrganizer === true && !isOrgRevoked;
+                                        const releaseInfo = resolveCertificateReleaseDate(event, undefined, member);
+
+                                        return (
+                                          <div key={event.id} className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 text-left shadow-sm flex flex-col gap-3 hover:border-sky-300 dark:hover:border-sky-600 transition-colors">
+                                            <div>
+                                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
+                                                <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base leading-snug">{event.title}</h4>
+                                                <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md self-start sm:self-auto">
+                                                  Semestre {info.key}
+                                                </span>
+                                              </div>
+                                              <div className="flex flex-wrap gap-2 mt-2">
+                                                <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{formatText}</span>
+                                                <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{periodText}</span>
+                                                <span className="text-[10px] font-bold uppercase bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-lg">{event.hours || 0} horas</span>
+                                                <span className="text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg">Liberado em {releaseInfo.formattedDate}</span>
+                                              </div>
+                                            </div>
+
+                                            <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex flex-col sm:flex-row gap-2">
+                                              {hasPartCert && (
+                                                <div className="flex-1 flex gap-2">
+                                                  <button 
+                                                    onClick={() => {
+                                                      if (downloadingCertKey) return;
+                                                      handleDownloadCertificate(event, "participant");
+                                                    }} 
+                                                    disabled={downloadingCertKey === `${event.id}_participant`}
+                                                    className={`flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                                                      downloadingCertKey === `${event.id}_participant` ? "opacity-75 pointer-events-none" : ""
+                                                    }`}
+                                                  >
+                                                    {downloadingCertKey === `${event.id}_participant` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Certificado (PDF)</>}
+                                                  </button>
+                                                  <button 
+                                                    onClick={() => setPreviewCertEvent({ event, type: "participant" })}
+                                                    className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                                                    title="Visualizar Certificado"
+                                                  >
+                                                    <Eye className="w-4 h-4" /> Visualizar
+                                                  </button>
+                                                </div>
+                                              )}
+                                              {hasOrgCert && (
+                                                <div className="flex-1 flex gap-2">
+                                                  <button 
+                                                    onClick={() => {
+                                                      if (downloadingCertKey) return;
+                                                      handleDownloadCertificate(event, "organizer");
+                                                    }} 
+                                                    disabled={downloadingCertKey === `${event.id}_organizer`}
+                                                    className={`flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-400 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 cursor-pointer ${
+                                                      downloadingCertKey === `${event.id}_organizer` ? "opacity-75 pointer-events-none" : ""
+                                                    }`}
+                                                  >
+                                                    {downloadingCertKey === `${event.id}_organizer` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Organização (PDF)</>}
+                                                  </button>
+                                                  <button 
+                                                    onClick={() => setPreviewCertEvent({ event, type: "organizer" })}
+                                                    className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
+                                                    title="Visualizar Certificado de Organização"
+                                                  >
+                                                    <Eye className="w-4 h-4" /> Visualizar
+                                                  </button>
+                                                </div>
+                                              )}
+                                            </div>
+                                          </div>
+                                        );
+                                      })}
+                                    </div>
+                                  </div>
+                                );
+                              })}
+                            </div>
+                          ) : (
+                            <div className="bg-slate-50 dark:bg-slate-800/30 p-8 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
+                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nenhum certificado encontrado para os filtros selecionados</p>
+                              <p className="text-[11px] text-slate-400 mb-3">Tente alterar o termo da busca ou o semestre selecionado.</p>
+                              <button
+                                onClick={() => {
+                                  setCertSearchTerm("");
+                                  setCertSemesterFilter("all");
+                                  setCertTypeFilter("all");
+                                }}
+                                className="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
+                              >
+                                Limpar Filtros
+                              </button>
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })()}
 
                     <div className="mt-8">
                       <div className="flex items-center justify-between mb-4 px-1">

@@ -23,6 +23,9 @@ export interface TelemetryStats {
   totalDbReads: number;
   totalDbWrites: number;
   onlineUsersCount: number;
+  peakSimultaneousUsers: number;
+  totalCardDiscountUses: number;
+  todayCardDiscountUses: number;
   scansByType: {
     badge: number;
     event: number;
@@ -158,6 +161,74 @@ export const recordQRScan = async (
 };
 
 /**
+ * Record usage of student card for discounts / meia-entrada
+ * Disparado apenas quando a pessoa clica na carteirinha para utilizá-la
+ */
+export const recordCardDiscountUse = async (member?: { id?: string; name?: string; ra?: string; cpf?: string }) => {
+  try {
+    await loginAnon();
+    const today = getTodayKey();
+    const telemetryDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
+    const dailyDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_daily`, today);
+    const usageRef = doc(collection(db, `artifacts/${appId}/public/data/card_usages`));
+
+    // Incrementa contadores globais
+    await setDoc(telemetryDocRef, {
+      totalCardDiscountUses: increment(1),
+      lastCardUsageAt: serverTimestamp(),
+    }, { merge: true });
+
+    // Incrementa contadores diários
+    await setDoc(dailyDocRef, {
+      date: today,
+      cardDiscountUses: increment(1),
+      lastUpdated: serverTimestamp(),
+    }, { merge: true });
+
+    // Registra log individual de uso
+    await setDoc(usageRef, {
+      memberId: member?.id || "anon",
+      memberName: (member?.name || "ALUNO").toUpperCase(),
+      memberRa: member?.ra || "",
+      memberCpf: member?.cpf || "",
+      type: "desconto_estudantil",
+      timestamp: new Date().toISOString(),
+      createdAt: serverTimestamp(),
+    });
+
+    // Atualiza cadastro do membro com estatística de uso
+    if (member?.id) {
+      const studentRef = doc(db, `artifacts/${appId}/public/data/students`, member.id);
+      await setDoc(studentRef, {
+        discountUsageCount: increment(1),
+        lastDiscountUsageAt: new Date().toISOString(),
+      }, { merge: true });
+    }
+
+    trackLocalDbOperation("write", 3);
+  } catch (err) {
+    console.warn("[Telemetry] Error recording card discount use:", err);
+  }
+};
+
+/**
+ * Registra recorde de usuários simultâneos se a contagem atual superar o pico anterior
+ */
+export const recordSimultaneousPeak = async (currentCount: number, recordedPeak: number) => {
+  if (currentCount <= recordedPeak) return;
+  try {
+    const telemetryDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
+    await setDoc(telemetryDocRef, {
+      peakSimultaneousUsers: currentCount,
+      peakRecordedAt: serverTimestamp(),
+      lastUpdated: serverTimestamp(),
+    }, { merge: true });
+  } catch (err) {
+    console.warn("[Telemetry] Error updating simultaneous peak:", err);
+  }
+};
+
+/**
  * Local operational tracking of DB reads & writes
  */
 let sessionReads = 0;
@@ -186,6 +257,7 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
 
   const updateHeartbeat = async () => {
     try {
+      await loginAnon();
       lastHeartbeatTime = Date.now();
       await setDoc(presenceDocRef, {
         sessionId,
@@ -259,13 +331,14 @@ export const getFullTelemetryData = async (
     console.warn("[Telemetry] Error fetching stats doc:", err);
   }
 
-  // 1. Fetch real online presence count (limited to avoid unbounded reads)
+  // 1. Fetch real online presence count (sem limitação restritiva de cota)
   let onlineCount = 1;
+  let currentPeak = Math.max(1, Number(globalData.peakSimultaneousUsers || 1));
   try {
     const presenceSnap = await getDocs(
       query(
         collection(db, `artifacts/${appId}/public/data/online_presence`),
-        limit(50)
+        limit(500)
       )
     );
     const now = Date.now();
@@ -275,12 +348,17 @@ export const getFullTelemetryData = async (
       const data = d.data();
       let isActive = false;
       const ts = data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0);
-      if (ts && Math.abs(now - ts) < 240 * 1000) {
+      if (ts && Math.abs(now - ts) < 180 * 1000) {
         isActive = true;
       }
       if (isActive) validOnline++;
     });
     onlineCount = Math.max(1, validOnline);
+
+    if (onlineCount > currentPeak) {
+      currentPeak = onlineCount;
+      recordSimultaneousPeak(onlineCount, currentPeak).catch(() => {});
+    }
   } catch (err) {
     console.warn("[Telemetry] Error fetching presence count:", err);
   }
@@ -371,6 +449,9 @@ export const getFullTelemetryData = async (
     totalDbReads: recordedReads + (estimatedStoredDocs * 3),
     totalDbWrites: recordedWrites,
     onlineUsersCount: onlineCount,
+    peakSimultaneousUsers: currentPeak,
+    totalCardDiscountUses: Number(globalData.totalCardDiscountUses || 0),
+    todayCardDiscountUses: Number(todayData.cardDiscountUses || 0),
     scansByType: {
       badge: Math.max(Math.floor(totalQrScans * 0.45), Number(globalData.scansByType?.badge || 0)),
       event: Math.max(Math.floor(totalQrScans * 0.35), Number(globalData.scansByType?.event || 0)),

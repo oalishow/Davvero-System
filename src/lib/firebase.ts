@@ -783,6 +783,7 @@ export const getEventSubscribers = async (
 export const registerVisitor = async (name: string, cpf?: string) => {
   try {
     const cleanCPF = cpf ? cpf.replace(/\D/g, "") : "";
+    const upperName = name.trim().toUpperCase();
     if (cleanCPF) {
       const existingMember = await getMemberByCPF(cleanCPF);
       if (existingMember) {
@@ -791,7 +792,7 @@ export const registerVisitor = async (name: string, cpf?: string) => {
     }
 
     const newVisitor: Omit<Member, "id"> = {
-      name,
+      name: upperName,
       cpf: cleanCPF,
       roles: ["VISITANTE"],
       isActive: true,
@@ -811,7 +812,7 @@ export const registerVisitor = async (name: string, cpf?: string) => {
     await createNotification({
       recipientId: "admin",
       title: "Novo Visitante",
-      message: `O visitante ${name} foi cadastrado.`,
+      message: `O visitante ${upperName} foi cadastrado.`,
       type: "visitante",
     });
 
