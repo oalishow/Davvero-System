@@ -13,7 +13,14 @@ import {
   orderBy,
   limit
 } from "firebase/firestore";
-import { db, appId, auth, loginAnon } from "./firebase";
+import { 
+  db, 
+  appId, 
+  auth, 
+  loginAnon, 
+  isFirestoreQuotaExhausted, 
+  checkIsQuotaError 
+} from "./firebase";
 
 export interface TelemetryStats {
   totalAppAccesses: number;
@@ -83,6 +90,7 @@ const getTodayKey = (): string => {
  */
 export const recordAppAccess = async () => {
   try {
+    if (isFirestoreQuotaExhausted) return;
     if (sessionStorage.getItem("davvero_access_recorded")) return;
     sessionStorage.setItem("davvero_access_recorded", "true");
 
@@ -112,6 +120,7 @@ export const recordAppAccess = async () => {
     trackLocalDbOperation("write", 2);
     trackLocalDbOperation("read", 2);
   } catch (err) {
+    if (checkIsQuotaError(err)) return;
     console.warn("[Telemetry] Error recording app access:", err);
   }
 };
@@ -125,6 +134,7 @@ export const recordQRScan = async (
   status: string = "Sucesso"
 ) => {
   try {
+    if (isFirestoreQuotaExhausted) return;
     await loginAnon();
     const today = getTodayKey();
 
@@ -156,6 +166,7 @@ export const recordQRScan = async (
 
     trackLocalDbOperation("write", 3);
   } catch (err) {
+    if (checkIsQuotaError(err)) return;
     console.warn("[Telemetry] Error recording QR scan:", err);
   }
 };
@@ -166,6 +177,7 @@ export const recordQRScan = async (
  */
 export const recordCardDiscountUse = async (member?: { id?: string; name?: string; ra?: string; cpf?: string }) => {
   try {
+    if (isFirestoreQuotaExhausted) return;
     await loginAnon();
     const today = getTodayKey();
     const telemetryDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
@@ -207,6 +219,7 @@ export const recordCardDiscountUse = async (member?: { id?: string; name?: strin
 
     trackLocalDbOperation("write", 3);
   } catch (err) {
+    if (checkIsQuotaError(err)) return;
     console.warn("[Telemetry] Error recording card discount use:", err);
   }
 };
@@ -215,7 +228,7 @@ export const recordCardDiscountUse = async (member?: { id?: string; name?: strin
  * Registra recorde de usuários simultâneos se a contagem atual superar o pico anterior
  */
 export const recordSimultaneousPeak = async (currentCount: number, recordedPeak: number) => {
-  if (currentCount <= recordedPeak) return;
+  if (currentCount <= recordedPeak || isFirestoreQuotaExhausted) return;
   try {
     const telemetryDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
     await setDoc(telemetryDocRef, {
@@ -224,6 +237,7 @@ export const recordSimultaneousPeak = async (currentCount: number, recordedPeak:
       lastUpdated: serverTimestamp(),
     }, { merge: true });
   } catch (err) {
+    if (checkIsQuotaError(err)) return;
     console.warn("[Telemetry] Error updating simultaneous peak:", err);
   }
 };
@@ -256,6 +270,9 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
   let lastHeartbeatTime = 0;
 
   const updateHeartbeat = async () => {
+    if (isFirestoreQuotaExhausted) return;
+    if (typeof document !== "undefined" && document.visibilityState !== "visible") return;
+
     try {
       await loginAnon();
       lastHeartbeatTime = Date.now();
@@ -270,21 +287,24 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
       }, { merge: true });
       trackLocalDbOperation("write", 1);
     } catch (err) {
+      if (checkIsQuotaError(err)) return;
       console.warn("[Presence] Heartbeat failed:", err);
     }
   };
 
-  // Immediate heartbeat on start
-  updateHeartbeat();
+  // Immediate heartbeat on start only if quota not exhausted
+  if (!isFirestoreQuotaExhausted) {
+    updateHeartbeat();
+  }
 
-  // Pulse every 45 seconds to keep online status reliably fresh across devices
-  const intervalId = setInterval(updateHeartbeat, 45000);
+  // Pulse every 180 seconds (3 minutos) instead of 45s to avoid quota exhaustion
+  const intervalId = setInterval(updateHeartbeat, 180000);
 
   // Resume heartbeat when tab becomes visible or gains focus
   const handleVisibilityOrFocus = () => {
-    if (document.visibilityState === "visible") {
+    if (document.visibilityState === "visible" && !isFirestoreQuotaExhausted) {
       const elapsed = Date.now() - lastHeartbeatTime;
-      if (elapsed > 30000) {
+      if (elapsed > 120000) {
         updateHeartbeat();
       }
     }
@@ -308,59 +328,67 @@ export const getFullTelemetryData = async (
   totalCertificates: number = 0,
   existingAttendancesCount: number = 0
 ): Promise<TelemetryStats> => {
-  const statsDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
   const today = getTodayKey();
-  const dailyDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_daily`, today);
-
   let globalData: any = {};
   let todayData: any = {};
 
-  try {
-    const [globalSnap, todaySnap] = await Promise.all([
-      getDoc(statsDocRef),
-      getDoc(dailyDocRef)
-    ]);
+  if (!isFirestoreQuotaExhausted) {
+    const statsDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
+    const dailyDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_daily`, today);
 
-    if (globalSnap.exists()) {
-      globalData = globalSnap.data();
+    try {
+      const [globalSnap, todaySnap] = await Promise.all([
+        getDoc(statsDocRef),
+        getDoc(dailyDocRef)
+      ]);
+
+      if (globalSnap.exists()) {
+        globalData = globalSnap.data();
+      }
+      if (todaySnap.exists()) {
+        todayData = todaySnap.data();
+      }
+    } catch (err) {
+      if (!checkIsQuotaError(err)) {
+        console.warn("[Telemetry] Error fetching stats doc:", err);
+      }
     }
-    if (todaySnap.exists()) {
-      todayData = todaySnap.data();
-    }
-  } catch (err) {
-    console.warn("[Telemetry] Error fetching stats doc:", err);
   }
 
-  // 1. Fetch real online presence count (sem limitação restritiva de cota)
+  // 1. Fetch real online presence count (apenas se a cota não estiver esgotada)
   let onlineCount = 1;
   let currentPeak = Math.max(1, Number(globalData.peakSimultaneousUsers || 1));
-  try {
-    const presenceSnap = await getDocs(
-      query(
-        collection(db, `artifacts/${appId}/public/data/online_presence`),
-        limit(500)
-      )
-    );
-    const now = Date.now();
-    let validOnline = 0;
-    
-    presenceSnap.forEach((d) => {
-      const data = d.data();
-      let isActive = false;
-      const ts = data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0);
-      if (ts && Math.abs(now - ts) < 180 * 1000) {
-        isActive = true;
-      }
-      if (isActive) validOnline++;
-    });
-    onlineCount = Math.max(1, validOnline);
+  if (!isFirestoreQuotaExhausted) {
+    try {
+      const presenceSnap = await getDocs(
+        query(
+          collection(db, `artifacts/${appId}/public/data/online_presence`),
+          limit(100)
+        )
+      );
+      const now = Date.now();
+      let validOnline = 0;
+      
+      presenceSnap.forEach((d) => {
+        const data = d.data();
+        let isActive = false;
+        const ts = data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0);
+        if (ts && Math.abs(now - ts) < 300 * 1000) {
+          isActive = true;
+        }
+        if (isActive) validOnline++;
+      });
+      onlineCount = Math.max(1, validOnline);
 
-    if (onlineCount > currentPeak) {
-      currentPeak = onlineCount;
-      recordSimultaneousPeak(onlineCount, currentPeak).catch(() => {});
+      if (onlineCount > currentPeak) {
+        currentPeak = onlineCount;
+        recordSimultaneousPeak(onlineCount, currentPeak).catch(() => {});
+      }
+    } catch (err) {
+      if (!checkIsQuotaError(err)) {
+        console.warn("[Telemetry] Error fetching presence count:", err);
+      }
     }
-  } catch (err) {
-    console.warn("[Telemetry] Error fetching presence count:", err);
   }
 
   // 2. Reuse known attendances count from caller to prevent duplicate getDocs collection read
@@ -368,29 +396,33 @@ export const getFullTelemetryData = async (
 
   // 3. Fetch recent daily historical records
   const dailyMetrics: TelemetryStats["dailyMetrics"] = [];
-  try {
-    const dailySnap = await getDocs(
-      query(
-        collection(db, `artifacts/${appId}/public/data/telemetry_daily`),
-        orderBy("date", "desc"),
-        limit(14)
-      )
-    );
+  if (!isFirestoreQuotaExhausted) {
+    try {
+      const dailySnap = await getDocs(
+        query(
+          collection(db, `artifacts/${appId}/public/data/telemetry_daily`),
+          orderBy("date", "desc"),
+          limit(14)
+        )
+      );
 
-    dailySnap.forEach((d) => {
-      const data = d.data();
-      dailyMetrics.push({
-        date: data.date || d.id,
-        accesses: data.accesses || 0,
-        scans: data.scans || 0,
-        reads: data.reads || 0,
-        writes: data.writes || 0,
+      dailySnap.forEach((d) => {
+        const data = d.data();
+        dailyMetrics.push({
+          date: data.date || d.id,
+          accesses: data.accesses || 0,
+          scans: data.scans || 0,
+          reads: data.reads || 0,
+          writes: data.writes || 0,
+        });
       });
-    });
 
-    dailyMetrics.sort((a, b) => a.date.localeCompare(b.date));
-  } catch (err) {
-    console.warn("[Telemetry] Error fetching daily metrics:", err);
+      dailyMetrics.sort((a, b) => a.date.localeCompare(b.date));
+    } catch (err) {
+      if (!checkIsQuotaError(err)) {
+        console.warn("[Telemetry] Error fetching daily metrics:", err);
+      }
+    }
   }
 
   // Fallback days if empty
@@ -413,26 +445,32 @@ export const getFullTelemetryData = async (
 
   // 4. Fetch recent scan log
   const recentScans: TelemetryStats["recentScans"] = [];
-  try {
-    const scansSnap = await getDocs(
-      query(
-        collection(db, `artifacts/${appId}/public/data/telemetry_scans`),
-        orderBy("timestamp", "desc"),
-        limit(10)
-      )
-    );
+  if (!isFirestoreQuotaExhausted) {
+    try {
+      const scansSnap = await getDocs(
+        query(
+          collection(db, `artifacts/${appId}/public/data/telemetry_scans`),
+          orderBy("timestamp", "desc"),
+          limit(10)
+        )
+      );
 
-    scansSnap.forEach((d) => {
-      const data = d.data();
-      recentScans.push({
-        id: d.id,
-        type: data.type || "badge",
-        codeSummary: data.codeSummary || "QR Code",
-        timestamp: data.timestamp || new Date().toISOString(),
-        status: data.status || "Sucesso",
+      scansSnap.forEach((d) => {
+        const data = d.data();
+        recentScans.push({
+          id: d.id,
+          type: data.type || "badge",
+          codeSummary: data.codeSummary || "QR Code",
+          timestamp: data.timestamp || new Date().toISOString(),
+          status: data.status || "Sucesso",
+        });
       });
-    });
-  } catch (err) {}
+    } catch (err) {
+      if (!checkIsQuotaError(err)) {
+        console.warn("[Telemetry] Error fetching scans log:", err);
+      }
+    }
+  }
 
   // Calculate realistic aggregate Reads & Writes
   const estimatedStoredDocs = totalMembers + totalEvents + totalCertificates + totalAttendancesCount + 15;

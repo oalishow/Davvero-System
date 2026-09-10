@@ -35,7 +35,7 @@ import {
   doc,
   updateDoc,
 } from "firebase/firestore";
-import { db, appId, enrollStudent, createNotification } from "../lib/firebase";
+import { db, appId, enrollStudent, createNotification, loginAnon } from "../lib/firebase";
 import { checkAutoApproval } from "../lib/approval";
 import { sendEmailNotification, generateEmailTemplate } from "../lib/emailService";
 import { useDialog } from "../context/DialogContext";
@@ -43,6 +43,31 @@ import { useSettings } from "../context/SettingsContext";
 import { deduplicateList } from "../lib/constants";
 import type { Event, Member } from "../types";
 import PublicRequestModal from "./PublicRequestModal";
+
+const safeStorage = {
+  get: (key: string, fallback = ""): string => {
+    try {
+      if (typeof window === "undefined" || !window.localStorage) return fallback;
+      return localStorage.getItem(key) || fallback;
+    } catch {
+      return fallback;
+    }
+  },
+  set: (key: string, value: string): void => {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        localStorage.setItem(key, value);
+      }
+    } catch {}
+  },
+  remove: (key: string): void => {
+    try {
+      if (typeof window !== "undefined" && window.localStorage) {
+        localStorage.removeItem(key);
+      }
+    } catch {}
+  }
+};
 import TermsOfUseModal from "./TermsOfUseModal";
 import CardRequirementsAnimation from "./CardRequirementsAnimation";
 
@@ -122,11 +147,11 @@ export default function QuickEventEnrollModal({
   const [verifyError, setVerifyError] = useState<string | null>(null);
 
   // Quick Form fields
-  const [name, setName] = useState(() => localStorage.getItem("davveroId_guest_name") || "");
+  const [name, setName] = useState(() => safeStorage.get("davveroId_guest_name"));
   const [cpf, setCpf] = useState("");
-  const [email, setEmail] = useState(() => localStorage.getItem("davveroId_guest_email") || "");
+  const [email, setEmail] = useState(() => safeStorage.get("davveroId_guest_email"));
   const [ra, setRa] = useState(""); // RA é opcional
-  const [phone, setPhone] = useState(() => localStorage.getItem("davveroId_guest_phone") || "");
+  const [phone, setPhone] = useState(() => safeStorage.get("davveroId_guest_phone"));
   const [selectedRole, setSelectedRole] = useState<string>("ALUNO(A)");
   const [customRole, setCustomRole] = useState("");
   const [isCustomRole, setIsCustomRole] = useState(false);
@@ -152,13 +177,18 @@ export default function QuickEventEnrollModal({
     setVerifyError(null);
 
     try {
+      await loginAnon().catch(() => {});
       const studentsRef = collection(db, `artifacts/${appId}/public/data/students`);
       let foundMember: Member | null = null;
 
-      // 1. Try by CPF (digits only)
+      // 1. Try by CPF (both digits only, formatted with punctuation, and raw)
       const numericCpf = cleanCode.replace(/\D/g, "");
-      if (numericCpf.length >= 7) {
-        const qCpf = query(studentsRef, where("cpf", "==", numericCpf));
+      const formattedCpf = numericCpf.length === 11 ? formatCPF(numericCpf) : "";
+      const cpfCandidates = Array.from(new Set([numericCpf, formattedCpf, cleanCode])).filter(c => c && c.length >= 7);
+
+      for (const candidate of cpfCandidates) {
+        if (foundMember) break;
+        const qCpf = query(studentsRef, where("cpf", "==", candidate));
         const snapCpf = await getDocs(qCpf);
         if (!snapCpf.empty) {
           const d = snapCpf.docs.find((doc) => !doc.data().deletedAt);
@@ -166,13 +196,17 @@ export default function QuickEventEnrollModal({
         }
       }
 
-      // 2. Try by RA
-      if (!foundMember) {
-        const qRa = query(studentsRef, where("ra", "==", cleanCode));
-        const snapRa = await getDocs(qRa);
-        if (!snapRa.empty) {
-          const d = snapRa.docs.find((doc) => !doc.data().deletedAt);
-          if (d) foundMember = { id: d.id, ...d.data() } as Member;
+      // 2. Try by RA (all case variations and trimmed)
+      if (!foundMember && cleanCode) {
+        const raCandidates = Array.from(new Set([cleanCode, cleanCode.toUpperCase(), cleanCode.toLowerCase()])).filter(Boolean);
+        for (const candidate of raCandidates) {
+          if (foundMember) break;
+          const qRa = query(studentsRef, where("ra", "==", candidate));
+          const snapRa = await getDocs(qRa);
+          if (!snapRa.empty) {
+            const d = snapRa.docs.find((doc) => !doc.data().deletedAt);
+            if (d) foundMember = { id: d.id, ...d.data() } as Member;
+          }
         }
       }
 
@@ -205,11 +239,16 @@ export default function QuickEventEnrollModal({
       if (foundMember) {
         // Log in the member locally
         if (foundMember.alphaCode) {
-          localStorage.setItem("davveroId_student_identity", foundMember.alphaCode);
+          safeStorage.set("davveroId_student_identity", foundMember.alphaCode);
         }
-        localStorage.setItem("davveroId_cached_member", JSON.stringify(foundMember));
-        if (foundMember.name) localStorage.setItem("davveroId_guest_name", foundMember.name);
-        if (foundMember.email) localStorage.setItem("davveroId_guest_email", foundMember.email);
+        safeStorage.set("davveroId_cached_member", JSON.stringify(foundMember));
+        if (foundMember.name) safeStorage.set("davveroId_guest_name", foundMember.name);
+        if (foundMember.email) safeStorage.set("davveroId_guest_email", foundMember.email);
+
+        try {
+          window.dispatchEvent(new CustomEvent("davveroId_student_login"));
+          window.dispatchEvent(new Event("storage"));
+        } catch {}
 
         // Enroll member directly in this event
         await enrollStudent({
@@ -226,7 +265,13 @@ export default function QuickEventEnrollModal({
           const link = event.googleFormsLink.startsWith("http")
             ? event.googleFormsLink
             : `https://${event.googleFormsLink}`;
-          setTimeout(() => window.open(link, "_blank"), 1500);
+          setTimeout(() => {
+            try {
+              window.open(link, "_blank");
+            } catch (e) {
+              console.warn("Could not auto-open forms link:", e);
+            }
+          }, 1500);
         }
       } else {
         // Not found: prefill CPF if numeric and show choices
@@ -238,7 +283,7 @@ export default function QuickEventEnrollModal({
       }
     } catch (err: any) {
       console.error("Verification error:", err);
-      showAlert("Erro ao verificar cadastro. Tente novamente.", { type: "error" });
+      showAlert(err?.message === "LIMITE_EXCEDIDO" ? "Lotação esgotada para este evento." : "Erro ao verificar cadastro ou realizar inscrição. Tente novamente.", { type: "error" });
     } finally {
       setSearchingMember(false);
     }
@@ -303,17 +348,21 @@ export default function QuickEventEnrollModal({
     setLoading(true);
 
     try {
+      await loginAnon().catch(() => {});
       const studentsRef = collection(db, `artifacts/${appId}/public/data/students`);
 
-      // Check if student already exists by CPF
-      const qCpf = query(studentsRef, where("cpf", "==", cleanCpf));
-      const snapCpf = await getDocs(qCpf);
-
+      // Check if student already exists by CPF (digits and formatted)
       let targetMember: Member | null = null;
-      if (!snapCpf.empty) {
-        const activeDoc = snapCpf.docs.find((d) => !d.data().deletedAt);
-        if (activeDoc) {
-          targetMember = { id: activeDoc.id, ...activeDoc.data() } as Member;
+      const formattedCpfCandidate = formatCPF(cleanCpf);
+      for (const candidate of [cleanCpf, formattedCpfCandidate]) {
+        if (targetMember) break;
+        const qCpf = query(studentsRef, where("cpf", "==", candidate));
+        const snapCpf = await getDocs(qCpf);
+        if (!snapCpf.empty) {
+          const activeDoc = snapCpf.docs.find((d) => !d.data().deletedAt);
+          if (activeDoc) {
+            targetMember = { id: activeDoc.id, ...activeDoc.data() } as Member;
+          }
         }
       }
 
@@ -487,11 +536,16 @@ export default function QuickEventEnrollModal({
       });
 
       // Save local preferences
-      localStorage.setItem("davveroId_guest_name", name.trim());
-      localStorage.setItem("davveroId_guest_email", cleanEmail);
-      if (phone.trim()) localStorage.setItem("davveroId_guest_phone", phone.trim());
-      localStorage.setItem("davveroId_student_identity", generatedAlphaCode);
-      localStorage.setItem("davveroId_cached_member", JSON.stringify(targetMember));
+      safeStorage.set("davveroId_guest_name", name.trim());
+      safeStorage.set("davveroId_guest_email", cleanEmail);
+      if (phone.trim()) safeStorage.set("davveroId_guest_phone", phone.trim());
+      safeStorage.set("davveroId_student_identity", generatedAlphaCode);
+      safeStorage.set("davveroId_cached_member", JSON.stringify(targetMember));
+
+      try {
+        window.dispatchEvent(new CustomEvent("davveroId_student_login"));
+        window.dispatchEvent(new Event("storage"));
+      } catch {}
 
       setResolvedMember(targetMember);
       setMode("success");
@@ -501,7 +555,13 @@ export default function QuickEventEnrollModal({
         const link = event.googleFormsLink.startsWith("http")
           ? event.googleFormsLink
           : `https://${event.googleFormsLink}`;
-        setTimeout(() => window.open(link, "_blank"), 1800);
+        setTimeout(() => {
+          try {
+            window.open(link, "_blank");
+          } catch (e) {
+            console.warn("Could not auto-open forms link:", e);
+          }
+        }, 1800);
       }
     } catch (err: any) {
       console.error(err);

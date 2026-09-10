@@ -1,13 +1,13 @@
 import { useEffect, useRef, useState } from 'react';
 import { collection, query, where, onSnapshot, getDoc, doc, getDocs, limit } from 'firebase/firestore';
-import { db, appId } from '../lib/firebase';
+import { db, appId, isFirestoreQuotaExhausted, checkIsQuotaError } from '../lib/firebase';
 
 export function useDobloMonitor(bondedId: string | null) {
   const notifiedSet = useRef<Set<string>>(new Set());
   const [authorId, setAuthorId] = useState<string | null>(null);
 
   useEffect(() => {
-    if (!bondedId || bondedId === "admin") return;
+    if (!bondedId || bondedId === "admin" || isFirestoreQuotaExhausted) return;
 
     // Resolve bondedId to doc id (authorId)
     const resolveBondedId = async () => {
@@ -22,14 +22,16 @@ export function useDobloMonitor(bondedId: string | null) {
         if (!snap.empty) {
           setAuthorId(snap.docs[0].id);
         }
-      } catch (e) {}
+      } catch (e) {
+        checkIsQuotaError(e);
+      }
     };
 
     resolveBondedId();
   }, [bondedId]);
 
   useEffect(() => {
-    if (!authorId) return;
+    if (!authorId || isFirestoreQuotaExhausted) return;
 
     const q = query(
       collection(db, `artifacts/${appId}/public/data/doblo_logs`),
@@ -74,10 +76,14 @@ export function useDobloMonitor(bondedId: string | null) {
         if (interval) clearInterval(interval);
         interval = setInterval(checkLogs, 60000);
       }, (err) => {
-        console.warn("Notice in useDobloMonitor listener:", err?.message || err);
+        if (!checkIsQuotaError(err)) {
+          console.warn("Notice in useDobloMonitor listener:", err?.message || err);
+        }
       });
     } catch (e) {
-      console.error("Error monitoring doblo logs", e);
+      if (!checkIsQuotaError(e)) {
+        console.error("Error monitoring doblo logs", e);
+      }
     }
 
     return () => {

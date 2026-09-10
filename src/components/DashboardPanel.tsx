@@ -1,6 +1,6 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
 import { collection, doc, query, getDocs, onSnapshot, orderBy, limit } from "firebase/firestore";
-import { db, appId } from "../lib/firebase";
+import { db, appId, isFirestoreQuotaExhausted, checkIsQuotaError } from "../lib/firebase";
 import { getFullTelemetryData, TelemetryStats, recordSimultaneousPeak } from "../lib/telemetry";
 import { useSettings } from "../context/SettingsContext";
 import DavveroLogo from "./DavveroLogo";
@@ -346,12 +346,16 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
     return () => clearInterval(interval);
   }, [autoRefresh, fetchDashboardData]);
 
-  // Realtime listener for online presence (sem limitação artificial de quota, monitoramento contínuo e recorde simultâneo)
+  // Realtime listener for online presence (resiliente a cota e com amostragem eficiente)
   useEffect(() => {
+    if (isFirestoreQuotaExhausted) {
+      setRealtimeOnlineCount(1);
+      return;
+    }
     try {
       const presenceQuery = query(
         collection(db, `artifacts/${appId}/public/data/online_presence`),
-        limit(1000)
+        limit(100)
       );
       const unsubscribe = onSnapshot(presenceQuery, (snap) => {
         const now = Date.now();
@@ -359,8 +363,8 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         snap.forEach((d) => {
           const data = d.data();
           const ts = data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0);
-          // Usuários com batimento cardíaco nos últimos 180s (3 minutos)
-          if (ts && Math.abs(now - ts) < 180 * 1000) {
+          // Usuários com batimento cardíaco nos últimos 300s (5 minutos)
+          if (ts && Math.abs(now - ts) < 300 * 1000) {
             online++;
           }
         });
@@ -369,22 +373,27 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         setTelemetry((prev) => {
           if (!prev) return prev;
           const currentPeak = Math.max(prev.peakSimultaneousUsers || 1, finalCount);
-          if (finalCount > (prev.peakSimultaneousUsers || 1)) {
+          if (finalCount > (prev.peakSimultaneousUsers || 1) && !isFirestoreQuotaExhausted) {
             recordSimultaneousPeak(finalCount, currentPeak).catch(() => {});
           }
           return { ...prev, onlineUsersCount: finalCount, peakSimultaneousUsers: currentPeak };
         });
       }, (err) => {
-        console.warn("Notice in online presence listener:", err?.message || err);
+        if (!checkIsQuotaError(err)) {
+          console.warn("Notice in online presence listener:", err?.message || err);
+        }
       });
       return () => unsubscribe();
     } catch (err) {
-      console.warn("Realtime presence listener fallback:", err);
+      if (!checkIsQuotaError(err)) {
+        console.warn("Realtime presence listener fallback:", err);
+      }
     }
   }, []);
 
-  // Realtime listener for global telemetry stats (atualizações imediatas de usos de carteirinha e recordes)
+  // Realtime listener for global telemetry stats
   useEffect(() => {
+    if (isFirestoreQuotaExhausted) return;
     try {
       const statsDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
       const unsubStats = onSnapshot(statsDocRef, (docSnap) => {
@@ -407,11 +416,15 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           });
         }
       }, (err) => {
-        console.warn("Global telemetry stats listener fallback:", err);
+        if (!checkIsQuotaError(err)) {
+          console.warn("Global telemetry stats listener fallback:", err);
+        }
       });
       return () => unsubStats();
     } catch (err) {
-      console.warn("Telemetry stats snapshot setup:", err);
+      if (!checkIsQuotaError(err)) {
+        console.warn("Telemetry stats snapshot setup:", err);
+      }
     }
   }, []);
 

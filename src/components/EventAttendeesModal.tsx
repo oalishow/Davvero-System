@@ -1943,8 +1943,8 @@ export default function EventAttendeesModal({
                     )}
                     <div className="min-w-0 flex-1">
                       <div className="flex items-center gap-2 flex-wrap">
-                        <h4 className="font-black text-base sm:text-lg text-slate-900 dark:text-slate-100 tracking-tight leading-snug break-words">
-                          {a.member?.name || "Aluno Excluído"}
+                        <h4 className="font-black text-base sm:text-lg text-slate-900 dark:text-slate-100 tracking-tight leading-snug break-words uppercase">
+                          {(a.member?.name || "Aluno Excluído").toUpperCase()}
                         </h4>
                         {a.isOrganizer && (
                           <span className="inline-flex items-center gap-1 text-xs font-black px-2 py-0.5 rounded-lg bg-amber-100 dark:bg-amber-950/60 text-amber-800 dark:text-amber-300 border border-amber-300 dark:border-amber-700">

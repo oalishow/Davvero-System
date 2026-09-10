@@ -141,6 +141,22 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
   const [paymentModalEvent, setPaymentModalEvent] = useState<Event | null>(null);
 
   useEffect(() => {
+    const syncMemberSession = () => {
+      const cached = localStorage.getItem("davveroId_cached_member");
+      const bondedId = localStorage.getItem("davveroId_student_identity");
+      if (!bondedId || !cached) {
+        setMember(null);
+        setMyAttendances([]);
+        return;
+      }
+      try {
+        setMember(JSON.parse(cached) as Member);
+      } catch {
+        setMember(null);
+        setMyAttendances([]);
+      }
+    };
+
     // Load student if logged in
     const bondedId = localStorage.getItem("davveroId_student_identity");
     if (bondedId) {
@@ -156,13 +172,26 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
               id: snap.docs[0].id,
               ...snap.docs[0].data(),
             } as Member);
+          } else {
+            setMember(null);
+            setMyAttendances([]);
           }
         } catch (e) {
           console.error("Failed to load student", e);
         }
       };
       fetchStudent();
+    } else {
+      setMember(null);
+      setMyAttendances([]);
     }
+
+    window.addEventListener("studentSessionChanged", syncMemberSession);
+    window.addEventListener("storage", syncMemberSession);
+    return () => {
+      window.removeEventListener("studentSessionChanged", syncMemberSession);
+      window.removeEventListener("storage", syncMemberSession);
+    };
   }, []);
 
   useEffect(() => {
@@ -292,9 +321,12 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
   };
 
   const filteredEvents = events.filter((e) => {
+    const titleUpper = (e.title || "").toUpperCase();
+    const isCopaJPII = titleUpper.includes("COPA JOÃO PAULO") || titleUpper.includes("COPA JOAO PAULO");
+
     if (eventTypeTab === "seminary") {
-      if (!e.isSeminary) return false;
-      if (e.seminaryId && e.seminaryId !== member?.seminary && !hasPrivilegedRole) return false;
+      if (!e.isSeminary && !isCopaJPII) return false;
+      if (e.seminaryId && e.seminaryId !== member?.seminary && !hasPrivilegedRole && !isCopaJPII) return false;
       return true;
     } else if (eventTypeTab === "diocese") {
       if (!e.isDiocese) return false;
@@ -305,8 +337,10 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
       }
       return true;
     } else {
-      // Aba Acadêmico / Geral: Exibe estritamente eventos acadêmicos gerais (eventos diocesanos ficam exclusivamente na aba DIOCESES)
-      return !e.isSeminary && !e.isDiocese && !e.dioceseId && (e as any).category !== "diocese" && (e as any).type !== "diocese";
+      // Aba Acadêmico / Geral: Exibe eventos acadêmicos gerais e eventos conjuntos/públicos (como Copa João Paulo II)
+      if (e.isDiocese || e.dioceseId || (e as any).category === "diocese" || (e as any).type === "diocese") return false;
+      if (e.isSeminary && !isCopaJPII && !e.isPublic && e.seminaryId && e.seminaryId !== member?.seminary && !hasPrivilegedRole) return false;
+      return true;
     }
   });
 

@@ -46,13 +46,60 @@ self.addEventListener('push', (event) => {
   };
 
   event.waitUntil(
-    self.registration.showNotification(title, options).catch((err) => {
-      console.warn("FCM push showNotification fallback:", err);
-      return self.registration.showNotification(title, {
-        body,
-        data: { url }
-      });
-    })
+    (async () => {
+      try {
+        await self.registration.showNotification(title, options);
+      } catch (err) {
+        console.warn("FCM push showNotification fallback:", err);
+        await self.registration.showNotification(title, {
+          body,
+          data: { url }
+        });
+      }
+
+      // Atualiza badge do app no sistema operacional
+      try {
+        const notifs = await self.registration.getNotifications();
+        if ("setAppBadge" in navigator) {
+          await navigator.setAppBadge(notifs.length).catch(() => {});
+        }
+      } catch (_) {}
+    })()
+  );
+});
+
+// Listener disparado quando o usuário descarta ou limpa a notificação na Central de Notificações do Windows / SO
+self.addEventListener('notificationclose', (event) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const activeNotifs = await self.registration.getNotifications();
+        if (activeNotifs.length === 0) {
+          if ("clearAppBadge" in navigator) {
+            await navigator.clearAppBadge().catch(() => {});
+          }
+          if ("setAppBadge" in navigator) {
+            await navigator.setAppBadge(0).catch(() => {});
+          }
+        } else {
+          if ("setAppBadge" in navigator) {
+            await navigator.setAppBadge(activeNotifs.length).catch(() => {});
+          }
+        }
+
+        // Notifica todas as janelas do app para sincronizar e zerar/atualizar o contador
+        const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
+        for (const client of windowClients) {
+          client.postMessage({
+            type: 'NOTIFICATION_CLOSED_IN_OS',
+            remaining: activeNotifs.length,
+            closedTag: event.notification?.tag
+          });
+        }
+      } catch (err) {
+        console.warn("[FCM-SW] notificationclose sync error:", err);
+      }
+    })()
   );
 });
 
@@ -62,13 +109,26 @@ self.addEventListener('notificationclick', (event) => {
   const targetUrl = new URL(event.notification.data?.url || '/', self.location.origin).href;
 
   event.waitUntil(
-    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((windowClients) => {
+    (async () => {
+      // Sincroniza badge após o clique/fechamento
+      try {
+        const activeNotifs = await self.registration.getNotifications();
+        if (activeNotifs.length === 0) {
+          if ("clearAppBadge" in navigator) await navigator.clearAppBadge().catch(() => {});
+          if ("setAppBadge" in navigator) await navigator.setAppBadge(0).catch(() => {});
+        } else if ("setAppBadge" in navigator) {
+          await navigator.setAppBadge(activeNotifs.length).catch(() => {});
+        }
+      } catch (_) {}
+
+      const windowClients = await self.clients.matchAll({ type: 'window', includeUncontrolled: true });
       // 1. Se já existir uma aba aberta, foca e redireciona para a URL do alerta
       for (let i = 0; i < windowClients.length; i++) {
         const client = windowClients[i];
         if ('focus' in client) {
           try {
             client.postMessage({ type: 'NAVIGATE_URL', url: targetUrl });
+            client.postMessage({ type: 'NOTIFICATION_CLOSED_IN_OS', remaining: 0 });
           } catch (_) {}
           return client.focus().then((focusedClient) => {
             if (focusedClient && 'navigate' in focusedClient) {
@@ -82,7 +142,7 @@ self.addEventListener('notificationclick', (event) => {
       if (self.clients.openWindow) {
         return self.clients.openWindow(targetUrl);
       }
-    })
+    })()
   );
 });
 

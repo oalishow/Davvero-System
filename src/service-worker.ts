@@ -12,6 +12,19 @@ declare const self: any;
 self.skipWaiting();
 clientsClaim();
 
+// Limpar caches antigos ou conflitantes (como o de chamadas streaming do Firestore)
+self.addEventListener('activate', (event: any) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        if ('caches' in self) {
+          await caches.delete('firestore-data-cache');
+        }
+      } catch (_) {}
+    })()
+  );
+});
+
 // Ouvinte para mensagens de SKIP_WAITING enviadas pelo aplicativo cliente
 self.addEventListener('message', (event: any) => {
   if (event.data && (event.data.type === 'SKIP_WAITING' || event.data === 'SKIP_WAITING' || event.data?.type === 'CHECK_UPDATE')) {
@@ -36,11 +49,6 @@ try {
   console.log("Could not set up navigation fallback", e);
 }
 
-// Background Sync para operações Firestore offline
-const bgSyncPlugin = new BackgroundSyncPlugin('firestore-queue', {
-  maxRetentionTime: 24 * 60, // Retry for max of 24 Hours (specified in minutes)
-});
-
 // Background Sync para requisições de API (Emails, Push, Certificados)
 const apiBgSyncPlugin = new BackgroundSyncPlugin('davvero-api-queue', {
   maxRetentionTime: 24 * 60, // Retry for max of 24 Hours
@@ -51,21 +59,6 @@ registerRoute(
   ({ url }) => url.pathname.startsWith('/api/'),
   new NetworkOnly({
     plugins: [apiBgSyncPlugin]
-  })
-);
-
-// Cache para chamadas do Firestore e APIs (Dados básicos)
-registerRoute(
-  ({ url }) => url.origin.includes('firestore.googleapis.com'),
-  new NetworkFirst({
-    cacheName: 'firestore-data-cache',
-    plugins: [
-      new ExpirationPlugin({
-        maxEntries: 100,
-        maxAgeSeconds: 24 * 60 * 60, // 24 hours
-      }),
-      bgSyncPlugin,
-    ]
   })
 );
 

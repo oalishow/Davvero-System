@@ -430,7 +430,7 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
                       </div>
                       <div className="overflow-hidden flex-grow">
                         <p className={`font-semibold text-sm sm:text-base flex items-center flex-wrap gap-2 ${isInactive ? "line-through text-slate-500" : "text-slate-800 dark:text-slate-200"}`}>
-                          <span className="break-words max-w-full">{member.name}</span> 
+                          <span className="break-words max-w-full uppercase font-bold">{(member.name || '').toUpperCase()}</span> 
                           {member.ra && <span className="bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-300 border border-slate-300 dark:border-slate-600 px-1.5 py-0.5 rounded text-[9px] font-normal whitespace-nowrap">RA: {member.ra}</span>}
                           {member.registrationType === 'quick' && (
                             <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-1.5 py-0.5 rounded text-[9px] font-bold">

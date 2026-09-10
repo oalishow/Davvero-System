@@ -1,7 +1,7 @@
 import React, { createContext, useContext, useState, useEffect, useRef } from 'react';
 import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
-import { db, auth, appId, loginAnon } from '../lib/firebase';
+import { db, auth, appId, loginAnon, isFirestoreQuotaExhausted, checkIsQuotaError } from '../lib/firebase';
 import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION, extractAssetString, safeLocalStorageSet, safeSessionStorageSet, purgeOversizedLocalStorage, deduplicateList } from '../lib/constants';
 import type { DioceseInfo } from '../data/diocesesData';
 import { AVAILABLE_DIOCESES, AVAILABLE_SEMINARIES, ProfessionalConfig } from '../types';
@@ -486,227 +486,135 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           });
         }
       } catch (err) {
-        console.warn("[SettingsContext] Direct fetch non-critical notice:", err);
+        if (!checkIsQuotaError(err)) {
+          console.warn("[SettingsContext] Direct fetch non-critical notice:", err);
+        }
       }
     };
 
-    performDirectFetch();
+    if (!isFirestoreQuotaExhausted) {
+      performDirectFetch();
+    }
 
-    // Listen to Auth State to retry direct fetch when user state is initialized
-    const unsubAuth = onAuthStateChanged(auth, (user) => {
-      if (user) {
-        performDirectFetch();
-      }
-    });
-    unsubscribes.push(unsubAuth);
-    
-    // 1. Listener principal de configurações
-    const unsubMain = onSnapshot(docRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data() as any;
-        
-        const mergedVisibleFields = {
-          ...DEFAULT_SETTINGS.visibleFields,
-          ...(data.visibleFields || {})
-        };
-
-        const heavyFieldsList = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature', 'diocesesConfig', 'seminariesConfig'];
-        heavyFieldsList.forEach(field => {
-          if (data[field] === null || data[field] === undefined) {
-            delete data[field];
-          }
-        });
-
-        if (data.professionals) {
-          data.professionals = normalizeProfessionals(data.professionals);
-        }
-
-        if (data.customRoles) data.customRoles = deduplicateList(data.customRoles);
-        if (data.customCourses) data.customCourses = deduplicateList(data.customCourses);
-        if (data.customDioceses) data.customDioceses = deduplicateList(data.customDioceses);
-
-        setSettings(prev => ({ 
-          ...prev, 
-          ...data,
-          visibleFields: mergedVisibleFields
-        }));
-      } else {
-        setSettings(prev => ({ ...DEFAULT_SETTINGS, ...prev }));
-      }
-      setLoading(false);
-    }, (err) => {
-      console.warn("Aviso ao carregar configurações remotas:", err?.message || err);
-      setLoading(false);
-    });
-    unsubscribes.push(unsubMain);
-
-    // 2. Listeners para Ativos Pesados Individuais (Logos e Assinaturas Principais)
-    const singleHeavyFields = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature'];
-    singleHeavyFields.forEach(field => {
-      const assetRef = doc(db, ASSETS_DOC_PATH(appId, field));
-      const unsubAsset = onSnapshot(assetRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const snapData = snapshot.data();
-          const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.[field] !== undefined ? snapData[field] : snapData);
-          const val = extractAssetString(rawVal);
-          if (val !== undefined) {
-            setSettings(prev => ({ ...prev, [field]: val }));
-          }
-        }
-      }, (err) => {
-        console.warn(`Aviso ao carregar asset ${field}:`, err?.message || err);
-      });
-      unsubscribes.push(unsubAsset);
-    });
-
-    // Helper para se inscrever em uma diocese individual
+    // Helper para se inscrever em uma diocese individual sob demanda
     const subscribeToDiocese = (dioceseKey: string) => {
+      if (isFirestoreQuotaExhausted) return;
       const cleanKey = dioceseKey.trim().toUpperCase();
       if (!cleanKey || activeDioceseListeners.current.has(cleanKey)) return;
 
       const docKey = sanitizeDocKey(cleanKey);
       const dioceseRef = doc(db, ASSETS_DOC_PATH(appId, `diocese_${docKey}`));
       
-      const unsub = onSnapshot(dioceseRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const snapData = snapshot.data();
-          const val = snapData?.data !== undefined ? snapData.data : snapData;
-          if (val) {
-            setSettings(prev => {
-              const updated = {
-                ...(prev.diocesesConfig || {}),
-                [cleanKey]: val
-              };
-              safeLocalStorageSet('fajopa_dioceses_config', JSON.stringify(updated));
-              return {
-                ...prev,
-                diocesesConfig: updated
-              };
-            });
-          } else {
-            setSettings(prev => {
-              const current = { ...(prev.diocesesConfig || {}) };
-              delete current[cleanKey];
-              safeLocalStorageSet('fajopa_dioceses_config', JSON.stringify(current));
-              return { ...prev, diocesesConfig: current };
-            });
+      try {
+        const unsub = onSnapshot(dioceseRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const snapData = snapshot.data();
+            const val = snapData?.data !== undefined ? snapData.data : snapData;
+            if (val) {
+              setSettings(prev => {
+                const updated = {
+                  ...(prev.diocesesConfig || {}),
+                  [cleanKey]: val
+                };
+                safeLocalStorageSet('fajopa_dioceses_config', JSON.stringify(updated));
+                return { ...prev, diocesesConfig: updated };
+              });
+            }
           }
-        }
-      }, (err) => {
-        console.warn(`Aviso ao carregar diocese ${cleanKey}:`, err?.message || err);
-      });
+        }, (err) => {
+          checkIsQuotaError(err);
+        });
 
-      activeDioceseListeners.current.set(cleanKey, unsub);
+        activeDioceseListeners.current.set(cleanKey, unsub);
+      } catch (e) {
+        checkIsQuotaError(e);
+      }
     };
 
-    // Helper para se inscrever em um seminário individual
+    // Helper para se inscrever em um seminário individual sob demanda
     const subscribeToSeminary = (seminaryKey: string) => {
+      if (isFirestoreQuotaExhausted) return;
       const cleanKey = seminaryKey.trim();
       if (!cleanKey || activeSeminaryListeners.current.has(cleanKey)) return;
 
       const docKey = sanitizeDocKey(cleanKey);
       const semRef = doc(db, ASSETS_DOC_PATH(appId, `seminary_${docKey}`));
       
-      const unsub = onSnapshot(semRef, (snapshot) => {
-        if (snapshot.exists()) {
-          const snapData = snapshot.data();
-          const val = snapData?.data !== undefined ? snapData.data : snapData;
-          if (val) {
-            setSettings(prev => ({
-              ...prev,
-              seminariesConfig: {
-                ...(prev.seminariesConfig || {}),
-                [cleanKey]: val
-              }
-            }));
-          } else {
-            setSettings(prev => {
-              const current = { ...(prev.seminariesConfig || {}) };
-              delete current[cleanKey];
-              return { ...prev, seminariesConfig: current };
-            });
+      try {
+        const unsub = onSnapshot(semRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const snapData = snapshot.data();
+            const val = snapData?.data !== undefined ? snapData.data : snapData;
+            if (val) {
+              setSettings(prev => ({
+                ...prev,
+                seminariesConfig: {
+                  ...(prev.seminariesConfig || {}),
+                  [cleanKey]: val
+                }
+              }));
+            }
           }
-        }
-      }, (err) => {
-        console.warn(`Aviso ao carregar seminário ${cleanKey}:`, err?.message || err);
-      });
+        }, (err) => {
+          checkIsQuotaError(err);
+        });
 
-      activeSeminaryListeners.current.set(cleanKey, unsub);
+        activeSeminaryListeners.current.set(cleanKey, unsub);
+      } catch (e) {
+        checkIsQuotaError(e);
+      }
     };
 
-    // 3. Listener do Manifesto de Dioceses
-    const diocesesManifestRef = doc(db, ASSETS_DOC_PATH(appId, 'dioceses_manifest'));
-    const unsubDiocesesManifest = onSnapshot(diocesesManifestRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        const keys: string[] = data?.keys || [];
-        keys.forEach(k => subscribeToDiocese(k));
-      }
-    }, (err) => {
-      console.warn("Aviso ao carregar manifesto de dioceses:", err?.message || err);
-    });
-    unsubscribes.push(unsubDiocesesManifest);
+    // 1. Listener principal único e consolidado para configurações
+    if (!isFirestoreQuotaExhausted) {
+      try {
+        const unsubMain = onSnapshot(docRef, (snapshot) => {
+          if (snapshot.exists()) {
+            const data = snapshot.data() as any;
+            
+            const mergedVisibleFields = {
+              ...DEFAULT_SETTINGS.visibleFields,
+              ...(data.visibleFields || {})
+            };
 
-    // 4. Listener do Manifesto de Seminários
-    const seminariesManifestRef = doc(db, ASSETS_DOC_PATH(appId, 'seminaries_manifest'));
-    const unsubSeminariesManifest = onSnapshot(seminariesManifestRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const data = snapshot.data();
-        const keys: string[] = data?.keys || [];
-        keys.forEach(k => subscribeToSeminary(k));
-      }
-    }, (err) => {
-      console.warn("Aviso ao carregar manifesto de seminários:", err?.message || err);
-    });
-    unsubscribes.push(unsubSeminariesManifest);
+            const heavyFieldsList = ['instLogo', 'cardLogo', 'cardBackLogo', 'cardSecondaryBackLogo', 'cardBackImage', 'instSignature', 'rectorSignature', 'diocesesConfig', 'seminariesConfig'];
+            heavyFieldsList.forEach(field => {
+              if (data[field] === null || data[field] === undefined) {
+                delete data[field];
+              }
+            });
 
-    // Inicializar listeners para todas as dioceses e seminários padrão do sistema
-    AVAILABLE_DIOCESES.forEach(d => subscribeToDiocese(d));
-    AVAILABLE_SEMINARIES.forEach(s => subscribeToSeminary(s));
-
-    // 5. Suporte a Migração & Compatibilidade Legada:
-    // Listener do documento legado `_asset_diocesesConfig` (se contiver dados de antes da migração em lote)
-    const legacyDiocesesRef = doc(db, ASSETS_DOC_PATH(appId, 'diocesesConfig'));
-    const unsubLegacyDioceses = onSnapshot(legacyDiocesesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const snapData = snapshot.data();
-        if (snapData && !snapData.isSplit && snapData.data && typeof snapData.data === 'object') {
-          // Dados legados encontrados antes da partição
-          Object.keys(snapData.data).forEach(k => subscribeToDiocese(k));
-          setSettings(prev => ({
-            ...prev,
-            diocesesConfig: {
-              ...snapData.data,
-              ...(prev.diocesesConfig || {})
+            if (data.professionals) {
+              data.professionals = normalizeProfessionals(data.professionals);
             }
-          }));
-        }
-      }
-    }, (err) => {
-      console.warn("Aviso doc legado diocesesConfig:", err?.message || err);
-    });
-    unsubscribes.push(unsubLegacyDioceses);
 
-    // Listener do documento legado `_asset_seminariesConfig`
-    const legacySeminariesRef = doc(db, ASSETS_DOC_PATH(appId, 'seminariesConfig'));
-    const unsubLegacySeminaries = onSnapshot(legacySeminariesRef, (snapshot) => {
-      if (snapshot.exists()) {
-        const snapData = snapshot.data();
-        if (snapData && !snapData.isSplit && snapData.data && typeof snapData.data === 'object') {
-          Object.keys(snapData.data).forEach(k => subscribeToSeminary(k));
-          setSettings(prev => ({
-            ...prev,
-            seminariesConfig: {
-              ...snapData.data,
-              ...(prev.seminariesConfig || {})
-            }
-          }));
-        }
+            if (data.customRoles) data.customRoles = deduplicateList(data.customRoles);
+            if (data.customCourses) data.customCourses = deduplicateList(data.customCourses);
+            if (data.customDioceses) data.customDioceses = deduplicateList(data.customDioceses);
+
+            setSettings(prev => ({ 
+              ...prev, 
+              ...data,
+              visibleFields: mergedVisibleFields
+            }));
+          } else {
+            setSettings(prev => ({ ...DEFAULT_SETTINGS, ...prev }));
+          }
+          setLoading(false);
+        }, (err) => {
+          if (!checkIsQuotaError(err)) {
+            console.warn("Aviso ao carregar configurações remotas:", err?.message || err);
+          }
+          setLoading(false);
+        });
+        unsubscribes.push(unsubMain);
+      } catch (err) {
+        checkIsQuotaError(err);
+        setLoading(false);
       }
-    }, (err) => {
-      console.warn("Aviso doc legado seminariesConfig:", err?.message || err);
-    });
-    unsubscribes.push(unsubLegacySeminaries);
+    } else {
+      setLoading(false);
+    }
 
     return () => {
       unsubscribes.forEach(u => u());
@@ -889,10 +797,23 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
       }
     });
 
-    await Promise.all([
-      setDoc(docRef, settingsToSave, { merge: true }),
-      ...assetOperations
-    ]);
+    if (isFirestoreQuotaExhausted) {
+      console.warn("[SettingsContext] Cota do Firestore atingida no plano gratuito. Configurações persistidas localmente no dispositivo.");
+      return;
+    }
+
+    try {
+      await Promise.all([
+        setDoc(docRef, settingsToSave, { merge: true }),
+        ...assetOperations
+      ]);
+    } catch (err) {
+      if (checkIsQuotaError(err)) {
+        console.warn("[SettingsContext] Cota atingida durante escrita no Firestore. Configurações salvas localmente no navegador.");
+        return;
+      }
+      throw err;
+    }
   };
 
   return (

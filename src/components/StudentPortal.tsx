@@ -541,7 +541,16 @@ export default function StudentPortal({
   const [bondedId, setBondedId] = useState<string | null>(
     localStorage.getItem(STUDENT_BOND_KEY),
   );
-  const [member, setMember] = useState<Member | null>(null);
+  const [member, setMember] = useState<Member | null>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("davveroId_cached_member");
+        if (cached) return JSON.parse(cached) as Member;
+      } catch {}
+    }
+    return null;
+  });
+  const [expandedPortalEvents, setExpandedPortalEvents] = useState<Record<string, boolean>>({});
   const [isUnlocked, setIsUnlocked] = useState(() => {
     return sessionStorage.getItem("davveroId_unlocked") === "true";
   });
@@ -796,11 +805,16 @@ export default function StudentPortal({
         setAllEvents(evts);
         const hasPrivilegedRole = member.roles?.some(r => ["ADMIN", "COORDENADOR", "GERENTE", "REITOR", "VICE-REITOR", "DIRETOR ESPIRITUAL", "PADRE"].includes(r.toUpperCase()));
 
-        // Eventos acadêmicos gerais: exclui eventos de seminários e dioceses estritamente
-        setAvailableEvents(evts.filter((e) => e.status === "aberto" && !e.isSeminary && !e.isDiocese && !e.dioceseId && (e as any).category !== "diocese" && (e as any).type !== "diocese"));
-        setPastEvents(evts.filter((e) => e.status === "encerrado" && !e.isSeminary && !e.isDiocese && !e.dioceseId && (e as any).category !== "diocese" && (e as any).type !== "diocese"));
-        setSeminaryAvailableEvents(evts.filter((e) => e.status === "aberto" && e.isSeminary && (!e.seminaryId || e.seminaryId === member.seminary || hasPrivilegedRole)));
-        setSeminaryPastEvents(evts.filter((e) => e.status === "encerrado" && e.isSeminary && (!e.seminaryId || e.seminaryId === member.seminary || hasPrivilegedRole)));
+        const isCopa = (e: Event) => {
+          const t = (e.title || "").toUpperCase();
+          return t.includes("COPA JOÃO PAULO") || t.includes("COPA JOAO PAULO");
+        };
+
+        // Eventos acadêmicos gerais: inclui eventos acadêmicos gerais e eventos conjuntos como Copa João Paulo II
+        setAvailableEvents(evts.filter((e) => e.status === "aberto" && !e.isDiocese && !e.dioceseId && (e as any).category !== "diocese" && (e as any).type !== "diocese" && (!e.isSeminary || e.isPublic || isCopa(e))));
+        setPastEvents(evts.filter((e) => e.status === "encerrado" && !e.isDiocese && !e.dioceseId && (e as any).category !== "diocese" && (e as any).type !== "diocese" && (!e.isSeminary || e.isPublic || isCopa(e))));
+        setSeminaryAvailableEvents(evts.filter((e) => e.status === "aberto" && (e.isSeminary || isCopa(e)) && (!e.seminaryId || e.seminaryId === member.seminary || hasPrivilegedRole)));
+        setSeminaryPastEvents(evts.filter((e) => e.status === "encerrado" && (e.isSeminary || isCopa(e)) && (!e.seminaryId || e.seminaryId === member.seminary || hasPrivilegedRole)));
       }, (err) => {
         console.warn("Notice in StudentPortal events listener:", err?.message || err);
       });
@@ -821,7 +835,7 @@ export default function StudentPortal({
         if (unsubAttendances) unsubAttendances();
       };
     }
-  }, [member]);
+  }, [member?.id]);
 
   useEffect(() => {
     if (member && pendingCertTarget) {
@@ -1275,7 +1289,10 @@ export default function StudentPortal({
 
 
   const loadBondedMember = async (id: string, isOverride = false) => {
-    setIsLoading(true);
+    // Apenas ativa a tela de carregamento bloqueante se NÃO tivermos os dados do membro em cache
+    if (!member && !isOverride) {
+      setIsLoading(true);
+    }
     try {
       const dbRef = collection(db, `artifacts/${appId}/public/data/students`);
       
@@ -1306,7 +1323,11 @@ export default function StudentPortal({
       }
 
       if (foundMemberLocal) {
-        setMember({ ...foundMemberLocal, id: foundDocId } as Member);
+        const fullMember = { ...foundMemberLocal, id: foundDocId } as Member;
+        setMember(fullMember);
+        try {
+          localStorage.setItem("davveroId_cached_member", JSON.stringify(fullMember));
+        } catch {}
         if (isOverride) {
           setIsOverrideMode(true);
           setBondedId(id);
@@ -1338,39 +1359,55 @@ export default function StudentPortal({
 
   useEffect(() => {
     if (!bondedId) return;
+    let isCancelled = false;
+    let unsubListener: (() => void) | null = null;
     
     // First figure out if bondedId is a doc id or alphaCode
     const listenToMember = async () => {
-       let realDocId = bondedId;
-       try {
-         const dSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/students`, bondedId));
-         if (!dSnap.exists()) {
-             // Must be alphaCode, find the doc
-             const sm = await getDocs(query(collection(db, `artifacts/${appId}/public/data/students`), where("alphaCode", "==", bondedId), limit(1)));
-             if (!sm.empty) {
-                realDocId = sm.docs[0].id;
-             }
-         }
-       } catch(e) {}
+       let realDocId = member?.id || bondedId;
+       if (!member?.id) {
+         try {
+           const dSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/students`, bondedId));
+           if (isCancelled) return;
+           if (!dSnap.exists()) {
+               // Must be alphaCode, find the doc
+               const sm = await getDocs(query(collection(db, `artifacts/${appId}/public/data/students`), where("alphaCode", "==", bondedId), limit(1)));
+               if (isCancelled) return;
+               if (!sm.empty) {
+                  realDocId = sm.docs[0].id;
+               }
+           }
+         } catch(e) {}
+       }
 
+       if (isCancelled) return;
        const unsub = onSnapshot(doc(db, `artifacts/${appId}/public/data/students`, realDocId), (docSnap) => {
          if (docSnap.exists()) {
            setMember(prev => {
              const m = { ...prev, ...docSnap.data(), id: docSnap.id } as Member;
-             localStorage.setItem("davveroId_cached_member", JSON.stringify(m));
+             try {
+               localStorage.setItem("davveroId_cached_member", JSON.stringify(m));
+             } catch {}
              return m;
            });
          }
        }, (err) => {
          console.warn("Notice in StudentPortal member listener:", err?.message || err);
        });
-       return unsub;
+
+       if (isCancelled) {
+         unsub();
+       } else {
+         unsubListener = unsub;
+       }
     };
     
-    let unsubscribe: any = null;
-    listenToMember().then(u => { unsubscribe = u; });
+    listenToMember();
 
-    return () => { if (unsubscribe) unsubscribe(); };
+    return () => { 
+      isCancelled = true;
+      if (unsubListener) unsubListener(); 
+    };
   }, [bondedId]);
 
   const linkIdentity = async () => {
@@ -1695,15 +1732,31 @@ export default function StudentPortal({
     }
   };
 
+  const clearStudentSession = () => {
+    try {
+      localStorage.removeItem(STUDENT_BOND_KEY);
+      localStorage.removeItem(STUDENT_TRACK_KEY);
+      localStorage.removeItem("davveroId_student_doc_id");
+      localStorage.removeItem(STUDENT_FALLBACK_PIN);
+      localStorage.removeItem("student_biometric_credential_id");
+      localStorage.removeItem("davveroId_student_identity");
+      localStorage.removeItem("davveroId_cached_member");
+      localStorage.removeItem("davveroId_guest_name");
+      localStorage.removeItem("davveroId_guest_email");
+      localStorage.removeItem("davveroId_guest_phone");
+      localStorage.removeItem("davveroId_my_attendances_cache");
+      sessionStorage.removeItem("davveroId_unlocked");
+      window.dispatchEvent(new CustomEvent("davveroId_student_logout"));
+      window.dispatchEvent(new Event("storage"));
+    } catch (e) {
+      console.warn("Error clearing student session:", e);
+    }
+  };
+
   const confirmUnlink = () => {
     if (isOverrideMode) return;
     playSound('logout');
-    localStorage.removeItem(STUDENT_BOND_KEY);
-    localStorage.removeItem(STUDENT_TRACK_KEY);
-    localStorage.removeItem("davveroId_student_doc_id");
-    localStorage.removeItem(STUDENT_FALLBACK_PIN);
-    localStorage.removeItem("student_biometric_credential_id");
-    localStorage.removeItem("davveroId_student_identity"); // clear the specific key requested if its different
+    clearStudentSession();
     setBondedId(null);
     setMember(null);
     setIsUnlocked(false);
@@ -2232,8 +2285,7 @@ export default function StudentPortal({
                   status={(!member.isApproved && member.isApproved !== undefined) || member.isApproved === false ? "PENDING" : (member.isActive ? "VALID" : "INACTIVE")}
                   onReset={() => {
                     playSound('logout');
-                    localStorage.removeItem(STUDENT_BOND_KEY);
-                    localStorage.removeItem(STUDENT_FALLBACK_PIN);
+                    clearStudentSession();
                     setMember(null);
                     setBondedId(null);
                     setIsUnlocked(false);
@@ -2356,9 +2408,26 @@ export default function StudentPortal({
                               <h4 className="font-bold text-slate-800 dark:text-white text-sm mb-1 leading-tight">
                                 {event.title}
                               </h4>
-                              <p className="text-xs text-slate-500 dark:text-slate-400 mb-4 line-clamp-2">
-                                {event.description}
-                              </p>
+                              <div className="mb-4">
+                                <p className={`text-xs text-slate-500 dark:text-slate-400 ${expandedPortalEvents[event.id] ? "whitespace-pre-wrap" : "line-clamp-2"} transition-all`}>
+                                  {event.description}
+                                </p>
+                                {event.description && event.description.length > 70 && (
+                                  <button
+                                    type="button"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setExpandedPortalEvents(prev => ({
+                                        ...prev,
+                                        [event.id]: !prev[event.id]
+                                      }));
+                                    }}
+                                    className="mt-1 text-[11px] font-bold text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 flex items-center gap-1 cursor-pointer transition-colors"
+                                  >
+                                    {expandedPortalEvents[event.id] ? "Ver menos" : "Ver mais..."}
+                                  </button>
+                                )}
+                              </div>
 
                               <div className="flex items-center gap-4 text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-tight mb-4">
                                 <div className="flex items-center gap-1.5">

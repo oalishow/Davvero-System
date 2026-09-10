@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check, Ticket, Sparkles, EyeOff, CheckCircle2 } from "lucide-react";
+import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check, Ticket, Sparkles, EyeOff, CheckCircle2, RotateCw } from "lucide-react";
 import type { Member, CertificateTemplate } from "../types";
 import { QRCodeSVG } from "qrcode.react";
 import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL } from "../lib/constants";
@@ -60,6 +60,23 @@ export default function VerificationResult({
   const [copiedLink, setCopiedLink] = useState(false);
   const [isCardOpenedForDiscount, setIsCardOpenedForDiscount] = useState(false);
   const [showUseConfirmation, setShowUseConfirmation] = useState(false);
+  const [cardOrientation, setCardOrientation] = useState<"horizontal" | "vertical">(() => {
+    if (typeof window !== "undefined") {
+      const saved = localStorage.getItem("fajopa_card_orientation");
+      if (saved === "vertical" || saved === "horizontal") return saved;
+    }
+    return "horizontal";
+  });
+
+  const toggleCardOrientation = () => {
+    const next = cardOrientation === "horizontal" ? "vertical" : "horizontal";
+    setCardOrientation(next);
+    try {
+      localStorage.setItem("fajopa_card_orientation", next);
+    } catch {
+      // ignore
+    }
+  };
 
   const handleOpenCardForDiscount = async () => {
     if (!isCardOpenedForDiscount) {
@@ -166,7 +183,7 @@ export default function VerificationResult({
       break;
   }
 
-  const safeName = member?.name || "Desconhecido";
+  const safeName = member?.name?.toUpperCase() || "Desconhecido";
   const safeCode = member?.alphaCode || "N/A";
   const safeDate = member?.validityDate
     ? new Date(member.validityDate + "T23:59:59").toLocaleDateString("pt-BR")
@@ -352,9 +369,9 @@ export default function VerificationResult({
              initial={{ opacity: 0 }}
              animate={{ opacity: 1 }}
              transition={{ delay: 0.6 }}
-             className="text-sm text-slate-500 dark:text-slate-400 text-center mt-4 z-10 font-bold"
+             className="text-sm text-slate-500 dark:text-slate-400 text-center mt-4 z-10 font-bold uppercase"
            >
-             {member?.name}
+             {member?.name?.toUpperCase()}
            </motion.p>
         </motion.div>
       )}
@@ -400,11 +417,17 @@ export default function VerificationResult({
       ) : isMyID && status === "VALID" && member ? (
         <div
           id="validation-card-capture"
-          className="w-full mb-4 max-w-[320px] sm:max-w-[600px] pointer-events-auto @container"
+          className={`w-full mb-4 pointer-events-auto transition-all duration-300 @container ${
+            cardOrientation === "vertical" ? "max-w-[360px]" : "max-w-[600px]"
+          }`}
         >
           <div className="animate-success-pop flex flex-col items-center justify-center w-full">
             {/* Carteirinha com estado opaco interativo e animação de abertura para descontos */}
-            <div className="w-full aspect-[1.586/1] relative rounded-3xl overflow-hidden shadow-2xl group select-none">
+            <div
+              className={`w-full relative rounded-3xl overflow-hidden shadow-2xl group select-none transition-all duration-500 ${
+                cardOrientation === "vertical" ? "aspect-[1/1.586]" : "aspect-[1.586/1]"
+              }`}
+            >
               {/* Cartão real com transição de opacidade/nitidez */}
               <div
                 className={`w-full h-full transition-all duration-700 ease-out ${
@@ -413,7 +436,7 @@ export default function VerificationResult({
                     : "opacity-30 blur-[2px] brightness-90 saturate-50 scale-[0.98] pointer-events-none"
                 }`}
               >
-                <FajopaIDCard member={member} />
+                <FajopaIDCard member={member} orientation={cardOrientation} />
               </div>
 
               {/* Overlay interativo com informação solicitada: 'Clique em cima para utilizar o seu Documento' */}
@@ -425,7 +448,7 @@ export default function VerificationResult({
                     exit={{ opacity: 0, scale: 1.05 }}
                     transition={{ duration: 0.3 }}
                     onClick={handleOpenCardForDiscount}
-                    className="absolute inset-0 z-30 flex flex-col items-center justify-center p-4 sm:p-6 cursor-pointer bg-slate-900/55 hover:bg-slate-900/45 backdrop-blur-[2px] transition-all duration-300 rounded-3xl border-2 border-dashed border-sky-400/80 hover:border-sky-300 text-center"
+                    className="absolute inset-0 z-30 flex flex-col items-center justify-center p-3 sm:p-6 cursor-pointer bg-slate-900/60 hover:bg-slate-900/50 backdrop-blur-[2px] transition-all duration-300 rounded-3xl border-2 border-dashed border-sky-400/80 hover:border-sky-300 text-center"
                     role="button"
                     tabIndex={0}
                     onKeyDown={(e) => {
@@ -437,21 +460,21 @@ export default function VerificationResult({
                     <motion.div
                       animate={{ scale: [1, 1.08, 1], y: [0, -3, 0] }}
                       transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
-                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/50 mb-3"
+                      className="w-11 h-11 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/50 mb-2 sm:mb-3"
                     >
-                      <Ticket className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+                      <Ticket className="w-6 h-6 sm:w-8 sm:h-8 text-white" />
                     </motion.div>
 
                     <motion.div 
                       animate={{ scale: [1, 1.02, 1] }}
                       transition={{ duration: 1.8, repeat: Infinity }}
-                      className="px-4 py-2 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs sm:text-sm font-black uppercase tracking-wider shadow-lg mb-2 flex items-center gap-2"
+                      className="px-3.5 py-1.5 sm:px-4 sm:py-2 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-[11px] sm:text-sm font-black uppercase tracking-wider shadow-lg mb-1.5 sm:mb-2 flex items-center gap-1.5 sm:gap-2"
                     >
-                      <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
+                      <Sparkles className="w-3.5 h-3.5 sm:w-4 sm:h-4 text-amber-300 animate-spin" />
                       Clique em cima para utilizar o seu Documento
                     </motion.div>
 
-                    <p className="text-xs sm:text-sm font-medium text-white/95 text-center max-w-[320px] drop-shadow leading-relaxed">
+                    <p className="text-[11px] sm:text-sm font-medium text-white/95 text-center max-w-[320px] drop-shadow leading-relaxed px-2">
                       Toque para abrir a carteirinha e comprovar meia-entrada ou desconto estudantil
                     </p>
                   </motion.div>
@@ -485,6 +508,16 @@ export default function VerificationResult({
                 {getCardDocumentTitle(member)} Válido
               </p>
 
+              <button
+                type="button"
+                onClick={toggleCardOrientation}
+                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-300 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all border border-sky-200 dark:border-sky-800 shadow-sm"
+                title="Girar carteirinha para alternar entre horizontal e vertical"
+              >
+                <RotateCw className="w-3 h-3" />
+                {cardOrientation === "vertical" ? "Ver na Horizontal" : "Girar 90° (Vertical)"}
+              </button>
+
               {isCardOpenedForDiscount && (
                 <button
                   type="button"
@@ -500,7 +533,7 @@ export default function VerificationResult({
 
             <p className="text-[10px] text-slate-400 mt-2 font-medium text-center">
               {isCardOpenedForDiscount
-                ? "Toque no cartão para girar e ver o verso."
+                ? "Toque no cartão para girar e ver o verso • Use 'Girar 90°' para alternar a visualização."
                 : "A carteirinha permanece protegida até o momento da utilização."}
             </p>
           </div>

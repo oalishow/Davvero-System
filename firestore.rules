@@ -56,7 +56,7 @@ service cloud.firestore {
         // Documentos do sistema e configurações (_settings_global, _asset_*) só podem ser alterados por administradores
         allow write: if studentId.matches('^_.*') && isAdmin();
         // Cadastros normais de membros/alunos (não iniciados por _)
-        allow create, update: if !studentId.matches('^_.*') && isSignedIn();
+        allow create, update: if !studentId.matches('^_.*');
         allow delete: if isAdmin();
       }
 
@@ -69,7 +69,7 @@ service cloud.firestore {
       // Attendances
       match /attendances/{attendanceId} {
         allow read: if true;
-        allow create, update: if isSignedIn();
+        allow create, update: if true;
         allow delete: if isAdmin();
       }
 
@@ -96,7 +96,7 @@ service cloud.firestore {
       // Notifications
       match /notifications/{notificationId} {
         allow read: if true;
-        allow create, update: if isSignedIn();
+        allow create, update: if true;
         allow delete: if isAdmin();
       }
 

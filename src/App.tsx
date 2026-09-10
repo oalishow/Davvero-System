@@ -22,7 +22,7 @@ import {
   CheckCircle2,
   Landmark
 } from "lucide-react";
-import { loginAnon, testConnection } from "./lib/firebase";
+import { loginAnon, testConnection, subscribeToQuotaStatus, isFirestoreQuotaExhausted } from "./lib/firebase";
 import { recordAppAccess, startPresenceHeartbeat } from "./lib/telemetry";
 import { motion, AnimatePresence } from "motion/react";
 import ErrorBoundary from "./components/ErrorBoundary";
@@ -129,6 +129,16 @@ export default function App() {
   // Mantém abas visitadas ativas para eliminação de travamentos e latência zero ao alternar
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set([activeTab]));
 
+  const switchTab = (tab: "verifier" | "admin" | "student" | "events" | "diocese" | "appointments") => {
+    setVisitedTabs((prev) => {
+      if (prev.has(tab)) return prev;
+      const next = new Set(prev);
+      next.add(tab);
+      return next;
+    });
+    setActiveTab(tab);
+  };
+
   useEffect(() => {
     setVisitedTabs((prev) => {
       if (prev.has(activeTab)) return prev;
@@ -138,7 +148,7 @@ export default function App() {
     });
   }, [activeTab]);
 
-  // Pré-carregamento em background sem competir com a thread de renderização
+  // Pré-carregamento imediato em background sem competir com a thread de renderização
   useEffect(() => {
     const prefetch = () => {
       import("./components/StudentPortal");
@@ -148,11 +158,7 @@ export default function App() {
       import("./components/DioceseHub");
     };
     if (typeof window !== "undefined") {
-      if ("requestIdleCallback" in window) {
-        (window as any).requestIdleCallback(prefetch);
-      } else {
-        setTimeout(prefetch, 800);
-      }
+      prefetch();
     }
   }, []);
   const [targetVerifyCode, setTargetVerifyCode] = useState<string | null>(() => {
@@ -190,6 +196,11 @@ export default function App() {
   const [updateProgress, setUpdateProgress] = useState(0);
   const [targetVersionText, setTargetVersionText] = useState("");
   const [isLoopBlocked, setIsLoopBlocked] = useState(false);
+  const [isQuotaExhausted, setIsQuotaExhausted] = useState(isFirestoreQuotaExhausted);
+
+  useEffect(() => {
+    return subscribeToQuotaStatus(setIsQuotaExhausted);
+  }, []);
 
   // Modal para busca interativa de atualizações
   const [updateCheckModal, setUpdateCheckModal] = useState<{
@@ -771,6 +782,17 @@ export default function App() {
         <div className="relative z-10 space-y-6 sm:space-y-8 print:space-y-4">
           <Header onOpenAdmin={handleOpenAdmin} />
 
+          {isQuotaExhausted && (
+            <div className="px-3.5 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-800 dark:text-amber-200 print:hidden transition-all">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-amber-500 animate-pulse shrink-0" />
+                <span>
+                  <strong>Modo Offline/Cache Ativo:</strong> Cota do banco em nuvem (plano gratuito) atingida temporariamente. O sistema permanece 100% operacional com dados salvos em cache local.
+                </span>
+              </div>
+            </div>
+          )}
+
           {settings.headerLogoEnabled && settings.headerLogoUrl && (
             <div className="flex flex-col items-center justify-center gap-4 mb-4 mt-2 sm:mt-0 no-print print:hidden">
               <a 
@@ -930,14 +952,14 @@ export default function App() {
               style={{ gridTemplateColumns: `repeat(${3 + (settings.eventsEnabled !== false ? 1 : 0) + (settings.appointmentsEnabled !== false ? 1 : 0)}, minmax(0, 1fr))` }}
             >
               <button
-                onClick={() => setActiveTab("student")}
+                onClick={() => switchTab("student")}
                 className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "student" ? "bg-white dark:bg-amber-500 text-amber-600 dark:text-amber-50 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
               >
                 <User className="w-4 h-4 mb-0.5" />
                 Minha ID
               </button>
               <button
-                onClick={() => setActiveTab("verifier")}
+                onClick={() => switchTab("verifier")}
                 className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "verifier" ? "bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
               >
                 <Shield className="w-4 h-4 mb-0.5" />
@@ -945,7 +967,7 @@ export default function App() {
               </button>
               {settings.eventsEnabled !== false && (
                 <button
-                  onClick={() => setActiveTab("events")}
+                  onClick={() => switchTab("events")}
                   className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "events" ? "bg-white dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                 >
                   <Calendar className="w-4 h-4 mb-0.5" />
@@ -954,7 +976,7 @@ export default function App() {
               )}
               {settings.appointmentsEnabled !== false && (
                 <button
-                  onClick={() => setActiveTab("appointments")}
+                  onClick={() => switchTab("appointments")}
                   className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "appointments" ? "bg-white dark:bg-purple-600 text-purple-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                 >
                   <HeartHandshake className="w-4 h-4 mb-0.5" />
@@ -962,7 +984,7 @@ export default function App() {
                 </button>
               )}
               <button
-                onClick={() => setActiveTab("diocese")}
+                onClick={() => switchTab("diocese")}
                 className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "diocese" ? "bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
               >
                 <Landmark className="w-4 h-4 mb-0.5" />

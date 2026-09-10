@@ -25,7 +25,7 @@ export default function MemberEditModal({ member, onClose, onUpdate, initialTab 
   const { settings, updateSettings } = useSettings();
   const [activeTab, setActiveTab] = useState<'cadastral' | 'certificates'>(initialTab);
   const [certificatesCount, setCertificatesCount] = useState<number>(0);
-  const [name, setName] = useState(member.name || '');
+  const [name, setName] = useState((member.name || '').toUpperCase());
   const [ra, setRa] = useState(member.ra || '');
   const [cpf, setCpf] = useState(member.cpf || '');
   const [birthdate, setBirthdate] = useState(() => {
@@ -124,7 +124,7 @@ export default function MemberEditModal({ member, onClose, onUpdate, initialTab 
     try {
       const docRef = doc(db, `artifacts/${appId}/public/data/students`, member.id);
       await updateDoc(docRef, {
-        name: name.trim(),
+        name: name.trim().toUpperCase(),
         ra: ra || '',
         cpf: cpf || '',
         birthdate: birthdate || '',

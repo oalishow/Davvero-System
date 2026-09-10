@@ -10,6 +10,7 @@ import DavveroLogo from './DavveroLogo';
 interface FajopaIDCardProps {
   member: Member;
   exportMode?: boolean;
+  orientation?: 'horizontal' | 'vertical';
   settings?: {
     directorName?: string;
     rectorName?: string;
@@ -36,7 +37,7 @@ interface FajopaIDCardProps {
   };
 }
 
-export default function FajopaIDCard({ member, exportMode = false, settings: propSettings }: FajopaIDCardProps) {
+export default function FajopaIDCard({ member, exportMode = false, orientation = 'horizontal', settings: propSettings }: FajopaIDCardProps) {
   const { settings: cloudSettings } = useSettings();
   const settings = propSettings ? { ...cloudSettings, ...propSettings } : cloudSettings;
 
@@ -123,28 +124,40 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
   
   const displayInstNameForCard = (isSeminarista && !validDiocese && instName === 'FAJOPA e SPSCJ' && !member.seminary) ? 'FAJOPA' : instName;
 
+  const isVertical = orientation === 'vertical';
+
   useEffect(() => {
     if (exportMode) return;
     
     const calculateScale = (width: number) => {
-       const isPortrait = window.innerWidth < 640 && window.innerHeight > window.innerWidth;
-       // If portrait, the card is rotated 90deg, so its visual width is 378.
-       // We scale it so it fits into the container width perfectly.
-       // Add a slight 5% margin down on portrait to ensure it doesn't touch the very edges.
-       return isPortrait ? (width * 0.95) / 378 : width / 600;
+       if (width <= 0) return 1;
+       // When vertical, the card is rotated 90deg, so its visual width is 378.
+       // We scale it so it fits into the container width perfectly with a slight safety margin.
+       return isVertical ? (width * 0.95) / 378 : width / 600;
     };
 
     const observer = new ResizeObserver((entries) => {
       for (const entry of entries) {
-        setScale(calculateScale(entry.contentRect.width));
+        if (entry.contentRect.width > 0) {
+          setScale(calculateScale(entry.contentRect.width));
+        }
       }
     });
 
-    if (containerRef.current) observer.observe(containerRef.current);
+    if (containerRef.current) {
+      observer.observe(containerRef.current);
+      const initialWidth = containerRef.current.getBoundingClientRect().width;
+      if (initialWidth > 0) {
+        setScale(calculateScale(initialWidth));
+      }
+    }
     
     const handleWinResize = () => {
        if (containerRef.current) {
-          setScale(calculateScale(containerRef.current.getBoundingClientRect().width));
+          const rectWidth = containerRef.current.getBoundingClientRect().width;
+          if (rectWidth > 0) {
+             setScale(calculateScale(rectWidth));
+          }
        }
     };
     window.addEventListener('resize', handleWinResize);
@@ -153,7 +166,7 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
        observer.disconnect();
        window.removeEventListener('resize', handleWinResize);
     };
-  }, [exportMode]);
+  }, [exportMode, isVertical]);
   
   const verificationUrl = `${cleanBaseUrl}?verify=${member.alphaCode}`;
 
@@ -586,11 +599,13 @@ export default function FajopaIDCard({ member, exportMode = false, settings: pro
   return (
     <div 
       ref={containerRef}
-      className="perspective-1000 w-full max-w-[600px] aspect-[1.586/1] max-sm:portrait:aspect-[1/1.586] mx-auto cursor-pointer focus:outline-none no-print transition-transform origin-center flex items-center justify-center max-sm:portrait:my-4 sm:portrait:my-0" 
+      className={`perspective-1000 w-full mx-auto cursor-pointer focus:outline-none no-print transition-all duration-300 origin-center flex items-center justify-center ${
+        isVertical ? 'max-w-[360px] aspect-[1/1.586] my-2' : 'max-w-[600px] aspect-[1.586/1]'
+      }`} 
       onClick={handleFlip}
     >
       <div style={{ transform: `scale(calc(${scale} * var(--card-zoom, 1)))`, transformOrigin: 'center center' }}>
-        <div className="w-[600px] h-[378px] transition-transform duration-500 max-sm:portrait:rotate-90 origin-center">
+        <div className={`w-[600px] h-[378px] transition-transform duration-500 origin-center ${isVertical ? 'rotate-90' : 'rotate-0'}`}>
            <div 
           className={`relative w-full h-full transition-transform duration-700 transform-style-3d ${flipped ? 'rotate-y-180' : ''}`}
           style={{ 

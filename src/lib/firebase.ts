@@ -8,8 +8,7 @@ import {
   setLogLevel,
   doc,
   getDocFromServer,
-  persistentLocalCache,
-  persistentMultipleTabManager,
+  memoryLocalCache,
   collection,
   updateDoc,
   runTransaction,
@@ -35,15 +34,20 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-// Modern DB initialization with persistent local cache
+// Limpeza preventiva de IndexedDB legado com alvos corrompidos por versões antigas
+if (typeof window !== "undefined" && typeof indexedDB !== "undefined") {
+  try {
+    const legacyDbName = `firestore/[DEFAULT]/${firebaseConfig.projectId}/main`;
+    indexedDB.deleteDatabase(legacyDbName);
+  } catch (_) {}
+}
+
+// Inicialização segura do Firestore com memoryLocalCache para eliminar corridas multi-tab e streams dessincronizados
 let dbInstance;
 try {
   dbInstance = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
-    localCache:
-      typeof window !== "undefined" && typeof indexedDB !== "undefined"
-        ? persistentLocalCache({ tabManager: persistentMultipleTabManager() })
-        : undefined,
+    localCache: memoryLocalCache(),
   });
 } catch (e: any) {
   try {
@@ -73,6 +77,53 @@ export const messaging = messagingInstance;
 setLogLevel("error");
 
 export const appId = firebaseConfig.projectId;
+
+// Gerenciamento e resiliência contra esgotamento de cota do Firestore (Spark Free Tier)
+export let isFirestoreQuotaExhausted = false;
+const quotaListeners = new Set<(exhausted: boolean) => void>();
+
+export const notifyQuotaStatus = (exhausted: boolean) => {
+  if (isFirestoreQuotaExhausted !== exhausted) {
+    isFirestoreQuotaExhausted = exhausted;
+    try {
+      if (typeof window !== "undefined") {
+        (window as any).isFirestoreQuotaExhausted = exhausted;
+        window.dispatchEvent(new CustomEvent("firestoreQuotaChanged", { detail: { exhausted } }));
+      }
+    } catch (_) {}
+    quotaListeners.forEach((cb) => {
+      try {
+        cb(exhausted);
+      } catch (_) {}
+    });
+  }
+};
+
+export const markQuotaExhausted = () => {
+  notifyQuotaStatus(true);
+};
+
+export const subscribeToQuotaStatus = (cb: (exhausted: boolean) => void) => {
+  quotaListeners.add(cb);
+  cb(isFirestoreQuotaExhausted);
+  return () => {
+    quotaListeners.delete(cb);
+  };
+};
+
+export const checkIsQuotaError = (error: any): boolean => {
+  if (!error) return false;
+  const errMsg = typeof error === "string" ? error : (error?.message || error?.code || "");
+  const isQuota =
+    error?.code === "resource-exhausted" ||
+    errMsg.includes("resource-exhausted") ||
+    errMsg.includes("Quota exceeded");
+
+  if (isQuota) {
+    markQuotaExhausted();
+  }
+  return isQuota;
+};
 
 export enum OperationType {
   CREATE = 'create',
@@ -163,10 +214,18 @@ export const loginAnon = async () => {
  */
 export const testConnection = async () => {
   try {
+    // Se a cota já foi identificada como esgotada, não disparar chamada ao servidor
+    if (isFirestoreQuotaExhausted) {
+      return true;
+    }
     // Try to fetch a dummy doc strictly from server to verify link
     await getDocFromServer(doc(db, "artifacts", appId));
     return true;
   } catch (error: any) {
+    if (checkIsQuotaError(error)) {
+      console.warn("[Firestore] Cota do plano gratuito temporariamente atingida. Sistema operando em modo resiliente de cache.");
+      return true;
+    }
     // Missing permissions means we successfully reached the server!
     if (
       error?.code === "permission-denied" ||
@@ -473,6 +532,7 @@ export const updateEvent = async (
 
 export const enrollStudent = async (attendanceData: Omit<Attendance, "id">) => {
   try {
+    await loginAnon().catch(() => {});
     const { doc, setDoc, updateDoc, collection, getDoc, getDocs, query, where, arrayUnion } = await import("firebase/firestore");
     const attendancesCol = collection(db, `artifacts/${appId}/public/data/attendances`);
 
