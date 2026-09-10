@@ -1,5 +1,5 @@
-import { useState } from "react";
-import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check, Ticket, Sparkles, EyeOff, CheckCircle2, RotateCw } from "lucide-react";
+import { useState, useEffect } from "react";
+import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check, Ticket, Sparkles, EyeOff, CheckCircle2 } from "lucide-react";
 import type { Member, CertificateTemplate } from "../types";
 import { QRCodeSVG } from "qrcode.react";
 import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL } from "../lib/constants";
@@ -60,23 +60,22 @@ export default function VerificationResult({
   const [copiedLink, setCopiedLink] = useState(false);
   const [isCardOpenedForDiscount, setIsCardOpenedForDiscount] = useState(false);
   const [showUseConfirmation, setShowUseConfirmation] = useState(false);
-  const [cardOrientation, setCardOrientation] = useState<"horizontal" | "vertical">(() => {
+
+  // No smartphone, a visualização da carteirinha é exclusivamente no modo vertical
+  const [isMobile, setIsMobile] = useState(() => {
     if (typeof window !== "undefined") {
-      const saved = localStorage.getItem("fajopa_card_orientation");
-      if (saved === "vertical" || saved === "horizontal") return saved;
+      return window.innerWidth < 640;
     }
-    return "horizontal";
+    return false;
   });
 
-  const toggleCardOrientation = () => {
-    const next = cardOrientation === "horizontal" ? "vertical" : "horizontal";
-    setCardOrientation(next);
-    try {
-      localStorage.setItem("fajopa_card_orientation", next);
-    } catch {
-      // ignore
-    }
-  };
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobile(window.innerWidth < 640);
+    };
+    window.addEventListener("resize", handleResize);
+    return () => window.removeEventListener("resize", handleResize);
+  }, []);
 
   const handleOpenCardForDiscount = async () => {
     if (!isCardOpenedForDiscount) {
@@ -418,14 +417,14 @@ export default function VerificationResult({
         <div
           id="validation-card-capture"
           className={`w-full mb-4 pointer-events-auto transition-all duration-300 @container ${
-            cardOrientation === "vertical" ? "max-w-[360px]" : "max-w-[600px]"
+            isMobile ? "max-w-[360px]" : "max-w-[600px]"
           }`}
         >
           <div className="animate-success-pop flex flex-col items-center justify-center w-full">
             {/* Carteirinha com estado opaco interativo e animação de abertura para descontos */}
             <div
               className={`w-full relative rounded-3xl overflow-hidden shadow-2xl group select-none transition-all duration-500 ${
-                cardOrientation === "vertical" ? "aspect-[1/1.586]" : "aspect-[1.586/1]"
+                isMobile ? "aspect-[1/1.586]" : "aspect-[1.586/1]"
               }`}
             >
               {/* Cartão real com transição de opacidade/nitidez */}
@@ -436,7 +435,7 @@ export default function VerificationResult({
                     : "opacity-30 blur-[2px] brightness-90 saturate-50 scale-[0.98] pointer-events-none"
                 }`}
               >
-                <FajopaIDCard member={member} orientation={cardOrientation} />
+                <FajopaIDCard member={member} orientation={isMobile ? "vertical" : "horizontal"} />
               </div>
 
               {/* Overlay interativo com informação solicitada: 'Clique em cima para utilizar o seu Documento' */}
@@ -508,16 +507,6 @@ export default function VerificationResult({
                 {getCardDocumentTitle(member)} Válido
               </p>
 
-              <button
-                type="button"
-                onClick={toggleCardOrientation}
-                className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold text-sky-600 dark:text-sky-400 hover:text-sky-800 dark:hover:text-sky-300 bg-sky-50 dark:bg-sky-950/40 hover:bg-sky-100 dark:hover:bg-sky-900/60 transition-all border border-sky-200 dark:border-sky-800 shadow-sm"
-                title="Girar carteirinha para alternar entre horizontal e vertical"
-              >
-                <RotateCw className="w-3 h-3" />
-                {cardOrientation === "vertical" ? "Ver na Horizontal" : "Girar 90° (Vertical)"}
-              </button>
-
               {isCardOpenedForDiscount && (
                 <button
                   type="button"
@@ -533,7 +522,7 @@ export default function VerificationResult({
 
             <p className="text-[10px] text-slate-400 mt-2 font-medium text-center">
               {isCardOpenedForDiscount
-                ? "Toque no cartão para girar e ver o verso • Use 'Girar 90°' para alternar a visualização."
+                ? "Toque no cartão para girar e ver o verso."
                 : "A carteirinha permanece protegida até o momento da utilização."}
             </p>
           </div>

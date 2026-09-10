@@ -37,7 +37,7 @@ interface FajopaIDCardProps {
   };
 }
 
-export default function FajopaIDCard({ member, exportMode = false, orientation = 'horizontal', settings: propSettings }: FajopaIDCardProps) {
+export default function FajopaIDCard({ member, exportMode = false, orientation, settings: propSettings }: FajopaIDCardProps) {
   const { settings: cloudSettings } = useSettings();
   const settings = propSettings ? { ...cloudSettings, ...propSettings } : cloudSettings;
 
@@ -52,6 +52,21 @@ export default function FajopaIDCard({ member, exportMode = false, orientation =
   const [scale, setScale] = useState(1);
   const emittedAt = member.createdAt ? new Date(member.createdAt).toLocaleDateString('pt-BR') : 'N/D';
   const generatedAt = new Date().toLocaleString('pt-BR');
+
+  const [isMobileScreen, setIsMobileScreen] = useState(() => {
+    if (typeof window !== 'undefined') {
+      return window.innerWidth < 640;
+    }
+    return false;
+  });
+
+  useEffect(() => {
+    const handleResize = () => {
+      setIsMobileScreen(window.innerWidth < 640);
+    };
+    window.addEventListener('resize', handleResize);
+    return () => window.removeEventListener('resize', handleResize);
+  }, []);
 
   const {
     directorName,
@@ -124,7 +139,7 @@ export default function FajopaIDCard({ member, exportMode = false, orientation =
   
   const displayInstNameForCard = (isSeminarista && !validDiocese && instName === 'FAJOPA e SPSCJ' && !member.seminary) ? 'FAJOPA' : instName;
 
-  const isVertical = orientation === 'vertical';
+  const isVertical = orientation === 'vertical' || (orientation === undefined && isMobileScreen);
 
   useEffect(() => {
     if (exportMode) return;
