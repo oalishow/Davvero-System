@@ -1,17 +1,18 @@
 import { useState } from "react";
-import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check } from "lucide-react";
+import { Printer, CheckCircle, QrCode, Keyboard, Award, ShieldCheck, Copy, Check, Ticket, Sparkles, EyeOff, CheckCircle2 } from "lucide-react";
 import type { Member, CertificateTemplate } from "../types";
 import { QRCodeSVG } from "qrcode.react";
 import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL } from "../lib/constants";
 import FajopaIDCard from "./FajopaIDCard";
 import Modal from "./Modal";
-import { motion } from "motion/react";
+import { motion, AnimatePresence } from "motion/react";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import DavveroLogo from "./DavveroLogo";
 import { getCardDocumentTitle } from "../lib/cardRoles";
 import CardRequirementsAnimation from "./CardRequirementsAnimation";
 import CertificateVerificationViewer, { CertificateMatchItem } from "./CertificateVerificationViewer";
+import { recordCardDiscountUse } from "../lib/telemetry";
 
 interface VerificationResultProps {
   member: Member | null;
@@ -57,6 +58,25 @@ export default function VerificationResult({
   const [modalResetOpen, setModalResetOpen] = useState(false);
   const [showExportSuccess, setShowExportSuccess] = useState(false);
   const [copiedLink, setCopiedLink] = useState(false);
+  const [isCardOpenedForDiscount, setIsCardOpenedForDiscount] = useState(false);
+  const [showUseConfirmation, setShowUseConfirmation] = useState(false);
+
+  const handleOpenCardForDiscount = async () => {
+    if (!isCardOpenedForDiscount) {
+      setIsCardOpenedForDiscount(true);
+      setShowUseConfirmation(true);
+      setTimeout(() => setShowUseConfirmation(false), 4500);
+      // Só faça a contagem do uso da carteirinha para descontos quando a pessoa clicar em cima para utilizar o documento.
+      if (member) {
+        try {
+          await recordCardDiscountUse(member);
+        } catch (err) {
+          console.warn("Erro ao registrar uso da carteirinha para desconto:", err);
+        }
+      }
+    }
+  };
+
   const now = new Date();
   const timestampStr = `${now.toLocaleDateString("pt-BR")} às ${now.toLocaleTimeString("pt-BR")}`;
 
@@ -383,20 +403,105 @@ export default function VerificationResult({
           className="w-full mb-4 max-w-[320px] sm:max-w-[600px] pointer-events-auto @container"
         >
           <div className="animate-success-pop flex flex-col items-center justify-center w-full">
-            <div className="w-full aspect-[1.586/1] relative">
-              <FajopaIDCard member={member} />
+            {/* Carteirinha com estado opaco interativo e animação de abertura para descontos */}
+            <div className="w-full aspect-[1.586/1] relative rounded-3xl overflow-hidden shadow-2xl group select-none">
+              {/* Cartão real com transição de opacidade/nitidez */}
+              <div
+                className={`w-full h-full transition-all duration-700 ease-out ${
+                  isCardOpenedForDiscount
+                    ? "opacity-100 filter-none scale-100 pointer-events-auto"
+                    : "opacity-30 blur-[2px] brightness-90 saturate-50 scale-[0.98] pointer-events-none"
+                }`}
+              >
+                <FajopaIDCard member={member} />
+              </div>
+
+              {/* Overlay interativo com informação solicitada: 'Clique em cima para utilizar o seu Documento' */}
+              <AnimatePresence>
+                {!isCardOpenedForDiscount && (
+                  <motion.div
+                    initial={{ opacity: 0 }}
+                    animate={{ opacity: 1 }}
+                    exit={{ opacity: 0, scale: 1.05 }}
+                    transition={{ duration: 0.3 }}
+                    onClick={handleOpenCardForDiscount}
+                    className="absolute inset-0 z-30 flex flex-col items-center justify-center p-4 sm:p-6 cursor-pointer bg-slate-900/55 hover:bg-slate-900/45 backdrop-blur-[2px] transition-all duration-300 rounded-3xl border-2 border-dashed border-sky-400/80 hover:border-sky-300 text-center"
+                    role="button"
+                    tabIndex={0}
+                    onKeyDown={(e) => {
+                      if (e.key === "Enter" || e.key === " ") {
+                        handleOpenCardForDiscount();
+                      }
+                    }}
+                  >
+                    <motion.div
+                      animate={{ scale: [1, 1.08, 1], y: [0, -3, 0] }}
+                      transition={{ duration: 2.2, repeat: Infinity, ease: "easeInOut" }}
+                      className="w-14 h-14 sm:w-16 sm:h-16 rounded-2xl bg-gradient-to-tr from-sky-500 via-indigo-600 to-purple-600 text-white flex items-center justify-center shadow-lg shadow-sky-500/50 mb-3"
+                    >
+                      <Ticket className="w-7 h-7 sm:w-8 sm:h-8 text-white" />
+                    </motion.div>
+
+                    <motion.div 
+                      animate={{ scale: [1, 1.02, 1] }}
+                      transition={{ duration: 1.8, repeat: Infinity }}
+                      className="px-4 py-2 rounded-full bg-gradient-to-r from-sky-500 to-indigo-600 hover:from-sky-400 hover:to-indigo-500 text-white text-xs sm:text-sm font-black uppercase tracking-wider shadow-lg mb-2 flex items-center gap-2"
+                    >
+                      <Sparkles className="w-4 h-4 text-amber-300 animate-spin" />
+                      Clique em cima para utilizar o seu Documento
+                    </motion.div>
+
+                    <p className="text-xs sm:text-sm font-medium text-white/95 text-center max-w-[320px] drop-shadow leading-relaxed">
+                      Toque para abrir a carteirinha e comprovar meia-entrada ou desconto estudantil
+                    </p>
+                  </motion.div>
+                )}
+              </AnimatePresence>
             </div>
+
             {/* Hidden node specifically optimized for exporting without 3D perspective issues */}
             <div id="export-card-node" style={{ position: 'fixed', top: 0, left: '-9999px', pointerEvents: 'none' }} className="print:static print:left-auto print:pointer-events-auto">
               <FajopaIDCard member={member} exportMode={true} />
             </div>
 
-            <p className="text-[10px] text-slate-500 mt-5 font-semibold uppercase tracking-widest bg-emerald-100/50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3 py-1 rounded-full">
-              <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>{" "}
-              {getCardDocumentTitle(member)} Válido
-            </p>
-            <p className="text-[10px] text-slate-400 mt-2 font-medium">
-              Toque no cartão para girar e ver o verso.
+            {/* Confirmação de contagem de uso da carteirinha */}
+            <AnimatePresence>
+              {showUseConfirmation && (
+                <motion.div
+                  initial={{ opacity: 0, y: -8, scale: 0.95 }}
+                  animate={{ opacity: 1, y: 0, scale: 1 }}
+                  exit={{ opacity: 0, y: -8, scale: 0.95 }}
+                  className="mt-4 px-4 py-2 rounded-2xl bg-emerald-500/15 dark:bg-emerald-500/25 border border-emerald-500/30 text-emerald-800 dark:text-emerald-300 text-xs font-bold flex items-center gap-2 shadow-sm"
+                >
+                  <CheckCircle2 className="w-4 h-4 text-emerald-500 shrink-0" />
+                  <span>Uso da carteirinha registrado para desconto estudantil!</span>
+                </motion.div>
+              )}
+            </AnimatePresence>
+
+            <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+              <p className="text-[10px] text-slate-500 font-semibold uppercase tracking-widest bg-emerald-100/50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 px-3 py-1 rounded-full">
+                <span className="inline-block w-2 h-2 rounded-full bg-emerald-500 mr-1 animate-pulse"></span>{" "}
+                {getCardDocumentTitle(member)} Válido
+              </p>
+
+              {isCardOpenedForDiscount && (
+                <button
+                  type="button"
+                  onClick={() => setIsCardOpenedForDiscount(false)}
+                  className="inline-flex items-center gap-1.5 px-3 py-1 rounded-full text-[10px] font-bold text-slate-600 dark:text-slate-400 hover:text-slate-900 dark:hover:text-white bg-slate-100 dark:bg-slate-800/80 hover:bg-slate-200 dark:hover:bg-slate-700 transition-all border border-slate-200 dark:border-slate-700"
+                  title="Ocultar documento para nova utilização futura"
+                >
+                  <EyeOff className="w-3 h-3" />
+                  Ocultar / Bloquear
+                </button>
+              )}
+            </div>
+
+            <p className="text-[10px] text-slate-400 mt-2 font-medium text-center">
+              {isCardOpenedForDiscount
+                ? "Toque no cartão para girar e ver o verso."
+                : "A carteirinha permanece protegida até o momento da utilização."}
             </p>
           </div>
         </div>

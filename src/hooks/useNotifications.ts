@@ -269,6 +269,51 @@ export function useNotifications(recipientInput: string | string[] | null) {
       }
     });
 
+    // Limpar badge completamente no Windows / PWA
+    const clearBadgeCompletely = () => {
+      if (typeof window !== 'undefined') {
+        try {
+          if ('clearAppBadge' in navigator) {
+            (navigator as any).clearAppBadge().catch(() => {});
+          }
+          if ('setAppBadge' in navigator) {
+            (navigator as any).setAppBadge(0).catch(() => {});
+          }
+          if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+            navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_APP_BADGE' });
+          }
+        } catch (_) {}
+      }
+    };
+
+    // Sincroniza quando o usuário limpa todas as notificações na Central do Windows
+    const syncOsClearedNotifications = () => {
+      if (lastSnapshotDocs.length > 0) {
+        try {
+          const localReads = JSON.parse(localStorage.getItem('davveroId_broadcast_reads') || '[]');
+          const localCleared = JSON.parse(localStorage.getItem('davveroId_cleared_notifs') || '[]');
+          let changed = false;
+          lastSnapshotDocs.forEach(n => {
+            if (!localReads.includes(n.id)) {
+              localReads.push(n.id);
+              changed = true;
+            }
+            if (!localCleared.includes(n.id)) {
+              localCleared.push(n.id);
+              changed = true;
+            }
+          });
+          if (changed) {
+            localStorage.setItem('davveroId_broadcast_reads', JSON.stringify(localReads));
+            localStorage.setItem('davveroId_cleared_notifs', JSON.stringify(localCleared));
+          }
+        } catch (_) {}
+      }
+      setUnreadCount(0);
+      clearBadgeCompletely();
+      processNotifications(lastSnapshotDocs);
+    };
+
     const handleLocalUpdate = () => {
       // Re-process last known Firebase state with new local storage overrides
       processNotifications(lastSnapshotDocs);
@@ -282,8 +327,7 @@ export function useNotifications(recipientInput: string | string[] | null) {
             reg.getNotifications().then((notifs) => {
               if (notifs.length === 0) {
                 // Notificações foram limpas externamente no Windows
-                if ('clearAppBadge' in navigator) (navigator as any).clearAppBadge().catch(() => {});
-                if ('setAppBadge' in navigator) (navigator as any).setAppBadge(0).catch(() => {});
+                syncOsClearedNotifications();
               }
             }).catch(() => {});
           }).catch(() => {});
@@ -295,8 +339,15 @@ export function useNotifications(recipientInput: string | string[] | null) {
     const handleServiceWorkerMessage = (event: MessageEvent) => {
       if (event.data?.type === 'NOTIFICATION_CLOSED_IN_OS') {
         if (event.data.remaining === 0) {
-          if ('clearAppBadge' in navigator) (navigator as any).clearAppBadge().catch(() => {});
-          if ('setAppBadge' in navigator) (navigator as any).setAppBadge(0).catch(() => {});
+          syncOsClearedNotifications();
+        } else {
+          const rem = Math.max(0, Number(event.data.remaining) || 0);
+          setUnreadCount(rem);
+          if (rem === 0) {
+            clearBadgeCompletely();
+          } else if ('setAppBadge' in navigator) {
+            (navigator as any).setAppBadge(rem).catch(() => {});
+          }
         }
       }
     };

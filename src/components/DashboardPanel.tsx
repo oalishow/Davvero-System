@@ -1,7 +1,7 @@
 import { useState, useEffect, useCallback, useMemo } from "react";
-import { collection, query, getDocs, onSnapshot, orderBy, limit } from "firebase/firestore";
+import { collection, doc, query, getDocs, onSnapshot, orderBy, limit } from "firebase/firestore";
 import { db, appId } from "../lib/firebase";
-import { getFullTelemetryData, TelemetryStats } from "../lib/telemetry";
+import { getFullTelemetryData, TelemetryStats, recordSimultaneousPeak } from "../lib/telemetry";
 import { useSettings } from "../context/SettingsContext";
 import DavveroLogo from "./DavveroLogo";
 import { 
@@ -12,7 +12,7 @@ import {
   Users, Calendar, Activity, Loader2, TrendingUp, UserCheck, Shield, Printer,
   QrCode, Eye, Database, Radio, RefreshCw, Smartphone, Laptop, CheckCircle2,
   Clock, Award, Bell, Car, Server, ArrowUpRight, Sparkles, BookOpen, ShieldCheck,
-  CheckCheck, Globe, MapPin, Gauge
+  CheckCheck, Globe, MapPin, Gauge, CreditCard, Ticket
 } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { SafeChartContainer } from "./SafeChartContainer";
@@ -152,10 +152,32 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
       };
       const eventDateCounts: Record<string, number> = {};
 
+      const nowTs = Date.now();
       eventsSnapshot.forEach((doc) => {
         totalEvts++;
         const data = doc.data();
-        if (data.status === "closed" || data.status === "cancelled" || data.status === "concluido") {
+        const statusClean = String(data.status || "").toLowerCase().trim();
+        const isExplicitlyConcluded = 
+          statusClean === "encerrado" ||
+          statusClean === "closed" || 
+          statusClean === "concluido" || 
+          statusClean === "concluído" ||
+          statusClean === "finalizado" ||
+          statusClean === "cancelled" ||
+          statusClean === "cancelado";
+
+        let isPastDate = false;
+        const rawEndDate = data.endDate || data.date || data.eventDate;
+        if (rawEndDate && !data.manuallyReopened) {
+          try {
+            const endTs = new Date(rawEndDate).getTime();
+            if (!isNaN(endTs) && endTs < nowTs) {
+              isPastDate = true;
+            }
+          } catch (_) {}
+        }
+
+        if (isExplicitlyConcluded || isPastDate) {
           completedEvts++;
         } else {
           activeEvts++;
@@ -324,12 +346,12 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
     return () => clearInterval(interval);
   }, [autoRefresh, fetchDashboardData]);
 
-  // Realtime listener for online presence (listening on presence doesn't cause repeated full collection scans)
+  // Realtime listener for online presence (sem limitação artificial de quota, monitoramento contínuo e recorde simultâneo)
   useEffect(() => {
     try {
       const presenceQuery = query(
         collection(db, `artifacts/${appId}/public/data/online_presence`),
-        limit(50)
+        limit(1000)
       );
       const unsubscribe = onSnapshot(presenceQuery, (snap) => {
         const now = Date.now();
@@ -337,19 +359,59 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         snap.forEach((d) => {
           const data = d.data();
           const ts = data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0);
-          if (ts && Math.abs(now - ts) < 240 * 1000) {
+          // Usuários com batimento cardíaco nos últimos 180s (3 minutos)
+          if (ts && Math.abs(now - ts) < 180 * 1000) {
             online++;
           }
         });
         const finalCount = Math.max(1, online);
         setRealtimeOnlineCount(finalCount);
-        setTelemetry((prev) => prev ? { ...prev, onlineUsersCount: finalCount } : prev);
+        setTelemetry((prev) => {
+          if (!prev) return prev;
+          const currentPeak = Math.max(prev.peakSimultaneousUsers || 1, finalCount);
+          if (finalCount > (prev.peakSimultaneousUsers || 1)) {
+            recordSimultaneousPeak(finalCount, currentPeak).catch(() => {});
+          }
+          return { ...prev, onlineUsersCount: finalCount, peakSimultaneousUsers: currentPeak };
+        });
       }, (err) => {
         console.warn("Notice in online presence listener:", err?.message || err);
       });
       return () => unsubscribe();
     } catch (err) {
       console.warn("Realtime presence listener fallback:", err);
+    }
+  }, []);
+
+  // Realtime listener for global telemetry stats (atualizações imediatas de usos de carteirinha e recordes)
+  useEffect(() => {
+    try {
+      const statsDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
+      const unsubStats = onSnapshot(statsDocRef, (docSnap) => {
+        if (docSnap.exists()) {
+          const data = docSnap.data();
+          setTelemetry((prev) => {
+            if (!prev) return prev;
+            return {
+              ...prev,
+              totalCardDiscountUses: data.totalCardDiscountUses ?? prev.totalCardDiscountUses ?? 0,
+              todayCardDiscountUses: data.todayCardDiscountUses ?? prev.todayCardDiscountUses ?? 0,
+              peakSimultaneousUsers: Math.max(prev.peakSimultaneousUsers || 1, data.peakSimultaneousUsers || 1),
+              totalAppAccesses: data.totalAppAccesses ?? prev.totalAppAccesses,
+              todayAppAccesses: data.todayAppAccesses ?? prev.todayAppAccesses,
+              totalQrScans: data.totalQrScans ?? prev.totalQrScans,
+              todayQrScans: data.todayQrScans ?? prev.todayQrScans,
+              totalDbReads: data.totalDbReads ?? prev.totalDbReads,
+              totalDbWrites: data.totalDbWrites ?? prev.totalDbWrites,
+            };
+          });
+        }
+      }, (err) => {
+        console.warn("Global telemetry stats listener fallback:", err);
+      });
+      return () => unsubStats();
+    } catch (err) {
+      console.warn("Telemetry stats snapshot setup:", err);
     }
   }, []);
 
@@ -468,10 +530,10 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         </div>
       </div>
 
-      {/* --- TELEMETRY HIGHLIGHT BAR (Solicitado: Usuários Online, Leituras QR, Acessos App, Leituras/Escritas) --- */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4 md:gap-5">
+      {/* --- TELEMETRY HIGHLIGHT BAR (Usuários Online, Uso da Carteirinha, Leituras QR, Acessos App, Leituras/Escritas) --- */}
+      <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-5 gap-4 md:gap-5">
         
-        {/* 1. Usuários Online Agora */}
+        {/* 1. Usuários Online Agora & Recorde Simultâneo */}
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
@@ -501,17 +563,60 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
                 {(realtimeOnlineCount ?? telemetry.onlineUsersCount) === 1 ? "sessão ativa" : "sessões ativas"}
               </span>
             </div>
-            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
-              Dispositivos conectados e sincronizados
+            <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-emerald-500/10 dark:border-emerald-500/20">
+              <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
+              <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
+                Recorde: <span className="text-emerald-600 dark:text-emerald-400 font-black">{telemetry.peakSimultaneousUsers || 1}</span> simultâneos
+              </p>
+            </div>
+            <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
+              Sem limite de cota • Conexão em tempo real
             </p>
           </div>
         </motion.div>
 
-        {/* 2. Leituras de QR Code */}
+        {/* 2. Uso da Carteirinha (Descontos Estudantis) */}
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.1 }}
+          transition={{ delay: 0.08 }}
+          className="bg-gradient-to-br from-violet-500/10 via-violet-500/5 to-transparent dark:from-violet-500/20 dark:via-slate-800/60 dark:to-slate-800/40 rounded-3xl p-5 shadow-sm ring-1 ring-violet-500/20 relative overflow-hidden flex flex-col justify-between"
+        >
+          <div className="flex items-start justify-between">
+            <div>
+              <span className="inline-flex items-center gap-1 px-2 py-0.5 rounded-full text-[10px] font-black uppercase tracking-wider bg-violet-500/20 text-violet-700 dark:text-violet-300">
+                <Ticket className="w-3 h-3" /> Meia-Entrada
+              </span>
+              <h3 className="font-bold text-slate-600 dark:text-slate-300 text-xs mt-2 uppercase tracking-wider">
+                Uso da Carteirinha
+              </h3>
+            </div>
+            <div className="w-10 h-10 rounded-2xl bg-violet-500 text-white flex items-center justify-center shadow-lg shadow-violet-500/30">
+              <CreditCard className="w-5 h-5" />
+            </div>
+          </div>
+          <div className="mt-4">
+            <div className="flex items-baseline gap-2">
+              <p className="text-4xl font-black text-slate-800 dark:text-white tracking-tight">
+                {telemetry.totalCardDiscountUses || 0}
+              </p>
+              {(telemetry.todayCardDiscountUses || 0) > 0 && (
+                <span className="text-xs font-bold text-violet-600 dark:text-violet-400 bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 rounded-md">
+                  +{telemetry.todayCardDiscountUses} hoje
+                </span>
+              )}
+            </div>
+            <p className="text-[11px] text-slate-500 dark:text-slate-400 mt-1">
+              Apresentações registradas ao abrir o documento
+            </p>
+          </div>
+        </motion.div>
+
+        {/* 3. Leituras de QR Code */}
+        <motion.div 
+          initial={{ opacity: 0, y: 10 }}
+          animate={{ opacity: 1, y: 0 }}
+          transition={{ delay: 0.12 }}
           className="bg-gradient-to-br from-sky-500/10 via-sky-500/5 to-transparent dark:from-sky-500/20 dark:via-slate-800/60 dark:to-slate-800/40 rounded-3xl p-5 shadow-sm ring-1 ring-sky-500/20 relative overflow-hidden flex flex-col justify-between"
         >
           <div className="flex items-start justify-between">
@@ -544,11 +649,11 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           </div>
         </motion.div>
 
-        {/* 3. Acessos do Aplicativo */}
+        {/* 4. Acessos do Aplicativo */}
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}
-          transition={{ delay: 0.15 }}
+          transition={{ delay: 0.16 }}
           className="bg-gradient-to-br from-indigo-500/10 via-indigo-500/5 to-transparent dark:from-indigo-500/20 dark:via-slate-800/60 dark:to-slate-800/40 rounded-3xl p-5 shadow-sm ring-1 ring-indigo-500/20 relative overflow-hidden flex flex-col justify-between"
         >
           <div className="flex items-start justify-between">
@@ -579,7 +684,7 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
           </div>
         </motion.div>
 
-        {/* 4. Leituras e Escritas no Banco (Firestore) */}
+        {/* 5. Leituras e Escritas no Banco (Firestore) */}
         <motion.div 
           initial={{ opacity: 0, y: 10 }}
           animate={{ opacity: 1, y: 0 }}

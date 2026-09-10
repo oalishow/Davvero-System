@@ -332,6 +332,15 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
                                  markNotificationAsRead(n.id, true);
                                });
                                markAllNotificationsAsRead(recipientId);
+                               if (typeof window !== 'undefined') {
+                                 try {
+                                   if ('clearAppBadge' in navigator) (navigator as any).clearAppBadge().catch(() => {});
+                                   if ('setAppBadge' in navigator) (navigator as any).setAppBadge(0).catch(() => {});
+                                   if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                                     navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_APP_BADGE' });
+                                   }
+                                 } catch (_) {}
+                               }
                              }
                           }}
                           className="text-[10px] text-sky-600 dark:text-sky-400 font-bold hover:underline uppercase"
@@ -344,6 +353,20 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
                           onClick={() => {
                              if (recipientId) {
                                clearAllNotifications(recipientId);
+                               try {
+                                 const allIds = notifications.map(n => n.id);
+                                 const localCleared = JSON.parse(localStorage.getItem('davveroId_cleared_notifs') || '[]');
+                                 allIds.forEach(id => {
+                                   if (!localCleared.includes(id)) localCleared.push(id);
+                                 });
+                                 localStorage.setItem('davveroId_cleared_notifs', JSON.stringify(localCleared));
+                                 window.dispatchEvent(new Event('davveroId_notifs_local_update'));
+                                 if ('clearAppBadge' in navigator) (navigator as any).clearAppBadge().catch(() => {});
+                                 if ('setAppBadge' in navigator) (navigator as any).setAppBadge(0).catch(() => {});
+                                 if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+                                   navigator.serviceWorker.controller.postMessage({ type: 'CLEAR_APP_BADGE' });
+                                 }
+                               } catch (_) {}
                              }
                           }}
                           className="text-[10px] text-red-500 dark:text-red-400 font-bold hover:underline uppercase"
