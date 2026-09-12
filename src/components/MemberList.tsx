@@ -58,7 +58,7 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
       setMembers(loaded.filter(m => m.alphaCode && !m.deletedAt && m.isApproved !== false));
       setLoading(false);
     }, (err) => {
-      console.error(err);
+      console.warn("Notice in MemberList listener:", err?.message || err);
       setLoading(false);
     });
 

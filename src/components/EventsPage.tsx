@@ -88,6 +88,7 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
   const [selectedDioceseFilter, setSelectedDioceseFilter] = useState<string>("all");
   const [showPublicReq, setShowPublicReq] = useState(false);
   const [showRegistrationSuccessModal, setShowRegistrationSuccessModal] = useState(false);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
   const [selectedQrEvent, setSelectedQrEvent] = useState<Event | null>(null);
   const [quickEnrollEvent, setQuickEnrollEvent] = useState<Event | null>(null);
   const [checkInEvent, setCheckInEvent] = useState<Event | null>(null);
@@ -362,6 +363,10 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
   }, [member]);
 
   const handleEnroll = async (eventId: string) => {
+    if (!navigator.onLine) {
+      showAlert("Você está em modo offline. Novas inscrições em eventos requerem conexão com a internet.", { type: 'warning' });
+      return;
+    }
     if (!member) {
       const target = events.find((e) => e.id === eventId);
       if (target) {
@@ -1097,15 +1102,29 @@ END:VCALENDAR`;
                     >
                       {event.title}
                     </h3>
-                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-4 line-clamp-3 whitespace-pre-wrap">
-                      {event.description.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g).map((part, i) => {
-                        if (part.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)) {
-                          const href = part.startsWith("http") ? part : `https://${part}`;
-                          return <a key={i} href={href} target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:text-sky-600 hover:underline">{part}</a>;
-                        }
-                        return part;
-                      })}
-                    </p>
+                    <div className="mb-4">
+                      <p className={`text-sm text-slate-600 dark:text-slate-300 ${expandedDescriptions[event.id] ? "whitespace-pre-wrap break-words" : "line-clamp-3"} transition-all`}>
+                        {event.description.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g).map((part, i) => {
+                          if (part.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)) {
+                            const href = part.startsWith("http") ? part : `https://${part}`;
+                            return <a key={i} href={href} target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:text-sky-600 hover:underline">{part}</a>;
+                          }
+                          return part;
+                        })}
+                      </p>
+                      {event.description && event.description.length > 90 && (
+                        <button
+                          type="button"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            setExpandedDescriptions(prev => ({ ...prev, [event.id]: !prev[event.id] }));
+                          }}
+                          className="mt-1 text-xs font-bold text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center cursor-pointer"
+                        >
+                          {expandedDescriptions[event.id] ? "Ver menos" : "Ver descrição completa..."}
+                        </button>
+                      )}
+                    </div>
 
                     <div className="flex flex-wrap items-center gap-3 text-xs font-semibold text-slate-600 dark:text-slate-400 bg-slate-50 dark:bg-slate-900/50 inline-flex px-3 py-1.5 rounded-lg border border-slate-100 dark:border-slate-800">
                       {event.hours ? (

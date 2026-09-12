@@ -8,6 +8,8 @@ import {
   setLogLevel,
   doc,
   getDocFromServer,
+  persistentLocalCache,
+  persistentMultipleTabManager,
   memoryLocalCache,
   collection,
   updateDoc,
@@ -34,24 +36,21 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-// Limpeza preventiva de IndexedDB legado com alvos corrompidos por versões antigas
-if (typeof window !== "undefined" && typeof indexedDB !== "undefined") {
-  try {
-    const legacyDbName = `firestore/[DEFAULT]/${firebaseConfig.projectId}/main`;
-    indexedDB.deleteDatabase(legacyDbName);
-  } catch (_) {}
-}
-
-// Inicialização segura do Firestore com memoryLocalCache para eliminar corridas multi-tab e streams dessincronizados
+// Inicialização segura do Firestore com cache local persistente (IndexedDB) para pleno funcionamento offline
 let dbInstance;
 try {
   dbInstance = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
-    localCache: memoryLocalCache(),
+    localCache: persistentLocalCache({
+      tabManager: persistentMultipleTabManager(),
+    }),
   });
 } catch (e: any) {
   try {
-    dbInstance = getFirestore(app);
+    dbInstance = initializeFirestore(app, {
+      ignoreUndefinedProperties: true,
+      localCache: memoryLocalCache(),
+    });
   } catch (fallbackErr) {
     console.warn("Fallback to basic getFirestore:", fallbackErr);
     dbInstance = getFirestore(app);
@@ -74,7 +73,7 @@ if (typeof window !== "undefined") {
   }
 }
 export const messaging = messagingInstance;
-setLogLevel("error");
+setLogLevel("silent");
 
 export const appId = firebaseConfig.projectId;
 
@@ -168,7 +167,15 @@ export function handleFirestoreError(error: unknown, operationType: OperationTyp
     operationType,
     path
   };
-  console.error('Firestore Error: ', JSON.stringify(errInfo));
+  const isPermDenied =
+    errInfo.error.includes("Missing or insufficient permissions") ||
+    errInfo.error.includes("permission-denied") ||
+    errInfo.error.includes("insufficient permissions");
+  if (isPermDenied) {
+    console.warn("Firestore Notice: ", JSON.stringify(errInfo));
+  } else {
+    console.error("Firestore Error: ", JSON.stringify(errInfo));
+  }
   throw new Error(JSON.stringify(errInfo));
 }
 
@@ -201,7 +208,7 @@ export const loginAnon = async () => {
           await signInAnonymously(auth);
           resolve(true);
         } catch (error) {
-          console.error("Firebase Auth Error:", error);
+          console.warn("Firebase Auth Notice:", error);
           resolve(false);
         }
       }

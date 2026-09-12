@@ -1,11 +1,12 @@
 import { motion, AnimatePresence } from 'motion/react';
-import { Download, Sun, Moon, Bell, Trash2, Lock, Share2, Volume2, VolumeX, Volume1, RefreshCw, Vibrate, VibrateOff, Sparkles } from 'lucide-react';
+import { Download, Sun, Moon, Bell, Trash2, Lock, Share2, Volume2, VolumeX, Volume1, RefreshCw, Vibrate, VibrateOff, Sparkles, WifiOff } from 'lucide-react';
 import { APP_VERSION, APP_BUILD } from '../lib/constants';
 import { safeReloadApp } from '../lib/versionManager';
 import { useSettings } from '../context/SettingsContext';
 import { useDialog } from '../context/DialogContext';
 import { useState, useEffect, useRef } from 'react';
 import { useNotifications } from '../hooks/useNotifications';
+import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { markAllNotificationsAsRead, markNotificationAsRead, clearAllNotifications, clearNotification } from '../lib/firebase';
 import { getSoundVolume, setSoundVolume, playSound } from '../lib/sounds';
 import { getHapticsEnabled, setHapticsEnabled, triggerHaptic } from '../lib/haptics';
@@ -20,6 +21,7 @@ const STUDENT_TRACK_KEY = 'davveroId_student_track_ra';
 export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
   const { settings } = useSettings();
   const { showConfirm, showAlert } = useDialog();
+  const { isOnline } = useOnlineStatus();
   const [deferredPrompt, setDeferredPrompt] = useState<any>(null);
   const [isDark, setIsDark] = useState(() => {
     if (typeof window !== 'undefined') {
@@ -215,6 +217,15 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
             <span>v{APP_VERSION}</span>
             <span className="opacity-50 ml-1 hidden md:inline">({APP_BUILD})</span>
           </button>
+          {!isOnline && (
+            <div
+              className="flex items-center gap-1.5 px-2 py-1 bg-amber-100 dark:bg-amber-500/20 border border-amber-300 dark:border-amber-500/30 text-amber-800 dark:text-amber-300 rounded-lg text-[10px] font-bold shrink-0 animate-pulse"
+              title="Você está navegando em modo offline. Alguns recursos em tempo real estão limitados."
+            >
+              <WifiOff className="w-3 h-3" />
+              <span className="hidden sm:inline">Offline</span>
+            </div>
+          )}
         </div>
 
         {/* Right Side: YouTube Live, Update Check, Sound Controls */}

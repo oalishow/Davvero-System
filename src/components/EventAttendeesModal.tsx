@@ -328,7 +328,7 @@ export default function EventAttendeesModal({
         recomputeAttendees();
       },
       (err) => {
-        console.error("Error listening to attendances in real time:", err);
+        console.warn("Notice listening to attendances in real time:", err?.message || err);
         setLoading(false);
       }
     );
@@ -355,7 +355,7 @@ export default function EventAttendeesModal({
         recomputeAttendees();
       },
       (err) => {
-        console.error("Error listening to students in real time:", err);
+        console.warn("Notice listening to students in real time:", err?.message || err);
         setLoading(false);
       }
     );

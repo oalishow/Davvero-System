@@ -96,7 +96,7 @@ export function subscribeActivePolls(callback: (polls: Poll[]) => void): () => v
       }
     );
   } catch (err) {
-    console.error("[PollsService] Erro de inicialização:", err);
+    console.warn("[PollsService] Erro de inicialização:", err);
     return () => {};
   }
 }
@@ -132,7 +132,7 @@ export function subscribeAllPolls(callback: (polls: Poll[]) => void): () => void
       }
     );
   } catch (err) {
-    console.error("[PollsService] Erro de inicialização:", err);
+    console.warn("[PollsService] Erro de inicialização:", err);
     return () => {};
   }
 }
@@ -253,7 +253,7 @@ export async function submitVote(
 
     return { success: true };
   } catch (err: any) {
-    console.error("[PollsService] Erro ao votar:", err);
+    console.warn("[PollsService] Erro ao votar:", err);
     return { success: false, message: err?.message || "Erro ao registrar voto" };
   }
 }

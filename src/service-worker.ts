@@ -62,6 +62,42 @@ registerRoute(
   })
 );
 
+// Cache para fontes do Google e webfonts
+registerRoute(
+  ({ url }) =>
+    url.origin === 'https://fonts.googleapis.com' ||
+    url.origin === 'https://fonts.gstatic.com',
+  new StaleWhileRevalidate({
+    cacheName: 'google-fonts-cache',
+    plugins: [
+      new CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+      new ExpirationPlugin({
+        maxEntries: 30,
+        maxAgeSeconds: 365 * 24 * 60 * 60, // 1 ano
+      }),
+    ],
+  })
+);
+
+// Cache para estilos, scripts e fontes locais
+registerRoute(
+  ({ request, url }) =>
+    (request.destination === 'style' ||
+     request.destination === 'script' ||
+     request.destination === 'font') &&
+    !url.pathname.startsWith('/api/'),
+  new StaleWhileRevalidate({
+    cacheName: 'static-assets-cache',
+    plugins: [
+      new CacheableResponsePlugin({
+        statuses: [0, 200],
+      }),
+    ],
+  })
+);
+
 // Cache para imagens profile/eventos (exclui ícones do sistema e manifest para garantir atualização imediata)
 registerRoute(
   ({ request, url }) =>

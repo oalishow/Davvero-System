@@ -570,10 +570,10 @@ export default function Verifier({
         } catch (e: any) {
           const msg = e.message || "";
           if (e.code === 'not-found' || msg.includes("No document to update") || e.code === 'permission-denied') {
-            // Document missing, drop it
-            console.error("Sync error - dropping record (code: " + e.code + ", path: " + ci.attendanceId + "):", e);
+            // Document missing or permission error, drop it
+            console.warn("Sync notice - dropping record (code: " + e.code + ", path: " + ci.attendanceId + "):", e);
           } else {
-            console.error("Sync error - keeping record (code: " + e.code + "):", e);
+            console.warn("Sync notice - keeping record (code: " + e.code + "):", e);
             newPending.push(ci);
           }
         }
@@ -1500,7 +1500,7 @@ export default function Verifier({
               }}
               className={`py-2.5 px-2 text-[10px] sm:text-xs font-bold rounded-xl transition-all flex items-center justify-center ${verifyMode === "CERTIFICATE" ? "bg-white dark:bg-slate-700 shadow-sm text-emerald-600 dark:text-emerald-400 border border-emerald-200/50 dark:border-emerald-600/50" : "text-slate-500 hover:bg-slate-200/50 dark:hover:bg-slate-700/50 border border-transparent"}`}
             >
-              Certificados
+              Validar Certificado
             </button>
           </div>
         )}

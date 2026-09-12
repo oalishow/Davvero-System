@@ -265,7 +265,7 @@ export function useNotifications(recipientInput: string | string[] | null) {
       initialLoad = false;
     }, (error) => {
       if (error?.code !== 'permission-denied' && !error?.message?.includes('Missing or insufficient permissions')) {
-        console.error("Erro no snapshot de notificações:", error);
+        console.warn("Aviso no snapshot de notificações:", error);
       }
     });
 

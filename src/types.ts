@@ -60,6 +60,14 @@ export interface Member {
   }[];
 }
 
+export interface CustomSignatureItem {
+  id: string;
+  name: string;
+  role: string;
+  signatureUrl?: string;
+  show?: boolean;
+}
+
 export interface CertificateTemplate {
   bodyText: string;
   fontFamily: string;
@@ -96,6 +104,9 @@ export interface CertificateTemplate {
   signature3Url?: string;
   showSignature3?: boolean;
   hasSignature3?: boolean;
+
+  // Dynamic Additional Signatures / Custom Signers
+  customSignatures?: CustomSignatureItem[];
 
   // Visual, Logo & Typography Customizations
   logoUrl?: string;
@@ -198,6 +209,15 @@ export interface Event {
   presenceConfig?: EventPresenceConfig;
   createdAt?: string; // Data de criação do evento
   isCertificateReleased?: boolean; // Se certificados foram liberados
+  isStandaloneCert?: boolean; // Se o evento foi criado como emissão de certificados avulsos / planilha
+  externalRecipients?: Array<{
+    id: string;
+    name: string;
+    ra?: string;
+    cpf?: string;
+    email?: string;
+    certCode?: string;
+  }>; // Lista de participantes externos (não cadastrados no sistema)
 }
 
 export interface CheckInRecord {
@@ -353,3 +373,32 @@ export interface Poll {
   }>;
 }
 
+export interface CourseOffer {
+  id: string;
+  title: string;
+  subtitle?: string;
+  description: string;
+  category: "hotmart" | "parceria" | "extensao" | "livro" | "outro";
+  tag?: string;
+  imageUrl?: string;
+  imageFit?: "contain" | "cover";
+  instructor?: string;
+  authorPhotoUrl?: string;
+  authorBio?: string;
+  publisher?: string;
+  year?: string;
+  pages?: string;
+  isbn?: string;
+  workload?: string;
+  price?: string;
+  installments?: string;
+  linkUrl: string;
+  linkType: "hotmart" | "external" | "partnership";
+  isPartnershipDiocese?: boolean;
+  diocesePartner?: string;
+  active: boolean;
+  order?: number;
+  featured?: boolean;
+  createdAt?: string;
+  updatedAt?: string;
+}

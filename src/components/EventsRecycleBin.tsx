@@ -22,7 +22,7 @@ export default function EventsRecycleBin() {
       for (const evt of filtered) {
           const deleteTime = new Date(evt.deletedAt!).getTime();
           if (now - deleteTime > thirtyDaysMs) {
-            permanentDeleteEvent(evt.id).catch(console.error);
+            permanentDeleteEvent(evt.id).catch(console.warn);
             continue;
           }
           activeDeleted.push(evt);
@@ -42,13 +42,13 @@ export default function EventsRecycleBin() {
 
   const handleRestore = async (id: string) => {
     if (await showConfirm("Tem certeza que deseja restaurar este evento?", { type: 'warning' })) {
-      await restoreEvent(id).catch(console.error);
+      await restoreEvent(id).catch(console.warn);
     }
   };
 
   const handlePermanentDelete = async (id: string) => {
     if (await showConfirm("Tem certeza que deseja apagar este evento permanentemente? Esta ação NÃO pode ser desfeita.", { type: 'error' })) {
-      await permanentDeleteEvent(id).catch(console.error);
+      await permanentDeleteEvent(id).catch(console.warn);
     }
   };
 

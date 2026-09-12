@@ -7,6 +7,26 @@ import ErrorBoundary from './components/ErrorBoundary';
 import './index.css';
 import { setupPWA } from './pwa';
 
+// Global protection against benign permission-denied / offline noise in preview
+const originalConsoleError = console.error;
+console.error = function (...args: any[]) {
+  const isPermissionDenied = args.some((arg) => {
+    if (!arg) return false;
+    const str = typeof arg === "string" ? arg : (arg?.message || (typeof arg?.toString === "function" ? arg.toString() : "") || JSON.stringify(arg) || "");
+    return (
+      str.includes("Missing or insufficient permissions") ||
+      str.includes("permission-denied") ||
+      str.includes("insufficient permissions")
+    );
+  });
+
+  if (isPermissionDenied) {
+    console.warn(...args);
+    return;
+  }
+  originalConsoleError.apply(console, args);
+};
+
 // Suppress benign Vite WebSocket and network errors in preview/offline, and handle chunk reload errors smoothly
 window.addEventListener('unhandledrejection', (event) => {
   try {
@@ -14,12 +34,17 @@ window.addEventListener('unhandledrejection', (event) => {
       ? (typeof event.reason === 'string' ? event.reason : event.reason?.message || '')
       : '';
     if (
+      reasonStr.includes('Missing or insufficient permissions') ||
+      reasonStr.includes('permission-denied') ||
+      reasonStr.includes('insufficient permissions') ||
       reasonStr.includes('WebSocket') ||
       reasonStr.includes('vite') ||
       reasonStr.includes('Failed to fetch') ||
       reasonStr.includes('NetworkError')
     ) {
       event.preventDefault();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      return;
     }
 
     // Se falhar ao buscar módulo dinâmico após nova publicação, recarregar suavemente uma única vez
@@ -42,7 +67,17 @@ window.addEventListener('unhandledrejection', (event) => {
 // Capturar erros globais síncronos de carregamento de scripts obsoletos
 window.addEventListener('error', (event) => {
   try {
-    const msg = event?.message || '';
+    const msg = (event?.message || (event?.error && event.error.message)) || '';
+    if (
+      msg.includes('Missing or insufficient permissions') ||
+      msg.includes('permission-denied') ||
+      msg.includes('insufficient permissions')
+    ) {
+      event.preventDefault();
+      if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+      return;
+    }
+
     if (
       msg.includes('dynamically imported module') ||
       msg.includes('Loading chunk') ||

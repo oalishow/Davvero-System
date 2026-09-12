@@ -7,7 +7,7 @@ import { lazy, ComponentType, LazyExoticComponent } from 'react';
 export function lazyWithRetry<T extends ComponentType<any>>(
   componentImport: () => Promise<{ default: T }>,
   maxRetries = 3,
-  initialInterval = 500
+  initialInterval = 600
 ): LazyExoticComponent<T> {
   return lazy(() =>
     new Promise<{ default: T }>((resolve, reject) => {
@@ -15,9 +15,10 @@ export function lazyWithRetry<T extends ComponentType<any>>(
         componentImport()
           .then(resolve)
           .catch((error) => {
+            console.warn(`[lazyWithRetry] Falha ao importar módulo (${retriesLeft} tentativas restantes):`, error?.message || error);
             if (retriesLeft > 0) {
               setTimeout(() => {
-                attemptImport(retriesLeft - 1, delay * 1.5);
+                attemptImport(retriesLeft - 1, Math.min(delay * 1.5, 3000));
               }, delay);
               return;
             }
@@ -32,8 +33,10 @@ export function lazyWithRetry<T extends ComponentType<any>>(
               const key = 'chunk_reload_attempt';
               const lastAttempt = sessionStorage.getItem(key);
               const now = Date.now();
-              if (!lastAttempt || now - parseInt(lastAttempt, 10) > 10000) {
+              // Anti-loop: don't reload if done within the last 15 seconds
+              if (!lastAttempt || now - parseInt(lastAttempt, 10) > 15000) {
                 sessionStorage.setItem(key, now.toString());
+                console.info("[lazyWithRetry] Recarregando para obter nova versão dos módulos...");
                 window.location.reload();
                 return;
               }

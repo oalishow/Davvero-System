@@ -11,14 +11,29 @@ dotenv.config();
 
 // Initialize Firebase Admin
 if (!admin.apps.length) {
-  try {
-    admin.initializeApp();
-    console.log("Firebase Admin initialized with default credentials.");
-  } catch (err) {
-    console.error("Firebase Admin default init failed, trying with config project ID:", err);
-    admin.initializeApp({
-      projectId: "banco-de-dados-fajopa",
-    });
+  const saJson = process.env.FIREBASE_SERVICE_ACCOUNT;
+  if (saJson) {
+    try {
+      const sa = JSON.parse(saJson);
+      admin.initializeApp({
+        credential: admin.credential.cert(sa),
+        projectId: sa.project_id || "banco-de-dados-fajopa"
+      });
+      console.log("Firebase Admin initialized with service account.");
+    } catch (e) {
+      console.error("Firebase Admin service account parse failed:", e);
+      admin.initializeApp({ projectId: "banco-de-dados-fajopa" });
+    }
+  } else {
+    try {
+      admin.initializeApp();
+      console.log("Firebase Admin initialized with default credentials.");
+    } catch (err) {
+      console.error("Firebase Admin default init failed, trying with config project ID:", err);
+      admin.initializeApp({
+        projectId: "banco-de-dados-fajopa",
+      });
+    }
   }
 }
 const db = admin.firestore();

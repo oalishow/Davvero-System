@@ -112,6 +112,7 @@ export interface AppSettings {
   whatsappGroups: { id: string; name: string; url: string; description?: string; visibleToRoles?: string[]; category?: string; type?: 'academico' | 'seminario'; requiredPassword?: string; imageUrl?: string; }[];
   whatsappCategories: string[];
   eventsEnabled?: boolean;
+  coursesEnabled?: boolean;
   appointmentsEnabled?: boolean;
   appointmentsExternalLink?: string;
   professionals?: ProfessionalConfig[];
@@ -232,6 +233,7 @@ const DEFAULT_SETTINGS: AppSettings = {
   whatsappGroups: [],
   whatsappCategories: ["Turmas", "Comissões", "Eventos", "Geral"],
   eventsEnabled: true,
+  coursesEnabled: true,
   appointmentsEnabled: true,
   appointmentsExternalLink: '',
   professionals: [
@@ -807,9 +809,13 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
         setDoc(docRef, settingsToSave, { merge: true }),
         ...assetOperations
       ]);
-    } catch (err) {
+    } catch (err: any) {
       if (checkIsQuotaError(err)) {
         console.warn("[SettingsContext] Cota atingida durante escrita no Firestore. Configurações salvas localmente no navegador.");
+        return;
+      }
+      if (err?.code === 'permission-denied' || err?.message?.includes('Missing or insufficient permissions')) {
+        console.warn("[SettingsContext] Permissão de escrita restrita no Firestore para _settings_global. Configurações salvas localmente no dispositivo:", err?.message || err);
         return;
       }
       throw err;

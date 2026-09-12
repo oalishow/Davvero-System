@@ -82,7 +82,7 @@ export function useDobloMonitor(bondedId: string | null) {
       });
     } catch (e) {
       if (!checkIsQuotaError(e)) {
-        console.error("Error monitoring doblo logs", e);
+        console.warn("Notice monitoring doblo logs", e);
       }
     }
 

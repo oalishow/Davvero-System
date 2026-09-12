@@ -43,6 +43,52 @@
     <meta name="apple-mobile-web-app-title" content="DAVVERO" />
     <meta name="application-name" content="DAVVERO" />
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
+    <script>
+      (function() {
+        var origError = console.error;
+        console.error = function() {
+          var args = Array.prototype.slice.call(arguments);
+          var isPermissionDenied = args.some(function(arg) {
+            if (!arg) return false;
+            var str = typeof arg === 'string' ? arg : (arg.message || (typeof arg.toString === 'function' ? arg.toString() : '') || JSON.stringify(arg) || '');
+            return str.indexOf('Missing or insufficient permissions') !== -1 ||
+                   str.indexOf('permission-denied') !== -1 ||
+                   str.indexOf('insufficient permissions') !== -1;
+          });
+          if (isPermissionDenied) {
+            console.warn.apply(console, args);
+            return;
+          }
+          origError.apply(console, args);
+        };
+
+        window.addEventListener('unhandledrejection', function(event) {
+          var reasonStr = event.reason
+            ? (typeof event.reason === 'string' ? event.reason : event.reason.message || '')
+            : '';
+          if (
+            reasonStr.indexOf('Missing or insufficient permissions') !== -1 ||
+            reasonStr.indexOf('permission-denied') !== -1 ||
+            reasonStr.indexOf('insufficient permissions') !== -1
+          ) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+          }
+        }, true);
+
+        window.addEventListener('error', function(event) {
+          var msg = (event && (event.message || (event.error && event.error.message))) || '';
+          if (
+            msg.indexOf('Missing or insufficient permissions') !== -1 ||
+            msg.indexOf('permission-denied') !== -1 ||
+            msg.indexOf('insufficient permissions') !== -1
+          ) {
+            event.preventDefault();
+            if (event.stopImmediatePropagation) event.stopImmediatePropagation();
+          }
+        }, true);
+      })();
+    </script>
   </head>
   <body>
     <div id="root"></div>

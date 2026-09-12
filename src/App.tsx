@@ -20,7 +20,8 @@ import {
   Mail,
   HeartHandshake,
   CheckCircle2,
-  Landmark
+  Landmark,
+  GraduationCap
 } from "lucide-react";
 import { loginAnon, testConnection, subscribeToQuotaStatus, isFirestoreQuotaExhausted } from "./lib/firebase";
 import { recordAppAccess, startPresenceHeartbeat } from "./lib/telemetry";
@@ -29,6 +30,7 @@ import ErrorBoundary from "./components/ErrorBoundary";
 import DynamicPWA from "./components/DynamicPWA";
 import NotificationObserver from "./components/NotificationObserver";
 import VersionUpdateGate from "./components/VersionUpdateGate";
+import OfflineNotice from "./components/OfflineNotice";
 import { useSettings } from "./context/SettingsContext";
 import { APP_VERSION, CHANGELOG } from "./lib/constants";
 import { playSound } from "./lib/sounds";
@@ -45,6 +47,7 @@ const StudentPortal = lazyWithRetry(() => import("./components/StudentPortal"));
 const EventsPage = lazyWithRetry(() => import("./components/EventsPage"));
 const PublicAppointmentsList = lazyWithRetry(() => import("./components/PublicAppointmentsList"));
 const DioceseHub = lazyWithRetry(() => import("./components/DioceseHub"));
+const CoursesOffers = lazyWithRetry(() => import("./components/CoursesOffers"));
 const WelcomeModal = lazyWithRetry(() => import("./components/WelcomeModal"));
 
 export default function App() {
@@ -86,7 +89,7 @@ export default function App() {
     return localStorage.getItem("has_seen_welcome") !== "true";
   });
   const [activeTab, setActiveTab] = useState<
-    "verifier" | "admin" | "student" | "events" | "diocese" | "appointments"
+    "verifier" | "admin" | "student" | "events" | "diocese" | "appointments" | "courses"
   >(() => {
     // Only access window parameters on component mount
     if (typeof window !== "undefined") {
@@ -110,6 +113,16 @@ export default function App() {
       if (tabParam === "events" || tabParam === "eventos" || params.has("event") || params.has("checkin_event") || params.has("checkin")) {
         return "events";
       }
+      if (
+        tabParam === "courses" ||
+        tabParam === "cursos" ||
+        tabParam === "ofertas" ||
+        tabParam === "cursos-e-ofertas" ||
+        params.has("courses") ||
+        params.has("cursos")
+      ) {
+        return "courses";
+      }
       if (params.has("cert") || params.has("verify") || tabParam === "verifier") {
         return "verifier";
       }
@@ -129,7 +142,7 @@ export default function App() {
   // Mantém abas visitadas ativas para eliminação de travamentos e latência zero ao alternar
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set([activeTab]));
 
-  const switchTab = (tab: "verifier" | "admin" | "student" | "events" | "diocese" | "appointments") => {
+  const switchTab = (tab: "verifier" | "admin" | "student" | "events" | "diocese" | "appointments" | "courses") => {
     setVisitedTabs((prev) => {
       if (prev.has(tab)) return prev;
       const next = new Set(prev);
@@ -148,18 +161,28 @@ export default function App() {
     });
   }, [activeTab]);
 
-  // Pré-carregamento imediato em background sem competir com a thread de renderização
+  // Pré-carregamento suave em segundo plano após inicialização estável da tela
   useEffect(() => {
-    const prefetch = () => {
-      import("./components/StudentPortal");
-      import("./components/Admin");
-      import("./components/EventsPage");
-      import("./components/PublicAppointmentsList");
-      import("./components/DioceseHub");
-    };
-    if (typeof window !== "undefined") {
-      prefetch();
-    }
+    if (typeof window === "undefined") return;
+    const timer = setTimeout(async () => {
+      try {
+        await import("./components/StudentPortal");
+      } catch (e) {
+        console.debug("[Prefetch] StudentPortal deferido:", e);
+      }
+      try {
+        await import("./components/EventsPage");
+      } catch (e) {
+        console.debug("[Prefetch] EventsPage deferido:", e);
+      }
+      try {
+        await import("./components/CoursesOffers");
+      } catch (e) {
+        console.debug("[Prefetch] CoursesOffers deferido:", e);
+      }
+    }, 2500);
+
+    return () => clearTimeout(timer);
   }, []);
   const [targetVerifyCode, setTargetVerifyCode] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
@@ -577,6 +600,7 @@ export default function App() {
   return (
     <ErrorBoundary>
     <div className="min-h-screen relative flex flex-col items-center p-0 sm:p-4 print:block print:p-0">
+      <OfflineNotice />
       <VersionUpdateGate
         isUpdating={isUpdating}
         updateProgress={updateProgress}
@@ -949,7 +973,7 @@ export default function App() {
 
             <div 
               className="grid bg-slate-200/50 dark:bg-slate-900/60 rounded-xl p-1 shadow-inner border border-slate-200/50 dark:border-slate-700/50 no-print print:hidden gap-1"
-              style={{ gridTemplateColumns: `repeat(${3 + (settings.eventsEnabled !== false ? 1 : 0) + (settings.appointmentsEnabled !== false ? 1 : 0)}, minmax(0, 1fr))` }}
+              style={{ gridTemplateColumns: `repeat(${3 + (settings.eventsEnabled !== false ? 1 : 0) + (settings.appointmentsEnabled !== false ? 1 : 0) + (settings.coursesEnabled !== false ? 1 : 0)}, minmax(0, 1fr))` }}
             >
               <button
                 onClick={() => switchTab("student")}
@@ -965,6 +989,16 @@ export default function App() {
                 <Shield className="w-4 h-4 mb-0.5" />
                 Verificar
               </button>
+              {settings.coursesEnabled !== false && (
+                <button
+                  onClick={() => switchTab("courses")}
+                  className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "courses" ? "bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                >
+                  <GraduationCap className="w-4 h-4 mb-0.5" />
+                  <span className="hidden sm:inline">Cursos & Ofertas</span>
+                  <span className="sm:hidden">Cursos</span>
+                </button>
+              )}
               {settings.eventsEnabled !== false && (
                 <button
                   onClick={() => switchTab("events")}
@@ -1031,6 +1065,15 @@ export default function App() {
               {visitedTabs.has("appointments") && (
                 <div className={activeTab === "appointments" ? "block" : "hidden"}>
                   <PublicAppointmentsList member={null} onNavigateToStudent={() => setActiveTab("student")} />
+                </div>
+              )}
+
+              {visitedTabs.has("courses") && (
+                <div className={activeTab === "courses" ? "block" : "hidden"}>
+                  <CoursesOffers
+                    onNavigateToStudent={() => switchTab("student")}
+                    onNavigateToDiocese={() => switchTab("diocese")}
+                  />
                 </div>
               )}
 

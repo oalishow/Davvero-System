@@ -32,7 +32,7 @@ import {
   where,
   limit,
 } from "firebase/firestore";
-import { db, appId, auth, registerVisitor, createNotification } from "../lib/firebase";
+import { db, appId, auth, registerVisitor, createNotification, loginAnon } from "../lib/firebase";
 import { logAdminAction } from "../lib/audit";
 import { signOut } from "firebase/auth";
 import type { Member } from "../types";
@@ -56,14 +56,15 @@ import NotificationsManager from "./NotificationsManager";
 import AdminAppointments from "./AdminAppointments";
 import DashboardPanel from "./DashboardPanel";
 import AdminPolls from "./AdminPolls";
+import AdminCourses from "./AdminCourses";
 import DuplicateMembersModal from "./DuplicateMembersModal";
 import { checkMemberDuplicates, findDuplicateGroups } from "../lib/memberDeduplication";
 import { performAutoBackupIfDue } from "../lib/autoBackup";
-import { Calendar, BriefcaseMedical, LayoutDashboard, Vote } from "lucide-react";
+import { Calendar, BriefcaseMedical, LayoutDashboard, Vote, GraduationCap } from "lucide-react";
 
 export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const { settings, updateSettings, loading } = useSettings();
-  const [activeTab, setActiveTab] = useState<"dashboard" | "members" | "events" | "appointments" | "notifications" | "polls">("dashboard");
+  const [activeTab, setActiveTab] = useState<"dashboard" | "members" | "events" | "appointments" | "notifications" | "polls" | "courses">("dashboard");
   const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set(["dashboard"]));
 
   useEffect(() => {
@@ -369,7 +370,7 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   useEffect(() => {
     if (!loading && settings.version && settings.version !== APP_VERSION && !hasCheckedVersionRef.current) {
       hasCheckedVersionRef.current = true;
-      updateSettings({ version: APP_VERSION }).catch(console.error);
+      updateSettings({ version: APP_VERSION }).catch(console.warn);
     }
   }, [loading, settings.version]);
 
@@ -392,6 +393,8 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
     playSound('logout');
     sessionStorage.removeItem("adminMasterLogged");
     await signOut(auth);
+    // Crucial: ensure anonymous auth is immediately restored so that student and public views retain active permissions
+    await loginAnon().catch(console.warn);
     onLogout();
   };
 
@@ -679,11 +682,29 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
           <Vote className="w-4 h-4 hidden sm:block" />
           Enquetes
         </button>
+
+        <button
+          onClick={() => setActiveTab("courses")}
+          className={`flex items-center justify-center gap-1.5 sm:gap-2 px-3 py-2 sm:py-2.5 rounded-lg sm:rounded-full font-bold text-xs sm:text-sm transition-all whitespace-nowrap border flex-grow sm:flex-grow-0 ${
+            activeTab === "courses"
+              ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-600/30 dark:border-sky-400/30"
+              : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-800/80"
+          }`}
+        >
+          <GraduationCap className="w-4 h-4 hidden sm:block" />
+          Cursos & Ofertas
+        </button>
       </div>
 
       {visitedTabs.has("dashboard") && (
         <div className={activeTab === "dashboard" ? "block" : "hidden"}>
           <DashboardPanel allMembers={allMembers} />
+        </div>
+      )}
+
+      {visitedTabs.has("courses") && (
+        <div className={activeTab === "courses" ? "block" : "hidden"}>
+          <AdminCourses />
         </div>
       )}
 

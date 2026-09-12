@@ -181,6 +181,12 @@ export default function CertificateVerificationViewer({
           ...(assetsData.signature3Url && {
             signature3Url: assetsData.signature3Url,
           }),
+          ...(assetsData.customSignatures && {
+            customSignatures: (prev.customSignatures || []).map((cs) => ({
+              ...cs,
+              signatureUrl: assetsData.customSignatures[cs.id] || cs.signatureUrl,
+            })),
+          }),
         }));
       };
 

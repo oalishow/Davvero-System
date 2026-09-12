@@ -1,4 +1,5 @@
-import React, { useState, useEffect, memo, useRef, useMemo } from "react";
+import React, { useState, useEffect, memo, useRef, useMemo, lazy, Suspense } from "react";
+import { createPortal } from "react-dom";
 import {
   User,
   CreditCard,
@@ -55,14 +56,14 @@ import {
   onSnapshot,
   updateDoc,
 } from "firebase/firestore";
-import { db, appId, enrollStudent } from "../lib/firebase";
+import { db, appId, enrollStudent, loginAnon, auth } from "../lib/firebase";
 import type { Member, Event, Attendance, CertificateTemplate } from "../types";
 import VerificationResult from "./VerificationResult";
 import Modal from "./Modal";
 import PublicRequestModal from "./PublicRequestModal";
 import RegistrationSuccessModal from "./RegistrationSuccessModal";
 import ApprovalSuccessModal from "./ApprovalSuccessModal";
-import EventsPage from "./EventsPage";
+const EventsPage = lazy(() => import("./EventsPage"));
 import SuggestEditModal from "./SuggestEditModal";
 import { ASSETS_DOC_PATH } from "../lib/constants";
 import { CertificateRenderer } from "./CertificateRenderer";
@@ -86,23 +87,50 @@ const AsyncCertificateRenderer = memo(
     isOrganizer?: boolean;
     id?: string;
   }) => {
-    const [template, setTemplate] = useState<CertificateTemplate | undefined>(
-      isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate
-    );
+    const getInitialTemplate = (): CertificateTemplate => {
+      if (isOrganizer) {
+        if (event.organizationCertificateTemplate) {
+          return event.organizationCertificateTemplate;
+        }
+        if (event.certificateTemplate) {
+          return {
+            ...event.certificateTemplate,
+            subtitleText: event.certificateTemplate.subtitleText || "DE ORGANIZAÇÃO",
+          };
+        }
+        return {
+          bgStyle: "theme-classic",
+          fontFamily: "serif",
+          titleText: "CERTIFICADO",
+          subtitleText: "DE ORGANIZAÇÃO",
+          bodyText: "",
+          signatureName: "",
+          signatureRole: "",
+          isApproved: false,
+        };
+      }
+      return (
+        event.certificateTemplate || {
+          bgStyle: "theme-classic",
+          fontFamily: "serif",
+          titleText: "CERTIFICADO",
+          subtitleText: "DE PARTICIPAÇÃO",
+          bodyText: "",
+          signatureName: "",
+          signatureRole: "",
+          isApproved: false,
+        }
+      );
+    };
+
+    const [template, setTemplate] = useState<CertificateTemplate>(getInitialTemplate);
 
     useEffect(() => {
-      setTemplate(isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate);
+      setTemplate(getInitialTemplate());
     }, [event.id, isOrganizer, event.organizationCertificateTemplate, event.certificateTemplate]);
 
     useEffect(() => {
       let isMounted = true;
-      const initialTemplate = isOrganizer ? event.organizationCertificateTemplate : event.certificateTemplate;
-      if (!initialTemplate) return;
-
-      const assetDocId = isOrganizer
-        ? `cert_assets_org_${event.id}`
-        : `cert_assets_${event.id}`;
-      const docRef = doc(db, ASSETS_DOC_PATH(appId, assetDocId));
 
       const applyAssets = (assets: any) => {
         if (!assets || !isMounted) return;
@@ -141,17 +169,39 @@ const AsyncCertificateRenderer = memo(
         );
       };
 
-      // 1. Immediate direct fetch for instantaneous rendering
-      getDoc(docRef).then((snap) => {
-        if (snap.exists()) {
-          const snapData = snap.data();
-          const assets = snapData?.data !== undefined ? snapData.data : snapData;
-          applyAssets(assets);
+      // 1. Immediate direct fetch for instantaneous rendering with fallback for organizer
+      const fetchAssets = async () => {
+        try {
+          if (isOrganizer) {
+            const orgDocRef = doc(db, ASSETS_DOC_PATH(appId, `cert_assets_org_${event.id}`));
+            const orgSnap = await getDoc(orgDocRef);
+            if (isMounted && orgSnap.exists()) {
+              const snapData = orgSnap.data();
+              const assets = snapData?.data !== undefined ? snapData.data : snapData;
+              if (assets && Object.keys(assets).length > 0) {
+                applyAssets(assets);
+                return;
+              }
+            }
+          }
+          // Fallback to primary event assets
+          const mainDocRef = doc(db, ASSETS_DOC_PATH(appId, `cert_assets_${event.id}`));
+          const mainSnap = await getDoc(mainDocRef);
+          if (isMounted && mainSnap.exists()) {
+            const snapData = mainSnap.data();
+            const assets = snapData?.data !== undefined ? snapData.data : snapData;
+            applyAssets(assets);
+          }
+        } catch (err) {
+          console.warn("Notice loading cert assets", err);
         }
-      }).catch((err) => console.warn("Notice loading cert assets directly", err));
+      };
+
+      fetchAssets();
 
       // 2. Realtime listener for live sync
-      const unsub = onSnapshot(docRef, (snap) => {
+      const primaryDocId = isOrganizer ? `cert_assets_org_${event.id}` : `cert_assets_${event.id}`;
+      const unsub = onSnapshot(doc(db, ASSETS_DOC_PATH(appId, primaryDocId)), (snap) => {
         if (snap.exists()) {
           const snapData = snap.data();
           const assets = snapData?.data !== undefined ? snapData.data : snapData;
@@ -199,12 +249,33 @@ function CertificatePreviewModal({
 }: CertificatePreviewModalProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const scrollRef = useRef<HTMLDivElement>(null);
+  const overlayRef = useRef<HTMLDivElement>(null);
+  const cardRef = useRef<HTMLDivElement>(null);
   const [containerWidth, setContainerWidth] = useState<number>(360);
   const [mode, setMode] = useState<"fit" | "zoom" | "rotate">("fit");
   const [zoomLevel, setZoomLevel] = useState<number>(1);
 
   // Drag touch state for smartphone panning
   const touchStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
+
+  useEffect(() => {
+    // Bloqueia rolagem de fundo e redireciona a visão do smartphone diretamente para o modal
+    const originalOverflow = document.body.style.overflow;
+    document.body.style.overflow = "hidden";
+
+    // Garante que o scroll do viewport e do modal subam imediatamente para a visualização do certificado
+    window.scrollTo({ top: 0, behavior: "instant" });
+    if (overlayRef.current) {
+      overlayRef.current.scrollTop = 0;
+    }
+    if (cardRef.current) {
+      cardRef.current.scrollIntoView({ behavior: "instant", block: "start" });
+    }
+
+    return () => {
+      document.body.style.overflow = originalOverflow;
+    };
+  }, []);
 
   useEffect(() => {
     const updateSize = () => {
@@ -278,9 +349,23 @@ function CertificatePreviewModal({
   const renderedWidth = mode === "rotate" ? CERT_H * activeScale : CERT_W * activeScale;
   const isOverflowing = renderedWidth > containerWidth;
 
-  return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
-      <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col my-auto max-h-[96vh]">
+  if (typeof document === "undefined") return null;
+
+  return createPortal(
+    <div 
+      ref={overlayRef}
+      id="certificate-preview-modal-overlay"
+      className="fixed inset-0 z-[99999] flex items-start sm:items-center justify-center p-2 sm:p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto"
+      style={{ WebkitOverflowScrolling: "touch" }}
+      onClick={(e) => {
+        if (e.target === overlayRef.current) onClose();
+      }}
+    >
+      <div 
+        ref={cardRef}
+        id="certificate-preview-modal-card"
+        className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl max-w-5xl w-full p-3.5 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col my-auto max-h-[96vh] min-h-0"
+      >
         {/* Header */}
         <div className="flex items-center justify-between w-full mb-3 pb-3 border-b border-slate-100 dark:border-slate-800">
           <div className="flex items-center gap-2.5">
@@ -518,7 +603,8 @@ function CertificatePreviewModal({
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
 
@@ -600,6 +686,7 @@ export default function StudentPortal({
   const [alphaCode, setAlphaCode] = useState("");
   const [isPrePinAnimation, setIsPrePinAnimation] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
+  const [isBiometricAuthenticating, setIsBiometricAuthenticating] = useState(false);
   const [pendingCertTarget, setPendingCertTarget] = useState<{
     eventId: string;
     type: "participant" | "organizer";
@@ -766,16 +853,36 @@ export default function StudentPortal({
   const [pastEvents, setPastEvents] = useState<Event[]>([]);
   const [seminaryAvailableEvents, setSeminaryAvailableEvents] = useState<Event[]>([]);
   const [seminaryPastEvents, setSeminaryPastEvents] = useState<Event[]>([]);
-  const [myAttendances, setMyAttendances] = useState<Attendance[]>([]);
+  const [myAttendances, setMyAttendances] = useState<Attendance[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cachedMem = localStorage.getItem("davveroId_cached_member");
+        const memId = cachedMem ? JSON.parse(cachedMem)?.id : null;
+        if (memId) {
+          const cachedAtts = localStorage.getItem(`davveroId_cached_attendances_${memId}`);
+          if (cachedAtts) return JSON.parse(cachedAtts) as Attendance[];
+        }
+      } catch {}
+    }
+    return [];
+  });
   const [isEnrollingInProgress, setIsEnrollingInProgress] = useState<
     string | null
   >(null);
   const [downloadingCertKey, setDownloadingCertKey] = useState<string | null>(null);
   const isDownloading = Boolean(downloadingCertKey);
 
+  // Garantir sessão anônima ativa do Firebase para leitura contínua de presenças e eventos
+  useEffect(() => {
+    if (!auth.currentUser) {
+      loginAnon().catch((e) => console.warn("Notice loginAnon:", e));
+    }
+  }, []);
+
   useEffect(() => {
     let unsubEvents: any;
     let unsubAttendances: any;
+    let unsubCerts: any;
     if (member) {
       const qEvents = query(collection(db, `artifacts/${appId}/public/data/events`));
       unsubEvents = onSnapshot(qEvents, (snap) => {
@@ -819,20 +926,96 @@ export default function StudentPortal({
         console.warn("Notice in StudentPortal events listener:", err?.message || err);
       });
 
-      const qAttendances = query(
-        collection(db, `artifacts/${appId}/public/data/attendances`),
-        where("studentId", "==", member.id)
+      // Mapear todos os possíveis identificadores do membro (ID do doc, alphaCode, RA, etc.)
+      const studentIdsToQuery = Array.from(
+        new Set([
+          member.id,
+          member.alphaCode,
+          (member as any).legacyId,
+          (member as any).ra,
+        ].filter(Boolean) as string[])
       );
+
+      const qAttendances = studentIdsToQuery.length > 1
+        ? query(
+            collection(db, `artifacts/${appId}/public/data/attendances`),
+            where("studentId", "in", studentIdsToQuery.slice(0, 10))
+          )
+        : query(
+            collection(db, `artifacts/${appId}/public/data/attendances`),
+            where("studentId", "==", member.id)
+          );
+
       unsubAttendances = onSnapshot(qAttendances, (snap) => {
         const list = snap.docs.map(d => d.data() as Attendance);
-        setMyAttendances(list);
+        setMyAttendances((prev) => {
+          const merged = [...list];
+          // Manter qualquer registro de certificado vindo da coleção certificates
+          prev.forEach((p) => {
+            if (p.id?.startsWith("cert_") && !merged.some((m) => m.eventId === p.eventId)) {
+              merged.push(p);
+            }
+          });
+          try {
+            localStorage.setItem(`davveroId_cached_attendances_${member.id}`, JSON.stringify(merged));
+          } catch {}
+          return merged;
+        });
       }, (err) => {
         console.warn("Notice in StudentPortal attendances listener:", err?.message || err);
       });
 
+      // Escutar também a coleção de certificados emitidos para resiliência máxima
+      try {
+        const qCerts = studentIdsToQuery.length > 1
+          ? query(
+              collection(db, `artifacts/${appId}/public/data/certificates`),
+              where("studentId", "in", studentIdsToQuery.slice(0, 10))
+            )
+          : query(
+              collection(db, `artifacts/${appId}/public/data/certificates`),
+              where("studentId", "==", member.id)
+            );
+
+        unsubCerts = onSnapshot(qCerts, (snapCerts) => {
+          const certDocs = snapCerts.docs.map((d) => d.data());
+          if (certDocs.length > 0) {
+            setMyAttendances((prev) => {
+              const currentList = [...prev];
+              let hasChanges = false;
+              certDocs.forEach((c) => {
+                if (c.eventId && !currentList.some((a) => a.eventId === c.eventId)) {
+                  currentList.push({
+                    id: `cert_${c.code || c.eventId}`,
+                    eventId: c.eventId,
+                    studentId: c.studentId || member.id,
+                    status: "presente",
+                    isOrganizer: Boolean(c.isOrganizer),
+                    timestamp: c.issuedAt || new Date().toISOString(),
+                  } as Attendance);
+                  hasChanges = true;
+                }
+              });
+              if (hasChanges) {
+                try {
+                  localStorage.setItem(`davveroId_cached_attendances_${member.id}`, JSON.stringify(currentList));
+                } catch {}
+                return currentList;
+              }
+              return prev;
+            });
+          }
+        }, (err) => {
+          console.warn("Notice in StudentPortal certificates listener:", err?.message || err);
+        });
+      } catch (certErr) {
+        console.warn("Notice setting up certificates listener:", certErr);
+      }
+
       return () => {
         if (unsubEvents) unsubEvents();
         if (unsubAttendances) unsubAttendances();
+        if (unsubCerts) unsubCerts();
       };
     }
   }, [member?.id]);
@@ -1659,40 +1842,55 @@ export default function StudentPortal({
   const handleBiometricAuth = async () => {
     try {
       setError(null);
-      setIsGenerating(true);
+      setIsBiometricAuthenticating(true);
       const credId = localStorage.getItem("student_biometric_credential_id");
       if (credId) {
-        await verifyBiometric(credId);
-        playSound('generating');
-        playSound('generating');
-        await new Promise(r => setTimeout(r, 3000));
-        setIsUnlocked(true);
-        setIsGenerating(false);
-        setPinMode("none");
-        playSound('login');
-        scrollToCard();
+        try {
+          await verifyBiometric(credId);
+        } catch (verifyErr: any) {
+          const errName = verifyErr?.name || "";
+          const msg = verifyErr?.message || "";
+          // Se falhou por cancelamento explícito do usuário, respeita
+          if (errName === "NotAllowedError" || msg.includes("cancelad") || msg.includes("AbortError")) {
+            throw verifyErr;
+          }
+          // Caso contrário (ex: credencial local desatualizada ou trocada), renova registro
+          if (member) {
+            console.warn("Credencial biométrica anterior não reconhecida, renovando registro...", verifyErr);
+            const newCredId = await registerBiometric(member.email || "aluno@fajopa", member.name);
+            localStorage.setItem("student_biometric_credential_id", newCredId);
+          } else {
+            throw verifyErr;
+          }
+        }
       } else {
         if (!member) {
-          setIsGenerating(false);
+          setIsBiometricAuthenticating(false);
           return;
         }
         const newCredId = await registerBiometric(member.email || "aluno@fajopa", member.name);
         localStorage.setItem("student_biometric_credential_id", newCredId);
-        playSound('generating');
-        await new Promise(r => setTimeout(r, 3000));
-        setIsUnlocked(true);
-        setIsGenerating(false);
-        setPinMode("none");
-        playSound('login');
-        scrollToCard();
       }
+
+      // Biometria validada com sucesso: agora exibe a preparação final segura e abre
+      setIsBiometricAuthenticating(false);
+      setIsGenerating(true);
+      sessionStorage.setItem("davveroId_unlocked", "true");
+      playSound('generating');
+      await new Promise(r => setTimeout(r, 600));
+      setIsUnlocked(true);
+      setIsGenerating(false);
+      setPinMode("none");
+      playSound('login');
+      scrollToCard();
     } catch (e: any) {
-      console.error(e);
+      console.error("Erro na biometria:", e);
+      setIsBiometricAuthenticating(false);
       setIsGenerating(false);
       const errorMsg = e.message || "";
       const isFrameError =
         e.name === "SecurityError" ||
-        e.name === "NotAllowedError" ||
+        (e.name === "NotAllowedError" && (errorMsg.includes("iframe") || errorMsg.includes("Permissions Policy"))) ||
         errorMsg.includes("publickey-credentials") || 
         errorMsg.includes("feature is not enabled") ||
         errorMsg.includes("Permissions Policy") ||
@@ -1700,10 +1898,14 @@ export default function StudentPortal({
 
       if (isFrameError) {
         setError("BIOMETRIA RESTRITA NO IFRAME. CLIQUE EM 'ABRIR PORTAL' OU COPIE O LINK DE COMPARTILHAMENTO, OU USE SEU PIN NUMÉRICO.");
+      } else if (e.name === "NotAllowedError" || errorMsg.includes("cancelad")) {
+        setError("Leitura biométrica cancelada ou expirada. Tente novamente ou use seu PIN.");
       } else {
-        setError(e.message || "FALHA NA BIOMETRIA");
+        setError(e.message || "FALHA NA BIOMETRIA. VOCÊ PODE USAR SEU PIN NUMÉRICO.");
       }
       playSound('error');
+    } finally {
+      setIsBiometricAuthenticating(false);
     }
   };
 
@@ -1961,10 +2163,13 @@ export default function StudentPortal({
             {isWebAuthnSupported() && (
               <button
                 onClick={handleBiometricAuth}
-                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+                disabled={isBiometricAuthenticating}
+                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
               >
-                <Fingerprint className="w-5 h-5" />
-                {localStorage.getItem("student_biometric_credential_id") ? "Usar Biometria" : "Cadastrar Biometria"}
+                <Fingerprint className={`w-5 h-5 ${isBiometricAuthenticating ? "animate-pulse text-indigo-500" : ""}`} />
+                {isBiometricAuthenticating
+                  ? "Aguardando Leitor Biométrico..."
+                  : (localStorage.getItem("student_biometric_credential_id") ? "Usar Biometria" : "Cadastrar Biometria")}
               </button>
             )}
             <div className="flex flex-col gap-2 mt-4 w-full">
@@ -2034,10 +2239,13 @@ export default function StudentPortal({
               {isWebAuthnSupported() && (
                 <button
                   onClick={handleBiometricAuth}
-                  className="w-full py-4 bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/30 dark:hover:bg-sky-900/50 dark:text-sky-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+                  disabled={isBiometricAuthenticating}
+                  className="w-full py-4 bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/30 dark:hover:bg-sky-900/50 dark:text-sky-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm disabled:opacity-60"
                 >
-                  <Fingerprint className="w-5 h-5" />
-                  {localStorage.getItem("student_biometric_credential_id") ? "Acessar com Biometria" : "Habilitar Biometria"}
+                  <Fingerprint className={`w-5 h-5 ${isBiometricAuthenticating ? "animate-pulse text-sky-600 dark:text-sky-400" : ""}`} />
+                  {isBiometricAuthenticating
+                    ? "Aguardando Leitor Biométrico..."
+                    : (localStorage.getItem("student_biometric_credential_id") ? "Acessar com Biometria" : "Habilitar Biometria")}
                 </button>
               )}
             </div>
@@ -2409,8 +2617,25 @@ export default function StudentPortal({
                                 {event.title}
                               </h4>
                               <div className="mb-4">
-                                <p className={`text-xs text-slate-500 dark:text-slate-400 ${expandedPortalEvents[event.id] ? "whitespace-pre-wrap" : "line-clamp-2"} transition-all`}>
-                                  {event.description}
+                                <p className={`text-xs text-slate-600 dark:text-slate-300 ${expandedPortalEvents[event.id] ? "whitespace-pre-wrap break-words leading-relaxed" : "line-clamp-2"} transition-all`}>
+                                  {event.description.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g).map((part, i) => {
+                                    if (part.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)) {
+                                      const href = part.startsWith("http") ? part : `https://${part}`;
+                                      return (
+                                        <a
+                                          key={i}
+                                          href={href}
+                                          target="_blank"
+                                          rel="noopener noreferrer"
+                                          onClick={(e) => e.stopPropagation()}
+                                          className="text-sky-600 dark:text-sky-400 underline font-semibold hover:text-sky-700"
+                                        >
+                                          {part}
+                                        </a>
+                                      );
+                                    }
+                                    return part;
+                                  })}
                                 </p>
                                 {event.description && event.description.length > 70 && (
                                   <button
@@ -2424,7 +2649,7 @@ export default function StudentPortal({
                                     }}
                                     className="mt-1 text-[11px] font-bold text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 flex items-center gap-1 cursor-pointer transition-colors"
                                   >
-                                    {expandedPortalEvents[event.id] ? "Ver menos" : "Ver mais..."}
+                                    {expandedPortalEvents[event.id] ? "Ver menos" : "Ver descrição completa..."}
                                   </button>
                                 )}
                               </div>
@@ -3452,7 +3677,15 @@ export default function StudentPortal({
                 animate={{ opacity: 1, y: 0 }}
                 className="space-y-4"
               >
-                <EventsPage renderSeminary={true} />
+                <Suspense
+                  fallback={
+                    <div className="flex justify-center items-center p-12">
+                      <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
+                    </div>
+                  }
+                >
+                  <EventsPage renderSeminary={true} />
+                </Suspense>
               </motion.div>
             )}
           </div>

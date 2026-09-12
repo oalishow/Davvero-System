@@ -161,6 +161,64 @@
         "createdBy": { "type": "string" }
       },
       "required": ["email"]
+    },
+    "CourseOffer": {
+      "title": "Course and Offer",
+      "description": "Educational courses, hotmart products, diocesan partnerships, and publications",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 250 },
+        "category": { "type": "string" },
+        "description": { "type": "string", "maxLength": 5000 },
+        "active": { "type": "boolean" },
+        "price": { "type": "string" },
+        "workload": { "type": "string" },
+        "updatedAt": { "type": "string" }
+      }
+    },
+    "Poll": {
+      "title": "Community Poll",
+      "description": "Interactive voting poll for community or academic feedback",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "title": { "type": "string", "maxLength": 250 },
+        "active": { "type": "boolean" },
+        "createdAt": { "type": "string" }
+      }
+    },
+    "PollVote": {
+      "title": "Poll Vote",
+      "description": "Single vote cast for a poll",
+      "type": "object",
+      "properties": {
+        "id": { "type": "string" },
+        "pollId": { "type": "string" },
+        "optionId": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "CardUsage": {
+      "title": "Card Discount Usage",
+      "description": "Log of student discount usages",
+      "type": "object",
+      "properties": {
+        "memberId": { "type": "string" },
+        "memberName": { "type": "string" },
+        "type": { "type": "string" },
+        "timestamp": { "type": "string" }
+      }
+    },
+    "SystemLiveStatus": {
+      "title": "System Live Status",
+      "description": "Status of live broadcasts and system streams",
+      "type": "object",
+      "properties": {
+        "isLive": { "type": "boolean" },
+        "channel": { "type": "string" },
+        "checkedAt": { "type": "string" }
+      }
     }
   },
   "firestore": {
@@ -208,9 +266,29 @@
       "schema": { "$ref": "#/entities/TelemetryScan" },
       "description": "Recent QR code scan telemetry logs"
     },
+    "/artifacts/{appId}/public/data/card_usages": {
+      "schema": { "$ref": "#/entities/CardUsage" },
+      "description": "Stores student ID discount telemetry logs"
+    },
+    "/artifacts/{appId}/public/data/system_live_status": {
+      "schema": { "$ref": "#/entities/SystemLiveStatus" },
+      "description": "Stores realtime live streaming status"
+    },
     "/artifacts/{appId}/public/data/admins": {
       "schema": { "$ref": "#/entities/Admin" },
       "description": "Stores authorized administrator accounts and permissions"
+    },
+    "/artifacts/{appId}/public/data/courses_offers": {
+      "schema": { "$ref": "#/entities/CourseOffer" },
+      "description": "Stores course offerings, extension programs, and partner courses"
+    },
+    "/artifacts/{appId}/public/data/polls": {
+      "schema": { "$ref": "#/entities/Poll" },
+      "description": "Stores polls and surveys"
+    },
+    "/artifacts/{appId}/public/data/poll_votes": {
+      "schema": { "$ref": "#/entities/PollVote" },
+      "description": "Stores votes cast on polls"
     }
   }
 }

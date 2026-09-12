@@ -23,9 +23,11 @@ import {
   Plus,
   ShieldCheck,
   RefreshCw,
+  FileArchive,
 } from "lucide-react";
 import ImageCropperModal from "./ImageCropperModal";
 import EventQrCodeModal from "./EventQrCodeModal";
+import StandaloneCertificateModal from "./StandaloneCertificateModal";
 import {
   collection,
   query,
@@ -83,6 +85,10 @@ export default function EventManagement({
   );
   const [showCertificateEditor, setShowCertificateEditor] =
     useState<{ event: Event, type: "participant" | "organizer" } | null>(null);
+
+  const [isStandaloneCertModalOpen, setIsStandaloneCertModalOpen] = useState(false);
+  const [selectedStandaloneEvent, setSelectedStandaloneEvent] = useState<Event | null>(null);
+  const [expandedDescriptions, setExpandedDescriptions] = useState<Record<string, boolean>>({});
 
   const [title, setTitle] = useState("");
   const [startDate, setStartDate] = useState("");
@@ -475,7 +481,19 @@ export default function EventManagement({
             </div>
           </div>
 
-          <div className="flex items-center gap-2 self-end sm:self-auto">
+          <div className="flex flex-wrap items-center gap-2 self-end sm:self-auto">
+            <button
+              type="button"
+              onClick={() => {
+                setSelectedStandaloneEvent(null);
+                setIsStandaloneCertModalOpen(true);
+              }}
+              className="flex items-center gap-1.5 px-3.5 py-2 bg-gradient-to-r from-amber-500 to-amber-600 hover:from-amber-600 hover:to-amber-700 text-white rounded-xl text-xs font-bold transition-all active:scale-95 shadow-xs cursor-pointer"
+              title="Emitir certificados avulsos ou em lote a partir de uma planilha sem precisar criar evento prévio"
+            >
+              <Award className="w-4 h-4 text-amber-100" />
+              <span>Certificados Avulsos / Planilha</span>
+            </button>
             {editingEventId && !isEventFormOpen && (
               <button
                 type="button"
@@ -1189,22 +1207,42 @@ export default function EventManagement({
                           <Globe className="w-2.5 h-2.5" /> Público
                         </span>
                       )}
+                      {event.isStandaloneCert && (
+                        <span className="text-[10px] font-bold px-2 py-0.5 rounded-full bg-amber-100 text-amber-800 dark:bg-amber-500/20 dark:text-amber-300 flex items-center gap-1">
+                          <Award className="w-2.5 h-2.5 text-amber-600 dark:text-amber-400" /> Planilha / Avulso
+                        </span>
+                      )}
                       {event.creatorName && (
                         <span className="text-[10px] font-medium px-2 py-0.5 rounded-full bg-slate-100 text-slate-600 dark:bg-slate-700 dark:text-slate-300 flex items-center gap-1">
                           <User className="w-2.5 h-2.5" /> Criado por: {event.creatorName}
                         </span>
                       )}
                     </div>
-                    <p className="text-xs text-slate-500 dark:text-slate-400 mt-1 line-clamp-1 whitespace-pre-wrap">
-                      {event.description.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g).map((part, i) => {
-                        if (part.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)) {
-                          const href = part.startsWith("http") ? part : `https://${part}`;
-                          // For a line-clamp element, rendering a link is totally fine.
-                          return <a key={i} href={href} target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:text-sky-600 hover:underline inline-flex">{part}</a>;
-                        }
-                        return part;
-                      })}
-                    </p>
+                    {event.description && (
+                      <div className="mt-1">
+                        <p className={`text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap ${expandedDescriptions[event.id] ? "" : "line-clamp-2"}`}>
+                          {event.description.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g).map((part, i) => {
+                            if (part.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)) {
+                              const href = part.startsWith("http") ? part : `https://${part}`;
+                              return <a key={i} href={href} target="_blank" rel="noopener noreferrer" className="text-sky-500 hover:text-sky-600 hover:underline inline-flex">{part}</a>;
+                            }
+                            return part;
+                          })}
+                        </p>
+                        {event.description.length > 70 && (
+                          <button
+                            type="button"
+                            onClick={(e) => {
+                              e.stopPropagation();
+                              setExpandedDescriptions(prev => ({ ...prev, [event.id]: !prev[event.id] }));
+                            }}
+                            className="text-[11px] font-bold text-sky-600 dark:text-sky-400 hover:underline inline-flex items-center mt-0.5 cursor-pointer"
+                          >
+                            {expandedDescriptions[event.id] ? "Ver menos" : "Ver descrição completa..."}
+                          </button>
+                        )}
+                      </div>
+                    )}
                     <div className="flex flex-wrap gap-2 mt-2">
                       <span className="inline-flex items-center gap-1 text-[10px] font-bold text-sky-600 bg-sky-50 dark:bg-sky-500/10 px-2 py-0.5 rounded-full border border-sky-100 dark:border-sky-500/20">
                         <Clock className="w-3 h-3" />{" "}
@@ -1313,6 +1351,19 @@ export default function EventManagement({
                               <CheckCircle className="w-3 h-3 text-emerald-500 ml-1" />
                             )}
                           </button>
+                          {event.isStandaloneCert && (
+                            <button
+                              onClick={() => {
+                                setSelectedStandaloneEvent(event);
+                                setIsStandaloneCertModalOpen(true);
+                              }}
+                              className="flex items-center justify-center gap-1.5 px-3 py-2 sm:py-1.5 bg-amber-500 hover:bg-amber-600 text-white text-xs font-bold rounded-md transition-colors"
+                              title="Gerenciar certificados, baixar individualmente ou todos em lote ZIP"
+                            >
+                              <FileArchive className="w-3.5 h-3.5 shrink-0" />{" "}
+                              <span className="truncate">Baixar / Lote</span>
+                            </button>
+                          )}
                           {(event.status === "aberto" || event.status === "encerrado") && (
                             <button
                               onClick={() => handleEditClick(event)}
@@ -1543,6 +1594,16 @@ export default function EventManagement({
           </button>
         </div>
       </Modal>
+
+      {/* Standalone Certificate Modal (Excel/Spreadsheet Upload & Direct Issuance) */}
+      <StandaloneCertificateModal
+        isOpen={isStandaloneCertModalOpen}
+        onClose={() => {
+          setIsStandaloneCertModalOpen(false);
+          setSelectedStandaloneEvent(null);
+        }}
+        existingEvent={selectedStandaloneEvent}
+      />
     </div>
   );
 }

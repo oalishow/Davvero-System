@@ -200,7 +200,7 @@ export default function DobloControl({ currentUser: initialCurrentUser, isAdmin:
       
       setLoading(false);
     }, (err) => {
-      console.error(err);
+      console.warn("Notice in DobloControl listener:", err?.message || err);
       setLoading(false);
     });
     return () => unsub();

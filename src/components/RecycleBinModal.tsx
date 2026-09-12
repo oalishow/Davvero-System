@@ -48,7 +48,7 @@ export default function RecycleBinModal({ onClose, initialTab = "members" }: { o
       setDeletedMembers(activeDeleted);
       setLoading(false);
     }, (err) => {
-      console.error(err);
+      console.warn("Notice in RecycleBinModal members listener:", err?.message || err);
       setLoading(false);
     });
 

@@ -32,8 +32,9 @@ import {
   Sliders,
   Calendar,
   MapPin,
+  Plus,
 } from "lucide-react";
-import type { Event, CertificateTemplate } from "../types";
+import type { Event, CertificateTemplate, CustomSignatureItem } from "../types";
 import { updateEvent, db, appId } from "../lib/firebase";
 import { doc, getDoc, setDoc, collection, query, where, getDocs } from "firebase/firestore";
 import { ASSETS_DOC_PATH } from "../lib/constants";
@@ -276,6 +277,7 @@ export default function CertificateEditor({
         signatureOffsetY: template.signatureOffsetY,
         signatureLineGap: template.signatureLineGap,
         institutionFooterOffsetY: template.institutionFooterOffsetY,
+        customSignatures: template.customSignatures,
       };
 
       const newPreset = {
@@ -384,7 +386,7 @@ export default function CertificateEditor({
         if (assetsSnap.exists()) {
           const snapData = assetsSnap.data();
           const assetsData = snapData?.data !== undefined ? snapData.data : snapData;
-          if (assetsData) {
+          if (assetsData && Object.keys(assetsData).length > 0) {
             setTemplate((prev) => ({
               ...prev,
               ...(assetsData.backgroundImageUrl && { backgroundImageUrl: assetsData.backgroundImageUrl }),
@@ -399,8 +401,46 @@ export default function CertificateEditor({
               ...(assetsData.signature1Url && { signature1Url: assetsData.signature1Url }),
               ...(assetsData.signature2Url && { signature2Url: assetsData.signature2Url }),
               ...(assetsData.signature3Url && { signature3Url: assetsData.signature3Url }),
+              ...(assetsData.customSignatures && {
+                customSignatures: (prev.customSignatures || []).map((cs) => ({
+                  ...cs,
+                  signatureUrl: assetsData.customSignatures[cs.id] || cs.signatureUrl,
+                })),
+              }),
             }));
             return;
+          }
+        }
+
+        // If organizer certificate has no specific assets yet, fallback to main event assets
+        if (type === "organizer") {
+          const mainAssetsSnap = await getDoc(doc(db, ASSETS_DOC_PATH(appId, `cert_assets_${event.id}`)));
+          if (mainAssetsSnap.exists()) {
+            const mainSnapData = mainAssetsSnap.data();
+            const mainAssetsData = mainSnapData?.data !== undefined ? mainSnapData.data : mainSnapData;
+            if (mainAssetsData) {
+              setTemplate((prev) => ({
+                ...prev,
+                ...(mainAssetsData.backgroundImageUrl && { backgroundImageUrl: mainAssetsData.backgroundImageUrl }),
+                ...(mainAssetsData.logoUrl && { logoUrl: mainAssetsData.logoUrl }),
+                ...(mainAssetsData.logo2Url && { logo2Url: mainAssetsData.logo2Url }),
+                ...(mainAssetsData.fajopaDirectorSignatureUrl && {
+                  fajopaDirectorSignatureUrl: mainAssetsData.fajopaDirectorSignatureUrl,
+                }),
+                ...(mainAssetsData.seminarRectorSignatureUrl && {
+                  seminarRectorSignatureUrl: mainAssetsData.seminarRectorSignatureUrl,
+                }),
+                ...(mainAssetsData.signature1Url && { signature1Url: mainAssetsData.signature1Url }),
+                ...(mainAssetsData.signature2Url && { signature2Url: mainAssetsData.signature2Url }),
+                ...(mainAssetsData.signature3Url && { signature3Url: mainAssetsData.signature3Url }),
+                ...(mainAssetsData.customSignatures && {
+                  customSignatures: (prev.customSignatures || []).map((cs) => ({
+                    ...cs,
+                    signatureUrl: mainAssetsData.customSignatures[cs.id] || cs.signatureUrl,
+                  })),
+                }),
+              }));
+            }
           }
         }
       } catch (err) {
@@ -522,6 +562,55 @@ Instruções RIGOROSAS:
     } catch (err) {
       console.error(err);
       showAlert("Erro ao carregar imagem.", { type: "error" });
+    }
+  };
+
+  // Gerenciamento dinâmico de outras assinaturas e signatários adicionais
+  const handleAddCustomSignature = () => {
+    const newSig: CustomSignatureItem = {
+      id: `sig_${Date.now()}_${Math.random().toString(36).substr(2, 4)}`,
+      name: "",
+      role: "",
+      show: true,
+    };
+    setTemplate((prev) => ({
+      ...prev,
+      customSignatures: [...(prev.customSignatures || []), newSig],
+    }));
+  };
+
+  const handleRemoveCustomSignature = (sigId: string) => {
+    setTemplate((prev) => ({
+      ...prev,
+      customSignatures: (prev.customSignatures || []).filter((s) => s.id !== sigId),
+    }));
+  };
+
+  const handleUpdateCustomSignature = (sigId: string, updates: Partial<CustomSignatureItem>) => {
+    setTemplate((prev) => ({
+      ...prev,
+      customSignatures: (prev.customSignatures || []).map((s) =>
+        s.id === sigId ? { ...s, ...updates } : s
+      ),
+    }));
+  };
+
+  const handleUploadCustomSignature = async (
+    e: React.ChangeEvent<HTMLInputElement>,
+    sigId: string
+  ) => {
+    const file = e.target.files?.[0];
+    if (!file) return;
+    try {
+      const base64 = await resizeAndConvertToBase64(file, 800, {
+        preserveAlpha: true,
+        removeWhiteBg: true,
+        mimeType: "image/png",
+      });
+      handleUpdateCustomSignature(sigId, { signatureUrl: base64 });
+    } catch (err) {
+      console.error(err);
+      showAlert("Erro ao processar imagem da assinatura.", { type: "error" });
     }
   };
 
@@ -721,6 +810,31 @@ Instruções RIGOROSAS:
         finalTemplate.hasSignature3 = false;
       }
       delete finalTemplate.signature3Url;
+
+      // 8. Signaturas Adicionais Dinâmicas (Outros Nomes e Assinaturas)
+      if (template.customSignatures && template.customSignatures.length > 0) {
+        const customSigsAssets: Record<string, string> = {};
+        const sanitizedCustomSigs: CustomSignatureItem[] = [];
+        for (const sig of template.customSignatures) {
+          if (sig.signatureUrl) {
+            customSigsAssets[sig.id] = sig.signatureUrl;
+            hasAnyAssets = true;
+          }
+          sanitizedCustomSigs.push({
+            id: sig.id,
+            name: sig.name || "",
+            role: sig.role || "",
+            show: sig.show !== false,
+            signatureUrl: sig.signatureUrl,
+          });
+        }
+        finalTemplate.customSignatures = sanitizedCustomSigs;
+        if (Object.keys(customSigsAssets).length > 0) {
+          assetsData.customSignatures = customSigsAssets;
+        }
+      } else {
+        finalTemplate.customSignatures = [];
+      }
 
       // Sync legacy fields
       if (template.signature1Name) finalTemplate.signatureName = template.signature1Name;
@@ -2291,6 +2405,145 @@ Instruções RIGOROSAS:
                       </div>
                     </>
                   )}
+
+                  {/* SEÇÃO DINÂMICA: OUTRAS ASSINATURAS E SIGNATÁRIOS ADICIONAIS */}
+                  <div className="pt-4 border-t border-slate-200 dark:border-slate-800 space-y-3">
+                    <div className="flex items-center justify-between">
+                      <div className="flex items-center gap-2">
+                        <PenTool className="w-4 h-4 text-sky-600 dark:text-sky-400" />
+                        <span className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase tracking-wider">
+                          Outras Assinaturas & Signatários
+                        </span>
+                      </div>
+                      <button
+                        type="button"
+                        onClick={handleAddCustomSignature}
+                        className="px-2.5 py-1.5 text-xs font-bold bg-sky-50 hover:bg-sky-100 dark:bg-sky-950/50 dark:hover:bg-sky-900/50 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800 rounded-xl transition-colors flex items-center gap-1.5 shadow-sm"
+                      >
+                        <Plus className="w-3.5 h-3.5" />
+                        Adicionar Outra Assinatura
+                      </button>
+                    </div>
+
+                    <p className="text-[11px] text-slate-500 dark:text-slate-400">
+                      Adicione outros nomes e cargos (ex: Coordenador de Curso, Palestrante, Bispo Diocesano, etc.) e anexe suas respectivas assinaturas digitalizadas.
+                    </p>
+
+                    {template.customSignatures && template.customSignatures.length > 0 && (
+                      <div className="space-y-3">
+                        {template.customSignatures.map((sig, sIdx) => (
+                          <div
+                            key={sig.id}
+                            className="bg-white dark:bg-slate-950 p-4 rounded-2xl border border-slate-200 dark:border-slate-800 space-y-3 shadow-sm"
+                          >
+                            <div className="flex items-center justify-between">
+                              <div className="flex items-center gap-2">
+                                <input
+                                  type="checkbox"
+                                  id={`sig_toggle_${sig.id}`}
+                                  checked={sig.show !== false}
+                                  onChange={(e) => handleUpdateCustomSignature(sig.id, { show: e.target.checked })}
+                                  className="rounded text-sky-600 focus:ring-sky-500 dark:bg-slate-900 dark:border-slate-600 w-4 h-4 cursor-pointer"
+                                />
+                                <label
+                                  htmlFor={`sig_toggle_${sig.id}`}
+                                  className="text-xs font-bold text-slate-800 dark:text-slate-200 uppercase cursor-pointer flex items-center gap-1.5"
+                                >
+                                  <span className="w-4 h-4 rounded-full bg-sky-100 dark:bg-sky-950 text-sky-600 dark:text-sky-400 text-[10px] flex items-center justify-center font-bold">
+                                    {sIdx + 1}
+                                  </span>
+                                  Signatário Adicional {sIdx + 1}
+                                </label>
+                              </div>
+                              <button
+                                type="button"
+                                onClick={() => handleRemoveCustomSignature(sig.id)}
+                                className="text-rose-500 hover:text-rose-600 hover:bg-rose-50 dark:hover:bg-rose-950/30 p-1.5 rounded-lg text-xs flex items-center gap-1 transition-colors cursor-pointer"
+                                title="Excluir este signatário"
+                              >
+                                <Trash2 className="w-3.5 h-3.5" />
+                                <span className="text-[11px]">Excluir</span>
+                              </button>
+                            </div>
+
+                            <div className="space-y-2 pt-1">
+                              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                                    Nome do Signatário
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: Prof. Dr. Carlos Menezes"
+                                    value={sig.name || ""}
+                                    onChange={(e) => handleUpdateCustomSignature(sig.id, { name: e.target.value })}
+                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                                  />
+                                </div>
+                                <div>
+                                  <label className="text-[10px] font-bold text-slate-500 uppercase block mb-1">
+                                    Cargo / Função
+                                  </label>
+                                  <input
+                                    type="text"
+                                    placeholder="Ex: Coordenador do Curso / Assessor"
+                                    value={sig.role || ""}
+                                    onChange={(e) => handleUpdateCustomSignature(sig.id, { role: e.target.value })}
+                                    className="w-full bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-800 rounded-xl px-3 py-1.5 text-xs font-semibold text-slate-800 dark:text-slate-200 focus:outline-none focus:border-sky-500"
+                                  />
+                                </div>
+                              </div>
+
+                              {/* Imagem da Assinatura */}
+                              <div className="flex items-center justify-between gap-2 pt-1">
+                                {sig.signatureUrl ? (
+                                  <div className="flex items-center gap-3">
+                                    <div className="h-8 w-24 bg-white rounded border border-slate-200 flex items-center justify-center p-0.5 shadow-sm">
+                                      <img
+                                        src={sig.signatureUrl}
+                                        alt={sig.name}
+                                        className="max-h-full max-w-full object-contain"
+                                      />
+                                    </div>
+                                    <label className="text-[11px] text-sky-600 dark:text-sky-400 font-bold hover:underline cursor-pointer flex items-center gap-1">
+                                      <Upload className="w-3 h-3" />
+                                      Trocar Imagem
+                                      <input
+                                        type="file"
+                                        className="hidden"
+                                        accept="image/*"
+                                        onChange={(e) => handleUploadCustomSignature(e, sig.id)}
+                                      />
+                                    </label>
+                                    <button
+                                      type="button"
+                                      onClick={() => handleUpdateCustomSignature(sig.id, { signatureUrl: undefined })}
+                                      className="text-[10px] text-red-500 hover:underline cursor-pointer"
+                                    >
+                                      Remover imagem
+                                    </button>
+                                  </div>
+                                ) : (
+                                  <label className="w-full py-2.5 px-3 border border-dashed border-sky-300 dark:border-sky-800/60 bg-sky-50/50 dark:bg-sky-950/20 rounded-xl flex items-center justify-center gap-2 cursor-pointer hover:bg-sky-50 dark:hover:bg-sky-950/40 transition-colors">
+                                    <Upload className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                                    <span className="text-xs font-bold text-sky-700 dark:text-sky-300">
+                                      Subir Imagem da Assinatura (PNG/JPG)
+                                    </span>
+                                    <input
+                                      type="file"
+                                      className="hidden"
+                                      accept="image/*"
+                                      onChange={(e) => handleUploadCustomSignature(e, sig.id)}
+                                    />
+                                  </label>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

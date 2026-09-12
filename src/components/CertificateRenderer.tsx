@@ -75,6 +75,94 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
       ? template.showSignature3 
       : Boolean(sig3Name || sig3Role || sig3Url);
 
+    // Active Signatures dynamic aggregation (presets, coordinators, bishops and custom signers)
+    const activeSignaturesList: Array<{
+      id: string;
+      name: string;
+      role: string;
+      signatureUrl?: string;
+    }> = [];
+
+    if (showFajopaDirector) {
+      activeSignaturesList.push({
+        id: "fajopa-director",
+        name: fajopaName || "Diretor FAJOPA",
+        role: "Diretor de Ensino / Acadêmico",
+        signatureUrl: fajopaSigUrl,
+      });
+    }
+
+    if (showSeminarRector) {
+      activeSignaturesList.push({
+        id: "seminar-rector",
+        name: rectorName || "Reitor",
+        role: "Reitor do Seminário",
+        signatureUrl: rectorSigUrl,
+      });
+    }
+
+    if (isDioceseEvent || (!showFajopaDirector && !showSeminarRector) || showSig1 || showSig2 || showSig3) {
+      if (showSig1 && (sig1Name || sig1Role || sig1Url)) {
+        activeSignaturesList.push({
+          id: "sig-1",
+          name: sig1Name || "Nome do Responsável",
+          role: sig1Role || (isDioceseEvent ? "Coordenador(a) Diocesano(a)" : "Cargo / Função"),
+          signatureUrl: sig1Url,
+        });
+      }
+      if (showSig2 && (sig2Name || sig2Role || sig2Url)) {
+        activeSignaturesList.push({
+          id: "sig-2",
+          name: sig2Name || (isDioceseEvent ? "Bispo / Assessor Eclesial" : "Segundo Responsável"),
+          role: sig2Role || (isDioceseEvent ? "Diocese / Pastoral" : "Cargo / Função"),
+          signatureUrl: sig2Url,
+        });
+      }
+      if (showSig3 && (sig3Name || sig3Role || sig3Url)) {
+        activeSignaturesList.push({
+          id: "sig-3",
+          name: sig3Name || "Terceiro Responsável",
+          role: sig3Role || "Cargo / Função",
+          signatureUrl: sig3Url,
+        });
+      }
+    }
+
+    // Dynamic additional signatures (Adicionar outros nomes e assinaturas)
+    if (Array.isArray(template.customSignatures)) {
+      template.customSignatures.forEach((cs, idx) => {
+        if (cs && cs.show !== false && (cs.name?.trim() || cs.role?.trim() || cs.signatureUrl)) {
+          activeSignaturesList.push({
+            id: cs.id || `custom-sig-${idx}`,
+            name: cs.name?.trim() || "Signatário(a)",
+            role: cs.role?.trim() || "Cargo / Função",
+            signatureUrl: extractAssetString(cs.signatureUrl),
+          });
+        }
+      });
+    }
+
+    const totalActiveSigs = activeSignaturesList.length;
+    const sigBoxWidth = totalActiveSigs >= 5
+      ? "w-[170px] max-w-[185px]"
+      : totalActiveSigs === 4
+      ? "w-[210px] max-w-[225px]"
+      : totalActiveSigs === 3
+      ? "w-[245px] max-w-[265px]"
+      : "w-[260px] max-w-[280px]";
+
+    const sigTitleSize = totalActiveSigs >= 5
+      ? "text-sm leading-snug"
+      : totalActiveSigs === 4
+      ? "text-base leading-snug"
+      : "text-xl leading-tight";
+
+    const sigRoleSize = totalActiveSigs >= 5
+      ? "text-xs mt-0.5"
+      : totalActiveSigs === 4
+      ? "text-xs mt-0.5"
+      : "text-sm mt-0.5";
+
     // Font Family resolution
     const fontClass = 
       template.fontFamily === 'serif' ? 'font-serif' :
@@ -702,14 +790,13 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
 
         {/* Signatures Row with strict alignment & offset controls - leveled lines */}
         <div 
-          className={`relative z-10 flex flex-row items-start ${sigDistributionClass} w-full pb-8 shrink-0 transition-transform`}
+          className={`relative z-10 flex flex-row items-start ${sigDistributionClass} w-full pb-8 shrink-0 transition-transform flex-wrap justify-center gap-y-4`}
           style={{
             transform: `translateY(${sigOffsetY}px)`,
           }}
         >
-          {/* Se NÃO for evento de Diocese e estiver ativado Diretor FAJOPA */}
-          {showFajopaDirector && (
-            <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
+          {activeSignaturesList.map((sig) => (
+            <div key={sig.id} className={`flex flex-col items-center text-center ${sigBoxWidth} shrink-0 px-2`}>
               <div 
                 className="w-full flex items-end justify-center leading-none"
                 style={{ 
@@ -719,178 +806,29 @@ export const CertificateRenderer = forwardRef<HTMLDivElement, CertificateRendere
                   marginBottom: `${sigLineGap}px`
                 }}
               >
-                {fajopaSigUrl ? (
+                {sig.signatureUrl ? (
                   <img 
-                    src={fajopaSigUrl} 
+                    src={sig.signatureUrl} 
                     style={{ maxHeight: `${sigHeight}px` }}
                     className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
                     referrerPolicy="no-referrer"
                     loading="eager"
                     decoding="sync"
-                    alt="Assinatura Diretor" 
+                    alt={sig.name} 
                   />
                 ) : (
                   <div className="w-full" style={{ height: `${sigHeight}px` }} />
                 )}
               </div>
               <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
-              <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
-                {fajopaName || "Diretor FAJOPA"}
+              <h3 className={`${sigTitleSize} font-bold min-h-[26px] flex items-center justify-center ${currentTheme.nameColor}`}>
+                {sig.name}
               </h3>
-              <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
-                Diretor de Ensino / Acadêmico
+              <p className={`${sigRoleSize} font-medium leading-tight min-h-[18px] ${currentTheme.roleColor}`}>
+                {sig.role}
               </p>
             </div>
-          )}
-          
-          {/* Se NÃO for evento de Diocese e estiver ativado Reitor do Seminário */}
-          {showSeminarRector && (
-            <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
-              <div 
-                className="w-full flex items-end justify-center leading-none"
-                style={{ 
-                  height: `${sigHeight}px`,
-                  minHeight: `${sigHeight}px`,
-                  maxHeight: `${sigHeight}px`,
-                  marginBottom: `${sigLineGap}px`
-                }}
-              >
-                {rectorSigUrl ? (
-                  <img 
-                    src={rectorSigUrl} 
-                    style={{ maxHeight: `${sigHeight}px` }}
-                    className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
-                    referrerPolicy="no-referrer"
-                    loading="eager"
-                    decoding="sync"
-                    alt="Assinatura Reitor" 
-                  />
-                ) : (
-                  <div className="w-full" style={{ height: `${sigHeight}px` }} />
-                )}
-              </div>
-              <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
-              <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
-                {rectorName || "Reitor"}
-              </h3>
-              <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
-                Reitor do Seminário
-              </p>
-            </div>
-          )}
-
-          {/* Assinaturas dos Responsáveis da Diocese ou Personalizadas */}
-          {(isDioceseEvent || (!showFajopaDirector && !showSeminarRector) || showSig1 || showSig2 || showSig3) && (
-            <>
-              {/* Responsável 1 */}
-              {showSig1 && (
-                <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
-                  <div 
-                    className="w-full flex items-end justify-center leading-none"
-                    style={{ 
-                      height: `${sigHeight}px`,
-                      minHeight: `${sigHeight}px`,
-                      maxHeight: `${sigHeight}px`,
-                      marginBottom: `${sigLineGap}px`
-                    }}
-                  >
-                    {sig1Url ? (
-                      <img 
-                        src={sig1Url} 
-                        style={{ maxHeight: `${sigHeight}px` }}
-                        className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
-                        referrerPolicy="no-referrer"
-                        loading="eager"
-                        decoding="sync"
-                        alt="Assinatura Responsável 1" 
-                      />
-                    ) : (
-                      <div className="w-full" style={{ height: `${sigHeight}px` }} />
-                    )}
-                  </div>
-                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
-                  <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
-                    {sig1Name || "Nome do Responsável"}
-                  </h3>
-                  <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
-                    {sig1Role || (isDioceseEvent ? "Coordenador(a) Diocesano(a)" : "Cargo / Função")}
-                  </p>
-                </div>
-              )}
-              
-              {/* Responsável 2 */}
-              {showSig2 && (
-                <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
-                  <div 
-                    className="w-full flex items-end justify-center leading-none"
-                    style={{ 
-                      height: `${sigHeight}px`,
-                      minHeight: `${sigHeight}px`,
-                      maxHeight: `${sigHeight}px`,
-                      marginBottom: `${sigLineGap}px`
-                    }}
-                  >
-                    {sig2Url ? (
-                      <img 
-                        src={sig2Url} 
-                        style={{ maxHeight: `${sigHeight}px` }}
-                        className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
-                        referrerPolicy="no-referrer"
-                        loading="eager"
-                        decoding="sync"
-                        alt="Assinatura Responsável 2" 
-                      />
-                    ) : (
-                      <div className="w-full" style={{ height: `${sigHeight}px` }} />
-                    )}
-                  </div>
-                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
-                  <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
-                    {sig2Name || (isDioceseEvent ? "Bispo / Assessor Eclesial" : "Segundo Responsável")}
-                  </h3>
-                  <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
-                    {sig2Role || (isDioceseEvent ? "Diocese / Pastoral" : "Cargo / Função")}
-                  </p>
-                </div>
-              )}
-
-              {/* Responsável 3 (Opcional) */}
-              {showSig3 && (
-                <div className="flex flex-col items-center text-center w-[260px] max-w-[280px] shrink-0">
-                  <div 
-                    className="w-full flex items-end justify-center leading-none"
-                    style={{ 
-                      height: `${sigHeight}px`,
-                      minHeight: `${sigHeight}px`,
-                      maxHeight: `${sigHeight}px`,
-                      marginBottom: `${sigLineGap}px`
-                    }}
-                  >
-                    {sig3Url ? (
-                      <img 
-                        src={sig3Url} 
-                        style={{ maxHeight: `${sigHeight}px` }}
-                        className="block max-w-[220px] object-contain transition-all pointer-events-none select-none" 
-                        referrerPolicy="no-referrer"
-                        loading="eager"
-                        decoding="sync"
-                        alt="Assinatura Responsável 3" 
-                      />
-                    ) : (
-                      <div className="w-full" style={{ height: `${sigHeight}px` }} />
-                    )}
-                  </div>
-                  <div className={`w-full border-b-2 ${currentTheme.signatureLineColor} mb-2 shrink-0`}></div>
-                  <h3 className={`text-xl font-bold leading-tight min-h-[28px] flex items-center justify-center ${currentTheme.nameColor}`}>
-                    {sig3Name || "Terceiro Responsável"}
-                  </h3>
-                  <p className={`text-sm font-medium leading-tight mt-0.5 min-h-[20px] ${currentTheme.roleColor}`}>
-                    {sig3Role || "Cargo / Função"}
-                  </p>
-                </div>
-              )}
-            </>
-          )}
+          ))}
         </div>
         
         {/* Verification QR Code & Authentication Stamp */}
