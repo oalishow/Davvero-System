@@ -1,4 +1,4 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, lazy, Suspense } from "react";
 import { useDialog } from "./context/DialogContext";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
@@ -34,7 +34,7 @@ import OfflineNotice from "./components/OfflineNotice";
 import { useSettings } from "./context/SettingsContext";
 import { APP_VERSION, CHANGELOG } from "./lib/constants";
 import { playSound } from "./lib/sounds";
-import { checkServerVersionWithAntiLoop, safeReloadApp, clearAppCaches } from "./lib/versionManager";
+import { checkServerVersionWithAntiLoop, safeReloadApp, clearAppCaches, isVersionOutdated } from "./lib/versionManager";
 import { triggerSWCheck } from "./pwa";
 import { lazyWithRetry } from "./lib/lazyWithRetry";
 import Verifier from "./components/Verifier";
@@ -243,6 +243,11 @@ export default function App() {
     setIsUpdating(true);
     setTargetVersionText(targetVer || APP_VERSION);
     setUpdateProgress(25);
+    try {
+      sessionStorage.removeItem("davvero_version_reload_count");
+      sessionStorage.removeItem("davvero_version_last_attempt_ts");
+      sessionStorage.removeItem("davvero_version_target");
+    } catch {}
     await clearAppCaches();
     setUpdateProgress(70);
     setTimeout(async () => {
@@ -278,10 +283,10 @@ export default function App() {
       // Disparar verificação tanto no service worker quanto na API de versão
       triggerSWCheck().catch(() => {});
       const startTime = Date.now();
-      const res = await checkServerVersionWithAntiLoop(true);
+      const res = await checkServerVersionWithAntiLoop(true, settings?.version);
       const elapsed = Date.now() - startTime;
-      if (elapsed < 1000) {
-        await new Promise((r) => setTimeout(r, 1000 - elapsed));
+      if (elapsed < 800) {
+        await new Promise((r) => setTimeout(r, 800 - elapsed));
       }
 
       if (res.isObsolete) {
@@ -327,13 +332,51 @@ export default function App() {
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
       const target = e.target as HTMLElement;
+      if (!target || !target.closest) return;
       if (target.closest('button') || target.closest('a') || target.closest('[role="button"]') || target.closest('input[type="checkbox"]')) {
         playSound('pop');
       }
     };
-    document.addEventListener('click', handleClick);
+    document.addEventListener('click', handleClick, { passive: true });
     return () => document.removeEventListener('click', handleClick);
   }, []);
+
+  // Verificação de versão unificada, estável e reativa
+  const performSafeVersionCheck = useCallback(async (force = false, knownVer?: string) => {
+    const candidate = knownVer || settings?.version;
+    const res = await checkServerVersionWithAntiLoop(force, candidate);
+    if (res.isObsolete) {
+      setTargetVersionText(res.serverVersion);
+      if (res.isLoopBlocked) {
+        // Bloqueio de loop acionado: impede auto-reloads infinitos e ativa o portão de bloqueio de versão obsoleta
+        setIsLoopBlocked(true);
+        setIsUpdating(false);
+      } else {
+        // Atualização automática limpa de 1 ciclo com sincronização profunda de caches
+        setIsLoopBlocked(false);
+        setIsUpdating(true);
+        setUpdateProgress(25);
+
+        await clearAppCaches();
+        setUpdateProgress(75);
+
+        setTimeout(async () => {
+          setUpdateProgress(100);
+          await safeReloadApp(res.serverVersion);
+        }, 450);
+      }
+    } else {
+      setIsLoopBlocked(false);
+    }
+  }, [settings?.version]);
+
+  // Observa sincronização em tempo real de versão via Firestore (settings.version)
+  useEffect(() => {
+    if (settings?.version && isVersionOutdated(APP_VERSION, settings.version)) {
+      console.log(`[App] Nova versão remota detectada (${settings.version}). Iniciando atualização automática...`);
+      performSafeVersionCheck(false, settings.version);
+    }
+  }, [settings?.version, performSafeVersionCheck]);
 
   useEffect(() => {
     // 1. Limpeza de query params acumulados (?_upd=, ?v= ou ?t=) para manter a URL limpa e evitar loops
@@ -358,56 +401,28 @@ export default function App() {
 
     localStorage.setItem("app_version", APP_VERSION);
 
-    // Verificação robusta de versão com proteção contra looping
-    const performSafeVersionCheck = async (force = false) => {
-      const res = await checkServerVersionWithAntiLoop(force);
-      if (res.isObsolete) {
-        setTargetVersionText(res.serverVersion);
-        if (res.isLoopBlocked) {
-          // Bloqueio de loop acionado: impede auto-reloads infinitos e apresenta tela de atualização segura
-          setIsLoopBlocked(true);
-          setIsUpdating(false);
-        } else {
-          // Atualização automática limpa de 1 ciclo
-          setIsLoopBlocked(false);
-          setIsUpdating(true);
-          setUpdateProgress(25);
-
-          await clearAppCaches();
-          setUpdateProgress(75);
-
-          setTimeout(async () => {
-            setUpdateProgress(100);
-            await safeReloadApp(res.serverVersion);
-          }, 450);
-        }
-      } else {
-        setIsLoopBlocked(false);
-      }
-    };
-
     // Verificação inicial imediata
-    performSafeVersionCheck(false);
+    performSafeVersionCheck(false, settings?.version);
 
     // Telemetry and Realtime Presence
     recordAppAccess();
     const stopPresence = startPresenceHeartbeat();
 
-    // Verificação periódica ativa a cada 45 segundos para detectar novas publicações imediatamente
+    // Verificação periódica ativa a cada 40 segundos para detectar novas publicações imediatamente
     const versionInterval = setInterval(() => {
-      performSafeVersionCheck(false);
-    }, 45 * 1000);
+      performSafeVersionCheck(false, settings?.version);
+    }, 40 * 1000);
 
     const onVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
-        performSafeVersionCheck(false);
+        performSafeVersionCheck(false, settings?.version);
         triggerSWCheck().catch(() => {});
       }
     };
 
     const onServiceWorkerUpdated = () => {
-      console.log("[App] Evento de Service Worker atualizado recebido.");
-      performSafeVersionCheck(true);
+      console.log("[App] Evento de Service Worker atualizado recebido. Executando atualização segura...");
+      performSafeVersionCheck(true, settings?.version);
     };
 
     window.addEventListener('focus', onVisibilityOrFocus);
@@ -425,7 +440,7 @@ export default function App() {
       window.removeEventListener('swUpdated', onServiceWorkerUpdated);
       window.removeEventListener('swNeedRefresh', onServiceWorkerUpdated);
     };
-  }, []);
+  }, [performSafeVersionCheck, settings?.version]);
 
   const handleGlobalVerify = (code: string) => {
     setTargetVerifyCode(code);

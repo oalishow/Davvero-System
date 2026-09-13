@@ -24,46 +24,58 @@ export const setSoundVolume = (vol: number) => {
 };
 
 let sharedAudioContext: AudioContext | any = null;
+let lastSoundTime = 0;
+let lastSoundType = '';
 
 export const playSound = (type: 'click' | 'success' | 'error' | 'notification' | 'pop' | 'flip' | 'scan' | 'generating' | 'login' | 'logout' | 'enroll') => {
-  // Trigger haptic feedback based on sound type
-  if (type === 'error') {
-    triggerHaptic('error');
-  } else if (type === 'success' || type === 'login' || type === 'enroll') {
-    triggerHaptic('success');
-  } else if (type === 'notification' || type === 'scan') {
-    triggerHaptic('medium');
-  } else if (type === 'click' || type === 'pop' || type === 'flip') {
-    triggerHaptic('light');
-  } else if (type === 'generating') {
-    triggerHaptic('heavy');
+  const nowMs = Date.now();
+  // Debounce duplicate sound triggers (e.g., when both global click listener and element onClick fire)
+  if (type === lastSoundType && nowMs - lastSoundTime < 50) {
+    return;
   }
+  lastSoundTime = nowMs;
+  lastSoundType = type;
 
-  try {
-    const AudioContextClass = typeof window !== 'undefined' ? (window.AudioContext || (window as any).webkitAudioContext) : null;
-    if (!AudioContextClass) return;
-    
-    if (!sharedAudioContext) {
-      sharedAudioContext = new AudioContextClass();
+  // Defer haptics & audio graph creation off the synchronous click path to guarantee 0ms input lag
+  setTimeout(() => {
+    // Trigger haptic feedback based on sound type
+    if (type === 'error') {
+      triggerHaptic('error');
+    } else if (type === 'success' || type === 'login' || type === 'enroll') {
+      triggerHaptic('success');
+    } else if (type === 'notification' || type === 'scan') {
+      triggerHaptic('medium');
+    } else if (type === 'click' || type === 'pop' || type === 'flip') {
+      triggerHaptic('light');
+    } else if (type === 'generating') {
+      triggerHaptic('heavy');
     }
-    
-    const ctx = sharedAudioContext;
-    if (ctx && ctx.state === 'suspended') {
-      try {
-        ctx.resume().catch(() => {});
-      } catch (e) {}
-    }
 
-    const osc = ctx.createOscillator();
-    const gain = ctx.createGain();
+    try {
+      const AudioContextClass = typeof window !== 'undefined' ? (window.AudioContext || (window as any).webkitAudioContext) : null;
+      if (!AudioContextClass) return;
+      
+      if (!sharedAudioContext) {
+        sharedAudioContext = new AudioContextClass();
+      }
+      
+      const ctx = sharedAudioContext;
+      if (ctx && ctx.state === 'suspended') {
+        try {
+          ctx.resume().catch(() => {});
+        } catch (e) {}
+      }
 
-    osc.connect(gain);
-    gain.connect(ctx.destination);
+      const osc = ctx.createOscillator();
+      const gain = ctx.createGain();
 
-    const now = ctx.currentTime;
-    const vol = getSoundVolume();
+      osc.connect(gain);
+      gain.connect(ctx.destination);
 
-    if (vol <= 0) return; // Muted
+      const now = ctx.currentTime;
+      const vol = getSoundVolume();
+
+      if (vol <= 0) return; // Muted
 
     if (type === 'click') {
       osc.type = 'sine';
@@ -164,7 +176,8 @@ export const playSound = (type: 'click' | 'success' | 'error' | 'notification' |
       osc.start(now);
       osc.stop(now + 0.3);
     }
-  } catch (e) {
-    console.warn('Audio playback failed', e);
-  }
+    } catch (e) {
+      console.warn('Audio playback failed', e);
+    }
+  }, 0);
 };

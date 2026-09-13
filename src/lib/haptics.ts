@@ -2,14 +2,26 @@ export type HapticType = 'light' | 'medium' | 'heavy' | 'success' | 'warning' | 
 
 const DAVVERO_HAPTICS_ENABLED = 'davveroId_haptics_enabled';
 
+// In-memory cache to prevent blocking synchronous localStorage reads on every user click
+let cachedHapticsEnabled: boolean | null = null;
+
 export const getHapticsEnabled = (): boolean => {
+  if (cachedHapticsEnabled !== null) return cachedHapticsEnabled;
   if (typeof window === 'undefined') return true;
-  const val = localStorage.getItem(DAVVERO_HAPTICS_ENABLED);
-  return val === null ? true : val === 'true';
+  try {
+    const val = localStorage.getItem(DAVVERO_HAPTICS_ENABLED);
+    cachedHapticsEnabled = val === null ? true : val === 'true';
+    return cachedHapticsEnabled;
+  } catch {
+    return true;
+  }
 };
 
 export const setHapticsEnabled = (enabled: boolean) => {
-  localStorage.setItem(DAVVERO_HAPTICS_ENABLED, enabled.toString());
+  cachedHapticsEnabled = enabled;
+  try {
+    localStorage.setItem(DAVVERO_HAPTICS_ENABLED, enabled.toString());
+  } catch {}
 };
 
 export const triggerHaptic = (type: HapticType = 'medium') => {
@@ -39,8 +51,8 @@ export const triggerHaptic = (type: HapticType = 'medium') => {
         default:
           navigator.vibrate(20);
       }
-    } catch (e) {
-      console.warn('Haptic feedback failed', e);
+    } catch {
+      // Haptics not allowed or unsupported in current browsing context
     }
   }
 };

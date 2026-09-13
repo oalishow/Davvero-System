@@ -5,7 +5,7 @@ import webpush from "web-push";
 import dotenv from "dotenv";
 import nodemailer from "nodemailer";
 import admin from "firebase-admin";
-import { APP_VERSION } from "./src/lib/constants.ts";
+import { APP_VERSION, APP_BUILD } from "./src/lib/constants.ts";
 
 dotenv.config();
 
@@ -59,11 +59,12 @@ async function startServer() {
   app.use(express.urlencoded({ extended: true, limit: "50mb" }));
 
   // App Version config
-  app.get("/api/version", (req, res) => {
+  app.get(["/api/version", "/version.json"], (req, res) => {
+    res.setHeader("Content-Type", "application/json; charset=utf-8");
     res.setHeader("Cache-Control", "no-store, no-cache, must-revalidate, proxy-revalidate");
     res.setHeader("Pragma", "no-cache");
     res.setHeader("Expires", "0");
-    res.json({ version: APP_VERSION });
+    res.json({ version: APP_VERSION, build: APP_BUILD });
   });
 
   // Manifest endpoint with explicit no-cache headers for Android PWA install

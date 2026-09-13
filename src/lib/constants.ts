@@ -43,8 +43,8 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "8.5b";
-export const APP_BUILD = "12.09.2026";
+export const APP_VERSION = "8.6b";
+export const APP_BUILD = "13.09.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
@@ -199,6 +199,8 @@ export function safeSessionStorageSet(key: string, value: string): boolean {
 }
 
 export const CHANGELOG = [
+  "Versão 8.6b - Otimização de Responsividade, Atualização Automática Contínua & Bloqueio Seguro de Versões Antigas",
+  "Eliminação de travamentos ao clicar em botões com execução assíncrona de efeitos sonoros e feedback tátil em memória; sincronização automática em tempo real de novas versões via service worker, Firestore e version.json estático; bloqueio estrito contra o funcionamento em versões obsoletas sem ocorrência de loops de recarregamento.",
   "Versão 8.5b - Modo Offline Inteligente, Certificados Avulsos por Planilha e Descrição Completa de Eventos",
   "Implementação de Modo Offline com armazenamento local persistente (IndexedDB e Service Worker), permitindo o uso contínuo da aplicação sem internet (carteirinha estudantil, Minha ID, certificados em cache e registro de check-in offline); banner e indicador visual em tempo real alertando o usuário sobre a ausência de conexão e recursos limitados (como novas inscrições e e-mails); sincronização automática ao restabelecer a rede; emissão de certificados diretamente pelo painel administrativo através de planilha ou inserção manual; e visualização expansível completa das descrições de eventos.",
   "Versão 8.4b - Uso da Carteirinha para Descontos, Usuários em Tempo Real sem Limitação & Padronização Maiúscula",
