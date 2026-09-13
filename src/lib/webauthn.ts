@@ -1,13 +1,64 @@
 export const isWebAuthnSupported = () => {
-    return typeof window !== "undefined" && window.PublicKeyCredential !== undefined;
+    return typeof window !== "undefined" && typeof window.PublicKeyCredential !== "undefined";
 };
 
-const isIframe = () => {
+export const isIframe = () => {
     try {
         return window.self !== window.top;
     } catch (e) {
         return true;
     }
+};
+
+export interface BiometricStatus {
+    supported: boolean;
+    hasPlatformSensor: boolean;
+    isIframe: boolean;
+    reason?: string;
+}
+
+export const checkBiometricAvailability = async (): Promise<BiometricStatus> => {
+    if (!isWebAuthnSupported()) {
+        return {
+            supported: false,
+            hasPlatformSensor: false,
+            isIframe: false,
+            reason: "Navegador ou dispositivo sem suporte à tecnologia WebAuthn."
+        };
+    }
+
+    if (isIframe()) {
+        return {
+            supported: true,
+            hasPlatformSensor: false,
+            isIframe: true,
+            reason: "Acesso biométrico restrito pelo navegador dentro da pré-visualização (janela embutida/iframe). Abra em uma nova aba para testar o leitor do aparelho."
+        };
+    }
+
+    let hasPlatform = false;
+    try {
+        if (typeof PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable === "function") {
+            hasPlatform = await PublicKeyCredential.isUserVerifyingPlatformAuthenticatorAvailable();
+        }
+    } catch (e) {
+        console.warn("Erro ao verificar sensor de plataforma:", e);
+    }
+
+    if (!hasPlatform) {
+        return {
+            supported: true,
+            hasPlatformSensor: false,
+            isIframe: false,
+            reason: "Nenhum leitor biométrico (digital/facial) ativo detectado neste dispositivo. Acesse com sua senha PIN."
+        };
+    }
+
+    return {
+        supported: true,
+        hasPlatformSensor: true,
+        isIframe: false
+    };
 };
 
 export function bufferToBase64URL(buffer: ArrayBuffer): string {
@@ -47,10 +98,17 @@ export const cancelBiometric = () => {
 };
 
 export const registerBiometric = async (userEmail: string, userName: string) => {
-    if (!isWebAuthnSupported()) throw new Error("Biometria não suportada neste dispositivo");
-    if (isIframe()) throw new Error("Recurso de biometria indisponível dentro de iframes (abra o portal em uma nova guia para validar)");
-    
-    // Abort any existing operation before registering
+    const availability = await checkBiometricAvailability();
+    if (!availability.supported) {
+        throw new Error(availability.reason || "Biometria não suportada neste dispositivo.");
+    }
+    if (availability.isIframe) {
+        throw new Error(availability.reason || "Abra o aplicativo em uma nova aba do navegador para usar a biometria.");
+    }
+    if (!availability.hasPlatformSensor) {
+        throw new Error(availability.reason || "Nenhum leitor biométrico detectado neste aparelho. Utilize seu PIN de 4 dígitos.");
+    }
+
     cancelBiometric();
     const abortController = new AbortController();
     activeBiometricAbortController = abortController;
@@ -62,22 +120,26 @@ export const registerBiometric = async (userEmail: string, userName: string) => 
 
     const publicKey: PublicKeyCredentialCreationOptions = {
         challenge,
-        rp: { name: "FAJOPA ID", id: window.location.hostname },
+        rp: {
+            name: "FAJOPA - Carteirinha Digital"
+        },
         user: {
             id: userId,
-            name: userEmail,
-            displayName: userName
+            name: userEmail || "aluno@fajopa",
+            displayName: userName || "Aluno FAJOPA"
         },
         pubKeyCredParams: [
-            { type: "public-key", alg: -7 },  // ES256
-            { type: "public-key", alg: -257 } // RS256
+            { type: "public-key", alg: -7 },   // ES256
+            { type: "public-key", alg: -257 }, // RS256
+            { type: "public-key", alg: -8 },   // Ed25519
+            { type: "public-key", alg: -37 }   // PS256
         ],
         authenticatorSelection: {
             authenticatorAttachment: "platform",
             userVerification: "preferred",
             residentKey: "preferred"
         },
-        timeout: 60000,
+        timeout: 20000,
         attestation: "none"
     };
 
@@ -90,6 +152,17 @@ export const registerBiometric = async (userEmail: string, userName: string) => 
             return bufferToBase64URL(credential.rawId);
         }
         throw new Error("Falha ao registrar biometria");
+    } catch (err: any) {
+        if (err.name === "AbortError") {
+            throw new Error("Leitura biométrica cancelada.");
+        }
+        if (err.name === "NotAllowedError") {
+            throw new Error("Ação cancelada pelo usuário ou leitor indisponível.");
+        }
+        if (err.name === "TimeoutError") {
+            throw new Error("Tempo limite do leitor esgotado. Tente novamente ou use seu PIN.");
+        }
+        throw err;
     } finally {
         if (activeBiometricAbortController === abortController) {
             activeBiometricAbortController = null;
@@ -98,10 +171,17 @@ export const registerBiometric = async (userEmail: string, userName: string) => 
 };
 
 export const verifyBiometric = async (credentialIdBase64?: string | null) => {
-    if (!isWebAuthnSupported()) throw new Error("Biometria não suportada neste dispositivo");
-    if (isIframe()) throw new Error("Recurso de biometria indisponível dentro de iframes (abra o portal em uma nova guia para validar)");
+    const availability = await checkBiometricAvailability();
+    if (!availability.supported) {
+        throw new Error(availability.reason || "Biometria não suportada neste dispositivo.");
+    }
+    if (availability.isIframe) {
+        throw new Error(availability.reason || "Abra o aplicativo em uma nova aba do navegador para usar a biometria.");
+    }
+    if (!availability.hasPlatformSensor) {
+        throw new Error(availability.reason || "Nenhum leitor biométrico detectado neste aparelho. Utilize seu PIN de 4 dígitos.");
+    }
 
-    // Abort any existing operation before verifying to prevent deadlock
     cancelBiometric();
     const abortController = new AbortController();
     activeBiometricAbortController = abortController;
@@ -116,20 +196,18 @@ export const verifyBiometric = async (credentialIdBase64?: string | null) => {
             if (rawIdBuffer && rawIdBuffer.byteLength > 0) {
                 allowCredentials.push({
                     type: "public-key",
-                    id: rawIdBuffer
-                    // Note: Do not constrain transports: ["internal", "hybrid"] 
-                    // Omitting transports lets the browser directly invoke the platform biometric sensor (fingerprint/FaceID)
+                    id: rawIdBuffer,
+                    transports: ["internal"]
                 });
             }
         } catch (e) {
-            console.warn("Falha ao decodificar credentialId, prosseguindo com credencial residente:", e);
+            console.warn("Falha ao decodificar credentialId:", e);
         }
     }
 
     const publicKey: PublicKeyCredentialRequestOptions = {
         challenge,
-        rpId: window.location.hostname,
-        timeout: 45000,
+        timeout: 20000,
         userVerification: "preferred"
     };
 
@@ -149,37 +227,11 @@ export const verifyBiometric = async (credentialIdBase64?: string | null) => {
         if (err.name === "AbortError") {
             throw new Error("Leitura biométrica cancelada.");
         }
-
-        // Se falhou com allowCredentials específico (ex: ID salvo incompatível ou passkey residente), tenta busca ampla
-        if (allowCredentials.length > 0 && err.name !== "NotAllowedError") {
-            try {
-                const fallbackChallenge = new Uint8Array(32);
-                crypto.getRandomValues(fallbackChallenge);
-                const fallbackKey: PublicKeyCredentialRequestOptions = {
-                    challenge: fallbackChallenge,
-                    rpId: window.location.hostname,
-                    timeout: 25000,
-                    userVerification: "preferred"
-                };
-                const assertion = await navigator.credentials.get({ 
-                    publicKey: fallbackKey,
-                    signal: abortController.signal 
-                });
-                if (assertion) {
-                    return true;
-                }
-            } catch (fallbackErr: any) {
-                if (fallbackErr.name === "AbortError") {
-                    throw new Error("Leitura biométrica cancelada.");
-                }
-            }
-        }
-
         if (err.name === "NotAllowedError") {
             throw new Error("Leitura biométrica cancelada ou não reconhecida.");
         }
         if (err.name === "TimeoutError") {
-            throw new Error("Tempo limite excedido na validação biométrica.");
+            throw new Error("Tempo limite do sensor esgotado. Tente novamente ou use seu PIN.");
         }
         throw err;
     } finally {

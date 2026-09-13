@@ -72,7 +72,7 @@ import { useSettings } from "../context/SettingsContext";
 import TermsOfUseModal from "./TermsOfUseModal";
 import HomePollsWidget from "./HomePollsWidget";
 import { playSound } from '../lib/sounds';
-import { isWebAuthnSupported, registerBiometric, verifyBiometric } from "../lib/webauthn";
+import { isWebAuthnSupported, registerBiometric, verifyBiometric, cancelBiometric, checkBiometricAvailability } from "../lib/webauthn";
 import { compressOriginalImage } from "../lib/cropUtils";
 
 const AsyncCertificateRenderer = memo(
@@ -687,6 +687,7 @@ export default function StudentPortal({
   const [isPrePinAnimation, setIsPrePinAnimation] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
   const [isBiometricAuthenticating, setIsBiometricAuthenticating] = useState(false);
+  const [modalIframeBiometric, setModalIframeBiometric] = useState(false);
   const [pendingCertTarget, setPendingCertTarget] = useState<{
     eventId: string;
     type: "participant" | "organizer";
@@ -1842,6 +1843,24 @@ export default function StudentPortal({
   const handleBiometricAuth = async () => {
     try {
       setError(null);
+
+      // Verificação prévia para evitar travamentos silenciosos
+      const availability = await checkBiometricAvailability();
+      if (availability.isIframe) {
+        setModalIframeBiometric(true);
+        return;
+      }
+      if (!availability.supported) {
+        setError("Seu navegador ou dispositivo não suporta autenticação biométrica WebAuthn.");
+        playSound('error');
+        return;
+      }
+      if (!availability.hasPlatformSensor) {
+        setError("Nenhum leitor biométrico (digital/facial) detectado ou ativado neste aparelho. Acesse com sua senha PIN de 4 dígitos.");
+        playSound('error');
+        return;
+      }
+
       setIsBiometricAuthenticating(true);
       const credId = localStorage.getItem("student_biometric_credential_id");
       if (credId) {
@@ -1850,13 +1869,14 @@ export default function StudentPortal({
         } catch (verifyErr: any) {
           const errName = verifyErr?.name || "";
           const msg = verifyErr?.message || "";
-          // Se falhou por cancelamento explícito do usuário, respeita
-          if (errName === "NotAllowedError" || msg.includes("cancelad") || msg.includes("AbortError")) {
+          // Se falhou por cancelamento explícito do usuário, encerra sem alterar credencial
+          if (errName === "AbortError" || msg.includes("cancelad") || errName === "NotAllowedError") {
             throw verifyErr;
           }
-          // Caso contrário (ex: credencial local desatualizada ou trocada), renova registro
+          // Caso a credencial guardada não coincida mais com a chave do sensor, renova
+          console.warn("Credencial biométrica anterior não reconhecida, tentando novo cadastro...", verifyErr);
+          localStorage.removeItem("student_biometric_credential_id");
           if (member) {
-            console.warn("Credencial biométrica anterior não reconhecida, renovando registro...", verifyErr);
             const newCredId = await registerBiometric(member.email || "aluno@fajopa", member.name);
             localStorage.setItem("student_biometric_credential_id", newCredId);
           } else {
@@ -1866,6 +1886,7 @@ export default function StudentPortal({
       } else {
         if (!member) {
           setIsBiometricAuthenticating(false);
+          setError("Dados institucionais não encontrados para habilitar biometria. Use sua senha PIN.");
           return;
         }
         const newCredId = await registerBiometric(member.email || "aluno@fajopa", member.name);
@@ -1888,22 +1909,20 @@ export default function StudentPortal({
       setIsBiometricAuthenticating(false);
       setIsGenerating(false);
       const errorMsg = e.message || "";
-      const isFrameError =
-        e.name === "SecurityError" ||
-        (e.name === "NotAllowedError" && (errorMsg.includes("iframe") || errorMsg.includes("Permissions Policy"))) ||
-        errorMsg.includes("publickey-credentials") || 
-        errorMsg.includes("feature is not enabled") ||
-        errorMsg.includes("Permissions Policy") ||
-        errorMsg.includes("iframes");
 
-      if (isFrameError) {
-        setError("BIOMETRIA RESTRITA NO IFRAME. CLIQUE EM 'ABRIR PORTAL' OU COPIE O LINK DE COMPARTILHAMENTO, OU USE SEU PIN NUMÉRICO.");
-      } else if (e.name === "NotAllowedError" || errorMsg.includes("cancelad")) {
-        setError("Leitura biométrica cancelada ou expirada. Tente novamente ou use seu PIN.");
+      if (e.name === "AbortError" || errorMsg.includes("cancelad")) {
+        // Cancelamento pelo próprio usuário
+        setError(null);
+      } else if (e.name === "NotAllowedError") {
+        setError("Validação biométrica cancelada ou não reconhecida. Tente novamente ou use seu PIN.");
+        playSound('error');
+      } else if (e.name === "TimeoutError" || errorMsg.includes("Tempo limite")) {
+        setError("Tempo limite esgotado. Tente novamente ou use seu PIN.");
+        playSound('error');
       } else {
-        setError(e.message || "FALHA NA BIOMETRIA. VOCÊ PODE USAR SEU PIN NUMÉRICO.");
+        setError(errorMsg || "Falha na leitura biométrica. Você pode usar sua senha PIN.");
+        playSound('error');
       }
-      playSound('error');
     } finally {
       setIsBiometricAuthenticating(false);
     }
@@ -2161,16 +2180,36 @@ export default function StudentPortal({
               Confirmar
             </button>
             {isWebAuthnSupported() && (
-              <button
-                onClick={handleBiometricAuth}
-                disabled={isBiometricAuthenticating}
-                className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 disabled:opacity-60"
-              >
-                <Fingerprint className={`w-5 h-5 ${isBiometricAuthenticating ? "animate-pulse text-indigo-500" : ""}`} />
-                {isBiometricAuthenticating
-                  ? "Aguardando Leitor Biométrico..."
-                  : (localStorage.getItem("student_biometric_credential_id") ? "Usar Biometria" : "Cadastrar Biometria")}
-              </button>
+              isBiometricAuthenticating ? (
+                <div className="w-full p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex flex-col items-center gap-2 animate-fade-in">
+                  <Fingerprint className="w-8 h-8 text-sky-600 dark:text-sky-400 animate-pulse" />
+                  <p className="text-xs font-bold text-sky-900 dark:text-sky-200">
+                    Aguardando leitor biométrico...
+                  </p>
+                  <p className="text-[11px] text-sky-700 dark:text-sky-300 text-center">
+                    Toque no sensor do aparelho ou use o Face ID
+                  </p>
+                  <button
+                    type="button"
+                    onClick={() => {
+                      cancelBiometric();
+                      setIsBiometricAuthenticating(false);
+                    }}
+                    className="mt-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white py-1.5 px-4 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all active:scale-95 shadow-sm"
+                  >
+                    Cancelar Leitura
+                  </button>
+                </div>
+              ) : (
+                <button
+                  type="button"
+                  onClick={handleBiometricAuth}
+                  className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+                >
+                  <Fingerprint className="w-5 h-5 text-indigo-500" />
+                  {localStorage.getItem("student_biometric_credential_id") ? "Usar Biometria" : "Cadastrar Biometria"}
+                </button>
+              )
             )}
             <div className="flex flex-col gap-2 mt-4 w-full">
               {pinMode === "verify" && (
@@ -2212,6 +2251,50 @@ export default function StudentPortal({
             precisará do código de segurança para vincular novamente.
           </Modal>
 
+          <Modal
+            isOpen={modalIframeBiometric}
+            onClose={() => setModalIframeBiometric(false)}
+            title="Biometria no Modo Prévia"
+            confirmLabel="Entendido"
+            onConfirm={() => setModalIframeBiometric(false)}
+          >
+            <div className="space-y-4 text-left">
+              <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-amber-800 dark:text-amber-300 text-sm">
+                <Fingerprint className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" />
+                <div>
+                  <p className="font-bold">Acesso biométrico protegido</p>
+                  <p className="text-xs mt-0.5 text-amber-700 dark:text-amber-300">
+                    O leitor biométrico físico (Face ID / digital) é restrito pelo navegador quando o app é executado em janelas embutidas (iframe).
+                  </p>
+                </div>
+              </div>
+              <p className="text-sm text-slate-600 dark:text-slate-300">
+                Para autenticar com sua digital ou Face ID, abra o portal em uma nova aba do navegador, ou utilize seu <strong>PIN de 4 dígitos</strong>.
+              </p>
+              <div className="pt-2 flex flex-col gap-2">
+                <a
+                  href={window.location.href}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="w-full py-3 text-center bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold shadow-md transition-all flex items-center justify-center gap-2"
+                >
+                  <ExternalLink className="w-4 h-4" />
+                  Abrir em Nova Aba
+                </a>
+                <button
+                  type="button"
+                  onClick={() => {
+                    setModalIframeBiometric(false);
+                    handleUnlockScreen();
+                  }}
+                  className="w-full py-3 text-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold transition-all"
+                >
+                  Digitar Senha / PIN
+                </button>
+              </div>
+            </div>
+          </Modal>
+
           <div className="flex flex-col items-center justify-center py-12 px-4 text-center space-y-8 animate-fade-in relative max-w-[320px] sm:max-w-sm mx-auto h-full min-h-[60vh]">
             <div className="absolute inset-0 bg-slate-900/5 backdrop-blur-[2px] rounded-3xl -z-10" />
             <div className="w-24 h-24 bg-sky-100 dark:bg-sky-500/10 rounded-full flex items-center justify-center text-sky-600 dark:text-sky-400 shadow-inner">
@@ -2237,16 +2320,40 @@ export default function StudentPortal({
               </button>
 
               {isWebAuthnSupported() && (
-                <button
-                  onClick={handleBiometricAuth}
-                  disabled={isBiometricAuthenticating}
-                  className="w-full py-4 bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/30 dark:hover:bg-sky-900/50 dark:text-sky-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm disabled:opacity-60"
-                >
-                  <Fingerprint className={`w-5 h-5 ${isBiometricAuthenticating ? "animate-pulse text-sky-600 dark:text-sky-400" : ""}`} />
-                  {isBiometricAuthenticating
-                    ? "Aguardando Leitor Biométrico..."
-                    : (localStorage.getItem("student_biometric_credential_id") ? "Acessar com Biometria" : "Habilitar Biometria")}
-                </button>
+                isBiometricAuthenticating ? (
+                  <div className="w-full p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex flex-col items-center gap-2.5 animate-fade-in shadow-sm">
+                    <div className="relative flex items-center justify-center py-1">
+                      <Fingerprint className="w-10 h-10 text-sky-600 dark:text-sky-400 animate-pulse" />
+                    </div>
+                    <div className="text-center">
+                      <p className="text-sm font-bold text-sky-900 dark:text-sky-200">
+                        Aguardando Leitor Biométrico...
+                      </p>
+                      <p className="text-xs text-sky-700 dark:text-sky-300 mt-0.5">
+                        Toque no leitor do aparelho ou use o Face ID
+                      </p>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        cancelBiometric();
+                        setIsBiometricAuthenticating(false);
+                      }}
+                      className="mt-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white py-1.5 px-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all active:scale-95 shadow-sm"
+                    >
+                      Cancelar / Usar Senha PIN
+                    </button>
+                  </div>
+                ) : (
+                  <button
+                    type="button"
+                    onClick={handleBiometricAuth}
+                    className="w-full py-4 bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/30 dark:hover:bg-sky-900/50 dark:text-sky-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm"
+                  >
+                    <Fingerprint className="w-5 h-5 text-sky-600 dark:text-sky-400" />
+                    {localStorage.getItem("student_biometric_credential_id") ? "Acessar com Biometria" : "Habilitar Biometria"}
+                  </button>
+                )
               )}
             </div>
             {error && (
