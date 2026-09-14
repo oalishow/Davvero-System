@@ -161,16 +161,19 @@ export default function App() {
   const handleOverrideConsumed = useCallback(() => setAdminForceViewCode(null), []);
   const handleExternalVerified = useCallback(() => setTargetVerifyCode(null), []);
 
-  // Pré-carregamento sob demanda acionado apenas quando o usuário mantém o foco/hover por um tempo mínimo
+  // Pré-carregamento sob demanda com atraso mínimo de repouso (hover delay)
+  // Reduz consumo desnecessário de rede e memória durante varreduras rápidas de cursor
   const prefetchTab = useCallback((
     tab: "student" | "courses" | "events" | "appointments" | "diocese" | "admin",
-    minHoverDelay = 180
+    minHoverDelay = 300
   ) => {
     cancelPrefetch();
 
-    // Respeita modo de economia de dados do usuário
-    if (typeof navigator !== "undefined" && (navigator as any).connection?.saveData) {
-      return;
+    // Se estiver offline ou com modo de economia de dados ativado, não faz prefetch preventivo
+    if (typeof navigator !== "undefined") {
+      if (navigator.onLine === false || (navigator as any).connection?.saveData) {
+        return;
+      }
     }
 
     // Evita consumo redundante caso a aba já esteja aberta ou já tenha sido baixada
@@ -179,6 +182,8 @@ export default function App() {
     }
 
     const loadComponent = () => {
+      // Garante que a requisição só é enviada se a rede estiver disponível
+      if (typeof navigator !== "undefined" && navigator.onLine === false) return;
       if (prefetchedTabsRef.current.has(tab)) return;
       prefetchedTabsRef.current.add(tab);
       try {
@@ -200,14 +205,15 @@ export default function App() {
     }
   }, [activeTab, cancelPrefetch]);
 
-  // Limpeza de timers de pré-carregamento: elimina consumo de dados/memória na inicialização
+  // Limpeza de timers de pré-carregamento ao desmontar ou trocar de aba
   useEffect(() => {
     return () => {
       if (hoverPrefetchTimerRef.current) {
         clearTimeout(hoverPrefetchTimerRef.current);
+        hoverPrefetchTimerRef.current = null;
       }
     };
-  }, []);
+  }, [activeTab]);
   const [targetVerifyCode, setTargetVerifyCode] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -224,14 +230,8 @@ export default function App() {
   useEffect(() => {
     if (targetVerifyCode) {
       setActiveTab("verifier");
-      setTimeout(() => {
-        const root = document.getElementById("certificate-verifier-root") || document.getElementById("certificate-verifier-container");
-        if (root) {
-          root.scrollIntoView({ behavior: "smooth", block: "start" });
-        } else {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }
-      }, 80);
+      // Mantém o cabeçalho superior e cadeado visíveis garantindo scroll no topo
+      window.scrollTo({ top: 0, behavior: "smooth" });
     }
   }, [targetVerifyCode]);
   const [adminForceViewCode, setAdminForceViewCode] = useState<string | null>(

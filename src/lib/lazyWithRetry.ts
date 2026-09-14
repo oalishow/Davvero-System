@@ -29,7 +29,10 @@ export function lazyWithRetry<T extends ComponentType<any>>(
               error?.message?.includes('Failed to fetch') ||
               error?.message?.includes('Loading chunk');
 
-            if (isChunkError && typeof window !== 'undefined') {
+            // CRÍTICO: Nunca recarregar a página se o usuário estiver offline, pois isso exibe o erro nativo do navegador "Não foi possível acessar esse site"
+            const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+
+            if (isChunkError && isOnline && typeof window !== 'undefined') {
               const key = 'chunk_reload_attempt';
               const lastAttempt = sessionStorage.getItem(key);
               const now = Date.now();

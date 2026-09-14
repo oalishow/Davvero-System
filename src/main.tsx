@@ -47,13 +47,18 @@ window.addEventListener('unhandledrejection', (event) => {
       return;
     }
 
-    // Se falhar ao buscar módulo dinâmico após nova publicação, recarregar suavemente uma única vez
+    // Se falhar ao buscar módulo dinâmico após nova publicação, recarregar suavemente apenas se estiver ONLINE
     if (
       reasonStr.includes('dynamically imported module') ||
       reasonStr.includes('Loading chunk') ||
       reasonStr.includes('error loading dynamically imported module')
     ) {
       event.preventDefault();
+      const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+      if (!isOnline) {
+        console.warn('[main] Falha de import dinâmico em modo offline; reload suprimido.');
+        return;
+      }
       const last = sessionStorage.getItem('global_chunk_recover_ts');
       const now = Date.now();
       if (!last || now - parseInt(last, 10) > 12000) {
@@ -84,6 +89,11 @@ window.addEventListener('error', (event) => {
       msg.includes('error loading dynamically imported module')
     ) {
       event.preventDefault();
+      const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
+      if (!isOnline) {
+        console.warn('[main] Erro de chunk de script em modo offline; reload suprimido.');
+        return;
+      }
       const last = sessionStorage.getItem('global_chunk_recover_ts');
       const now = Date.now();
       if (!last || now - parseInt(last, 10) > 12000) {

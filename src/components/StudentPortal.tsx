@@ -249,20 +249,9 @@ const StudentPortal = memo(function StudentPortal({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const scrollToCard = () => {
-    // Dynamic adaptive scroll preserving page header and top controls visibility
+    // Mantém a página sempre no topo para que o cabeçalho e cadeado fiquem sempre visíveis
     if (typeof window === 'undefined') return;
-    window.requestAnimationFrame(() => {
-      const el = cardRef.current || document.getElementById('student-carteirinha-container');
-      if (el) {
-        const rect = el.getBoundingClientRect();
-        // Só aciona scroll se a carteirinha estiver completamente fora da visão
-        if (rect.top > window.innerHeight) {
-          el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
-        } else if (rect.top < 0) {
-          window.scrollTo({ top: 0, behavior: 'smooth' });
-        }
-      }
-    });
+    window.scrollTo({ top: 0, behavior: 'smooth' });
   };
 
   // Fallback PIN state

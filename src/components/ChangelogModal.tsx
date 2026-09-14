@@ -8,6 +8,18 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v8.7b',
+      title: 'Modo Offline PWA Resiliente, Estabilização do Cabeçalho & Otimização de Pré-carregamento',
+      changes: [
+        'Resiliência no Modo Offline: supressão de recargas forçadas da página quando a conexão de rede estiver indisponível, impedindo a tela de erro de conexão do navegador ("Não foi possível acessar esse site") ao carregar chunks dinâmicos ou verificar versões.',
+        'Preservação do Cache Offline: bloqueio de purga de CacheStorage quando sem internet, garantindo que os assets e dados cacheados do PWA permaneçam 100% disponíveis offline.',
+        'Fixação e Estabilidade do Cabeçalho: remoção de deslocamentos abruptos de rolagem durante a verificação de certificados ou consultas de estudantes, mantendo o topo da página e o cadeado de gestão sempre visíveis e acessíveis.',
+        'Otimização de Pré-carregamento (prefetchTab): refinamento da função de pré-carregamento e delay de repouso (hover) nas abas para carregar módulos sob demanda apenas com intenção clara do usuário, economizando memória e dados móveis.',
+        'Suavização do Efeito Scanner: pipeline do feixe óptico do ícone animado com aceleração gráfica pura via transform GPU, sem engasgos ou quedas de quadros.'
+      ],
+      current: true,
+    },
+    {
       version: 'v8.3b',
       title: 'Presença Online em Tempo Real, Correção no Diploma do Certificado & Busca Exata de QR Code',
       changes: [
@@ -17,7 +29,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Autenticação de QR Code sem Falsos Conflitos: busca e resolução priorizada pelo código exato do certificado, evitando que participantes com múltiplos certificados (ex.: ouvinte e organizador) sofram sobreposição indevida ao escanear o QR Code individual.',
         'Estabilização de Ouvintes do Firestore: desacoplamento de listeners e salvamento idempotente no renderizador de certificados.',
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v8.2b',

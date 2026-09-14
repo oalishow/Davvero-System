@@ -86,6 +86,12 @@ export function isVersionOutdated(local: string, server: string): boolean {
  * or corrupting user application state.
  */
 export async function clearAppCaches(): Promise<void> {
+  // Se estiver offline, NUNCA limpar caches do PWA para preservar o funcionamento offline
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    console.log("[VersionManager] Offline detectado; limpeza de caches suprimida para preservar modo offline.");
+    return;
+  }
+
   try {
     // 1. Clear CacheStorage (PWA and fetch caches)
     if (typeof window !== "undefined" && "caches" in window) {
@@ -117,6 +123,11 @@ export async function clearAppCaches(): Promise<void> {
  * Safely reloads the application with clean URL params and cache-busting timestamp
  */
 export async function safeReloadApp(targetVersion?: string): Promise<void> {
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    console.warn("[VersionManager] Tentativa de reload com rede offline cancelada.");
+    return;
+  }
+
   const finalVersion = targetVersion || APP_VERSION;
   try {
     localStorage.setItem("app_version", finalVersion);
@@ -142,6 +153,17 @@ export async function checkServerVersionWithAntiLoop(
   force = false,
   knownServerVersion?: string
 ): Promise<VersionCheckResult> {
+  // Se estiver offline, retorna imediatamente sem tentar requisições de rede nem disparar recargas
+  if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+    return {
+      isObsolete: false,
+      serverVersion: APP_VERSION,
+      localVersion: APP_VERSION,
+      isLoopBlocked: false,
+      status: "up_to_date",
+    };
+  }
+
   const now = Date.now();
   if (!force && now - lastCheckTime < CHECK_COOLDOWN_MS) {
     return {
