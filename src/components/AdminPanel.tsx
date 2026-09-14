@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useMemo } from "react";
+import React, { useState, useEffect, useRef, useMemo, lazy, Suspense } from "react";
 import { createPortal } from "react-dom";
 import { playSound } from "../lib/sounds";
 import {
@@ -39,42 +39,39 @@ import type { Member } from "../types";
 import { AVAILABLE_SEMINARIES } from "../types";
 import { useSettings } from "../context/SettingsContext";
 import { APP_VERSION, deduplicateList } from "../lib/constants";
-import MemberList from "./MemberList";
-import SettingsModal from "./SettingsModal";
-import RecycleBinModal from "./RecycleBinModal";
-import BackupModal from "./BackupModal";
-import AdminRequestsModal from "./AdminRequestsModal";
 import FajopaIDCard from "./FajopaIDCard";
 import { motion } from "motion/react";
-import { X } from "lucide-react";
-import ImageCropperModal from "./ImageCropperModal";
-import PrintReportModal from "./PrintReportModal";
-import ImportExportMembers from "./ImportExportMembers";
-import EventManagement from "./EventManagement";
-import EventsRecycleBin from "./EventsRecycleBin";
-import NotificationsManager from "./NotificationsManager";
-import AdminAppointments from "./AdminAppointments";
-import DashboardPanel from "./DashboardPanel";
-import AdminPolls from "./AdminPolls";
-import AdminCourses from "./AdminCourses";
-import DuplicateMembersModal from "./DuplicateMembersModal";
+import { X, Calendar, BriefcaseMedical, LayoutDashboard, Vote, GraduationCap } from "lucide-react";
 import { checkMemberDuplicates, findDuplicateGroups } from "../lib/memberDeduplication";
 import { performAutoBackupIfDue } from "../lib/autoBackup";
-import { Calendar, BriefcaseMedical, LayoutDashboard, Vote, GraduationCap } from "lucide-react";
+
+const MemberList = lazy(() => import("./MemberList"));
+const SettingsModal = lazy(() => import("./SettingsModal"));
+const RecycleBinModal = lazy(() => import("./RecycleBinModal"));
+const BackupModal = lazy(() => import("./BackupModal"));
+const AdminRequestsModal = lazy(() => import("./AdminRequestsModal"));
+const ImageCropperModal = lazy(() => import("./ImageCropperModal"));
+const PrintReportModal = lazy(() => import("./PrintReportModal"));
+const ImportExportMembers = lazy(() => import("./ImportExportMembers"));
+const EventManagement = lazy(() => import("./EventManagement"));
+const EventsRecycleBin = lazy(() => import("./EventsRecycleBin"));
+const NotificationsManager = lazy(() => import("./NotificationsManager"));
+const AdminAppointments = lazy(() => import("./AdminAppointments"));
+const DashboardPanel = lazy(() => import("./DashboardPanel"));
+const AdminPolls = lazy(() => import("./AdminPolls"));
+const AdminCourses = lazy(() => import("./AdminCourses"));
+const DuplicateMembersModal = lazy(() => import("./DuplicateMembersModal"));
+
+const AdminTabSpinner = () => (
+  <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+    <Loader2 className="w-8 h-8 animate-spin text-sky-500 mb-2" />
+    <span className="text-xs font-semibold">Carregando painel...</span>
+  </div>
+);
 
 export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   const { settings, updateSettings, loading } = useSettings();
   const [activeTab, setActiveTab] = useState<"dashboard" | "members" | "events" | "appointments" | "notifications" | "polls" | "courses">("dashboard");
-  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set(["dashboard"]));
-
-  useEffect(() => {
-    setVisitedTabs((prev) => {
-      if (prev.has(activeTab)) return prev;
-      const next = new Set(prev);
-      next.add(activeTab);
-      return next;
-    });
-  }, [activeTab]);
 
   const processedExpiredIdsRef = useRef<Set<string>>(new Set());
   const [name, setName] = useState("");
@@ -536,14 +533,16 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
   return (
     <div className="animated-fade-in">
       {cropImageSrc && (
-        <ImageCropperModal
-          imageSrc={cropImageSrc}
-          onClose={() => setCropImageSrc(null)}
-          onCropComplete={(croppedBase64) => {
-            setPhotoBase64(croppedBase64);
-            setCropImageSrc(null);
-          }}
-        />
+        <Suspense fallback={null}>
+          <ImageCropperModal
+            imageSrc={cropImageSrc}
+            onClose={() => setCropImageSrc(null)}
+            onCropComplete={(croppedBase64) => {
+              setPhotoBase64(croppedBase64);
+              setCropImageSrc(null);
+            }}
+          />
+        </Suspense>
       )}
 
       <div className="flex justify-between items-center mb-6 border-b border-slate-200 dark:border-slate-700/60 pb-3 sm:pb-4 no-print gap-2">
@@ -696,26 +695,26 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
         </button>
       </div>
 
-      {visitedTabs.has("dashboard") && (
-        <div className={activeTab === "dashboard" ? "block" : "hidden"}>
+      {activeTab === "dashboard" && (
+        <Suspense fallback={<AdminTabSpinner />}>
           <DashboardPanel allMembers={allMembers} />
-        </div>
+        </Suspense>
       )}
 
-      {visitedTabs.has("courses") && (
-        <div className={activeTab === "courses" ? "block" : "hidden"}>
+      {activeTab === "courses" && (
+        <Suspense fallback={<AdminTabSpinner />}>
           <AdminCourses />
-        </div>
+        </Suspense>
       )}
 
-      {visitedTabs.has("polls") && (
-        <div className={activeTab === "polls" ? "block" : "hidden"}>
+      {activeTab === "polls" && (
+        <Suspense fallback={<AdminTabSpinner />}>
           <AdminPolls />
-        </div>
+        </Suspense>
       )}
 
-      {visitedTabs.has("events") && (
-        <div className={activeTab === "events" ? "block" : "hidden"}>
+      {activeTab === "events" && (
+        <Suspense fallback={<AdminTabSpinner />}>
           <div className="space-y-12">
             <EventManagement adminAccessLevel={adminAccessLevel} />
             {adminAccessLevel !== "LEITOR" && (
@@ -724,42 +723,42 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
               </div>
             )}
           </div>
-        </div>
+        </Suspense>
       )}
 
-      {visitedTabs.has("appointments") && (
-        <div className={activeTab === "appointments" ? "block" : "hidden"}>
-          <div className="space-y-4">
-            {settings?.appointmentsExternalLink ? (
-              <div className="bg-sky-50 dark:bg-sky-900/20 p-6 rounded-2xl border border-sky-100 dark:border-sky-800 text-center text-sky-800 dark:text-sky-300">
-                <h3 className="text-lg font-bold mb-2">Modo Simplificado Ativo</h3>
-                <p className="text-sm opacity-80 mb-4">Os agendamentos estão configurados para usar um link externo (WhatsApp/Agenda).</p>
-                <button onClick={() => updateSettings({ appointmentsExternalLink: '' })} className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors">
-                  Restaurar Sistema Interno
-                </button>
-              </div>
-            ) : null}
-            <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
-              <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 font-display flex items-center gap-3">
-                <span className="bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400 p-2 rounded-xl">
-                  <BriefcaseMedical className="w-5 h-5" />
-                </span>
-                Painel de Agendamentos (WhatsApp)
-              </h2>
+      {activeTab === "appointments" && (
+        <div className="space-y-4">
+          {settings?.appointmentsExternalLink ? (
+            <div className="bg-sky-50 dark:bg-sky-900/20 p-6 rounded-2xl border border-sky-100 dark:border-sky-800 text-center text-sky-800 dark:text-sky-300">
+              <h3 className="text-lg font-bold mb-2">Modo Simplificado Ativo</h3>
+              <p className="text-sm opacity-80 mb-4">Os agendamentos estão configurados para usar um link externo (WhatsApp/Agenda).</p>
+              <button onClick={() => updateSettings({ appointmentsExternalLink: '' })} className="bg-sky-600 hover:bg-sky-700 text-white px-4 py-2 rounded-xl text-sm font-bold transition-colors">
+                Restaurar Sistema Interno
+              </button>
             </div>
-            <AdminAppointments />
+          ) : null}
+          <div className="flex flex-col sm:flex-row justify-between items-start sm:items-center gap-4 mb-6">
+            <h2 className="text-xl font-black text-slate-800 dark:text-slate-100 font-display flex items-center gap-3">
+              <span className="bg-sky-100 text-sky-600 dark:bg-sky-900/30 dark:text-sky-400 p-2 rounded-xl">
+                <BriefcaseMedical className="w-5 h-5" />
+              </span>
+              Painel de Agendamentos (WhatsApp)
+            </h2>
           </div>
+          <Suspense fallback={<AdminTabSpinner />}>
+            <AdminAppointments />
+          </Suspense>
         </div>
       )}
 
-      {visitedTabs.has("notifications") && (
-        <div className={activeTab === "notifications" ? "block" : "hidden"}>
+      {activeTab === "notifications" && (
+        <Suspense fallback={<AdminTabSpinner />}>
           <NotificationsManager />
-        </div>
+        </Suspense>
       )}
       
-      {visitedTabs.has("members") && (
-        <div className={activeTab === "members" ? "block" : "hidden"}>
+      {activeTab === "members" && (
+        <div>
           <div className="grid grid-cols-2 md:grid-cols-4 gap-3 sm:gap-4 mb-8 no-print">
             <button
               onClick={() => {
@@ -872,7 +871,9 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
                   </button>
                 </div>
 
-                <ImportExportMembers members={allMembers} onImportComplete={() => {}} />
+                <Suspense fallback={null}>
+                  <ImportExportMembers members={allMembers} onImportComplete={() => {}} />
+                </Suspense>
               </>
             )}
           </div>
@@ -1257,7 +1258,11 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
               </div>
             </div>
 
-            {showList && <MemberList initialFilterStatus={listFilterStatus} adminAccessLevel={adminAccessLevel} />}
+            {showList && (
+              <Suspense fallback={<AdminTabSpinner />}>
+                <MemberList initialFilterStatus={listFilterStatus} adminAccessLevel={adminAccessLevel} />
+              </Suspense>
+            )}
 
             <div className="bg-gradient-to-br from-sky-500/10 to-blue-500/10 border border-sky-200 dark:border-sky-500/20 p-4 rounded-2xl mb-4 mt-6 flex flex-col sm:flex-row items-center justify-between gap-4">
               <div className="flex items-center gap-3">
@@ -1299,12 +1304,26 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
         </div>
       )}
 
-      {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
-      {showBin && <RecycleBinModal onClose={() => setShowBin(false)} />}
-      {showBackup && <BackupModal onClose={() => setShowBackup(false)} />}
-      {showRequests && (
-        <AdminRequestsModal onClose={() => setShowRequests(false)} />
-      )}
+      <Suspense fallback={null}>
+        {showSettings && <SettingsModal onClose={() => setShowSettings(false)} />}
+        {showBin && <RecycleBinModal onClose={() => setShowBin(false)} />}
+        {showBackup && <BackupModal onClose={() => setShowBackup(false)} />}
+        {showRequests && (
+          <AdminRequestsModal onClose={() => setShowRequests(false)} />
+        )}
+        {showPrintReport && (
+          <PrintReportModal onClose={() => setShowPrintReport(false)} />
+        )}
+        {showDuplicateModal && (
+          <DuplicateMembersModal
+            isOpen={showDuplicateModal}
+            onClose={() => setShowDuplicateModal(false)}
+            members={allMembers}
+            currentAdminName={adminMember?.name || "Administrador"}
+          />
+        )}
+      </Suspense>
+
       {showMyCard && adminMember && createPortal(
         <div className="fixed inset-0 z-[100] flex items-center justify-center p-4 bg-slate-900/60 backdrop-blur-sm no-print">
           <motion.div 
@@ -1325,17 +1344,6 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
             <p className="text-[10px] text-slate-500 mt-6 text-center font-medium uppercase italic">Este card reflete o cadastro vinculado ao seu e-mail de acesso.</p>
           </motion.div>
         </div>, document.body
-      )}
-      {showPrintReport && (
-        <PrintReportModal onClose={() => setShowPrintReport(false)} />
-      )}
-      {showDuplicateModal && (
-        <DuplicateMembersModal
-          isOpen={showDuplicateModal}
-          onClose={() => setShowDuplicateModal(false)}
-          members={allMembers}
-          currentAdminName={adminMember?.name || "Administrador"}
-        />
       )}
       
     </div>

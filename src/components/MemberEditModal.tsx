@@ -1,6 +1,6 @@
-import { useState, useRef, useEffect, ChangeEvent } from 'react';
+import { useState, useRef, useEffect, ChangeEvent, lazy, Suspense } from 'react';
 import { createPortal } from 'react-dom';
-import { X, Save, Trash2, ShieldAlert, Download, Image as ImageIcon, Printer, Award, FileText } from 'lucide-react';
+import { X, Save, Trash2, ShieldAlert, Download, Image as ImageIcon, Printer, Award, FileText, Loader2 } from 'lucide-react';
 import { doc, updateDoc } from 'firebase/firestore';
 import { db, appId, createNotification } from '../lib/firebase';
 import { logAdminAction } from '../lib/audit';
@@ -12,7 +12,8 @@ import { URL_STORAGE_KEY, DEFAULT_PUBLIC_URL, deduplicateList } from '../lib/con
 import ImageCropperModal from './ImageCropperModal';
 import Modal from './Modal';
 import DavveroLogo from './DavveroLogo';
-import StudentCertificatesManager from './StudentCertificatesManager';
+
+const StudentCertificatesManager = lazy(() => import('./StudentCertificatesManager'));
 
 interface MemberEditModalProps {
   member: Member;
@@ -311,10 +312,17 @@ export default function MemberEditModal({ member, onClose, onUpdate, initialTab 
 
         {activeTab === 'certificates' ? (
           <div>
-            <StudentCertificatesManager
-              member={member}
-              onCountChange={setCertificatesCount}
-            />
+            <Suspense fallback={
+              <div className="flex flex-col items-center justify-center p-12 text-slate-400">
+                <Loader2 className="w-8 h-8 animate-spin text-sky-500 mb-2" />
+                <span className="text-xs font-semibold">Carregando painel de certificados...</span>
+              </div>
+            }>
+              <StudentCertificatesManager
+                member={member}
+                onCountChange={setCertificatesCount}
+              />
+            </Suspense>
 
             <div className="flex justify-between items-center mt-6 pt-5 border-t border-slate-200 dark:border-slate-700/60 gap-4 no-print">
               <button

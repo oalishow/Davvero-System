@@ -27,10 +27,6 @@ import {
   Sparkles,
   Trash2,
 } from "lucide-react";
-import JSZip from "jszip";
-import { jsPDF } from "jspdf";
-import { toCanvas } from "html-to-image";
-import html2canvas from "html2canvas";
 import { db, appId } from "../lib/firebase";
 import { ASSETS_DOC_PATH } from "../lib/constants";
 import { CertificateRenderer } from "./CertificateRenderer";
@@ -737,6 +733,7 @@ export default function StudentCertificatesManager({
 
     // 3. Captura com toCanvas (ou html2canvas como fallback)
     try {
+      const { toCanvas } = await import("html-to-image");
       const canvas = await toCanvas(node, {
         pixelRatio: 2.2,
         skipFonts: false,
@@ -745,6 +742,7 @@ export default function StudentCertificatesManager({
       return canvas;
     } catch (errCanvas) {
       console.warn("toCanvas falhou, usando html2canvas:", errCanvas);
+      const html2canvas = (await import("html2canvas")).default;
       const canvas = await html2canvas(node, {
         scale: 2.2,
         useCORS: true,
@@ -759,7 +757,8 @@ export default function StudentCertificatesManager({
   // -------------------------------------------------------------
   // UTILITÁRIO: GERAR PDF VIA jsPDF
   // -------------------------------------------------------------
-  const generatePdfFromCanvas = (canvas: HTMLCanvasElement): jsPDF => {
+  const generatePdfFromCanvas = async (canvas: HTMLCanvasElement) => {
+    const { jsPDF } = await import("jspdf");
     const imgData = canvas.toDataURL("image/jpeg", 0.96);
     const pdf = new jsPDF({
       orientation: "landscape",
@@ -821,7 +820,7 @@ export default function StudentCertificatesManager({
       // Certificado oficial de evento
       const nodeId = `admin-cert-node-${cert.key}`;
       const canvas = await renderCertificateToCanvas(nodeId);
-      const pdf = generatePdfFromCanvas(canvas);
+      const pdf = await generatePdfFromCanvas(canvas);
 
       const typeStr = cert.type === "organizer" ? "Organizacao" : "Participacao";
       const studentStr = sanitizeFilename(member.name || "Aluno");
@@ -852,6 +851,7 @@ export default function StudentCertificatesManager({
     });
 
     try {
+      const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
       const studentStr = sanitizeFilename(member.name || "Aluno");
       const total = allCertificates.length;
@@ -898,7 +898,7 @@ export default function StudentCertificatesManager({
           // Processar certificado oficial do evento
           const nodeId = `admin-cert-node-${cert.key}`;
           const canvas = await renderCertificateToCanvas(nodeId);
-          const pdf = generatePdfFromCanvas(canvas);
+          const pdf = await generatePdfFromCanvas(canvas);
           const pdfBlob = pdf.output("blob");
           zip.file(fileName, pdfBlob);
         }

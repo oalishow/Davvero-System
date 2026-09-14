@@ -160,12 +160,7 @@ export default function Verifier({
     setIsProcessing(true);
     if (typeof window !== "undefined") {
       setTimeout(() => {
-        const radar = document.getElementById("certificate-verifier-container") || document.getElementById("certificate-verifier-root");
-        if (radar) {
-          radar.scrollIntoView({ behavior: "smooth", block: "center" });
-        } else {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }
+        window.scrollTo({ top: 0, behavior: "smooth" });
       }, 50);
     }
 
@@ -234,13 +229,8 @@ export default function Verifier({
           setIsProcessing(false);
 
           setTimeout(() => {
-            const panel = document.getElementById("verification-result-panel");
-            if (panel) {
-              panel.scrollIntoView({ behavior: "smooth", block: "start" });
-            } else {
-              window.scrollTo({ top: 0, behavior: "smooth" });
-            }
-          }, 100);
+            window.scrollTo({ top: 0, behavior: "smooth" });
+          }, 50);
           return;
         }
       } catch (e) {
@@ -455,15 +445,10 @@ export default function Verifier({
         });
         playSound("success");
 
-        // Auto-scroll to verification panel to show validation animation
+        // Keep page header with settings padlock visible at top
         setTimeout(() => {
-          const panel = document.getElementById("verification-result-panel");
-          if (panel) {
-            panel.scrollIntoView({ behavior: "smooth", block: "start" });
-          } else {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }
-        }, 100);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }, 50);
       } else {
         recordQRScan("certificate", rawCode, "Não Encontrado");
         showAlert(
@@ -477,11 +462,8 @@ export default function Verifier({
         playSound("error");
 
         setTimeout(() => {
-          const panel = document.getElementById("verification-result-panel");
-          if (panel) {
-            panel.scrollIntoView({ behavior: "smooth", block: "start" });
-          }
-        }, 100);
+          window.scrollTo({ top: 0, behavior: "smooth" });
+        }, 50);
       }
     } catch (err: any) {
       console.error("Error verifying certificate:", err);
@@ -499,15 +481,10 @@ export default function Verifier({
         playSound('error');
       }
 
-      // Smooth scroll down to the verification result panel to display the validation animation
+      // Keep page header with settings padlock visible at top upon verification
       const scrollTimer = setTimeout(() => {
-        const resultPanel = document.getElementById("verification-result-panel");
-        if (resultPanel) {
-          resultPanel.scrollIntoView({ behavior: "smooth", block: "start" });
-        } else {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }
-      }, 80);
+        window.scrollTo({ top: 0, behavior: "smooth" });
+      }, 50);
 
       return () => clearTimeout(scrollTimer);
     }
@@ -751,11 +728,8 @@ export default function Verifier({
     setValidationResult(null);
 
     setTimeout(() => {
-      const readerBox = document.getElementById("reader-container");
-      if (readerBox) {
-        readerBox.scrollIntoView({ behavior: "smooth", block: "center" });
-      }
-    }, 80);
+      window.scrollTo({ top: 0, behavior: "smooth" });
+    }, 50);
   };
 
   useEffect(() => {

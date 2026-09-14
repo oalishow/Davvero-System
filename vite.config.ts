@@ -72,13 +72,68 @@ export default defineConfig(({mode}) => {
     define: {
       // API Keys moved to backend
     },
+    optimizeDeps: {
+      include: [
+        'react',
+        'react-dom',
+        'react-dom/client',
+        'react/jsx-runtime',
+        'react/jsx-dev-runtime',
+        'motion/react',
+        'lucide-react',
+        'firebase/app',
+        'firebase/auth',
+        'firebase/firestore',
+        'firebase/storage',
+        'firebase/messaging',
+        'date-fns',
+        'canvas-confetti',
+        'clsx',
+        'tailwind-merge',
+        'qrcode.react',
+        'react-easy-crop',
+        'recharts',
+        'html2canvas',
+        'html-to-image',
+        'html5-qrcode',
+        'jspdf',
+        'jspdf-autotable',
+        'jszip',
+        'xlsx',
+      ],
+    },
     resolve: {
+      dedupe: ['react', 'react-dom'],
       alias: {
         '@': path.resolve(__dirname, '.'),
       },
     },
     build: {
       outDir: 'dist',
+      chunkSizeWarningLimit: 1200,
+      rollupOptions: {
+        output: {
+          manualChunks(id) {
+            if (id.includes('node_modules')) {
+              if (id.includes('jspdf') || id.includes('xlsx') || id.includes('jszip') || id.includes('html2canvas') || id.includes('html-to-image')) {
+                return 'vendor-export';
+              }
+              if (id.includes('recharts') || id.includes('d3-')) {
+                return 'vendor-charts';
+              }
+              if (id.includes('firebase')) {
+                return 'vendor-firebase';
+              }
+              if (id.includes('lucide-react')) {
+                return 'vendor-icons';
+              }
+              if (id.includes('motion')) {
+                return 'vendor-motion';
+              }
+            }
+          },
+        },
+      },
     },
     server: {
       // HMR is disabled in AI Studio via DISABLE_HMR env var.

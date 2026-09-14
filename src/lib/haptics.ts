@@ -4,6 +4,7 @@ const DAVVERO_HAPTICS_ENABLED = 'davveroId_haptics_enabled';
 
 // In-memory cache to prevent blocking synchronous localStorage reads on every user click
 let cachedHapticsEnabled: boolean | null = null;
+let lastHapticTime = 0;
 
 export const getHapticsEnabled = (): boolean => {
   if (cachedHapticsEnabled !== null) return cachedHapticsEnabled;
@@ -26,30 +27,33 @@ export const setHapticsEnabled = (enabled: boolean) => {
 
 export const triggerHaptic = (type: HapticType = 'medium') => {
   if (!getHapticsEnabled()) return;
+  const now = Date.now();
+  if (now - lastHapticTime < 80) return;
+  lastHapticTime = now;
   
   if (typeof navigator !== 'undefined' && navigator.vibrate) {
     try {
       switch (type) {
         case 'light':
-          navigator.vibrate(10);
+          navigator.vibrate(8);
           break;
         case 'medium':
-          navigator.vibrate(20);
+          navigator.vibrate(15);
           break;
         case 'heavy':
-          navigator.vibrate(40);
+          navigator.vibrate(30);
           break;
         case 'success':
-          navigator.vibrate([15, 50, 15]);
+          navigator.vibrate([15, 40, 15]);
           break;
         case 'warning':
-          navigator.vibrate([20, 50, 40]);
+          navigator.vibrate([20, 40, 30]);
           break;
         case 'error':
-          navigator.vibrate([50, 50, 50, 50, 50]);
+          navigator.vibrate([40, 40, 40]);
           break;
         default:
-          navigator.vibrate(20);
+          navigator.vibrate(15);
       }
     } catch {
       // Haptics not allowed or unsupported in current browsing context

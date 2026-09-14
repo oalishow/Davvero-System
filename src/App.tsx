@@ -1,4 +1,4 @@
-import { useState, useEffect, useCallback, lazy, Suspense } from "react";
+import { useState, useEffect, useCallback, useRef, lazy, Suspense } from "react";
 import { useDialog } from "./context/DialogContext";
 import Header from "./components/Header";
 import Footer from "./components/Footer";
@@ -41,6 +41,7 @@ import Verifier from "./components/Verifier";
 import YouTubeLiveButton from "./components/YouTubeLiveButton";
 import HomePollsWidget from "./components/HomePollsWidget";
 import { useYouTubeLive } from "./hooks/useYouTubeLive";
+import WelcomeModal from "./components/WelcomeModal";
 
 const Admin = lazyWithRetry(() => import("./components/Admin"));
 const StudentPortal = lazyWithRetry(() => import("./components/StudentPortal"));
@@ -48,7 +49,6 @@ const EventsPage = lazyWithRetry(() => import("./components/EventsPage"));
 const PublicAppointmentsList = lazyWithRetry(() => import("./components/PublicAppointmentsList"));
 const DioceseHub = lazyWithRetry(() => import("./components/DioceseHub"));
 const CoursesOffers = lazyWithRetry(() => import("./components/CoursesOffers"));
-const WelcomeModal = lazyWithRetry(() => import("./components/WelcomeModal"));
 
 export default function App() {
   const { settings } = useSettings();
@@ -139,50 +139,74 @@ export default function App() {
     return "verifier";
   });
 
-  // Mantém abas visitadas ativas para eliminação de travamentos e latência zero ao alternar
-  const [visitedTabs, setVisitedTabs] = useState<Set<string>>(() => new Set([activeTab]));
+  const prefetchedTabsRef = useRef<Set<string>>(new Set());
+  const hoverPrefetchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
-  const switchTab = (tab: "verifier" | "admin" | "student" | "events" | "diocese" | "appointments" | "courses") => {
-    setVisitedTabs((prev) => {
-      if (prev.has(tab)) return prev;
-      const next = new Set(prev);
-      next.add(tab);
-      return next;
-    });
+  const cancelPrefetch = useCallback(() => {
+    if (hoverPrefetchTimerRef.current) {
+      clearTimeout(hoverPrefetchTimerRef.current);
+      hoverPrefetchTimerRef.current = null;
+    }
+  }, []);
+
+  const switchTab = useCallback((tab: "verifier" | "admin" | "student" | "events" | "diocese" | "appointments" | "courses") => {
+    cancelPrefetch();
     setActiveTab(tab);
-  };
+    playSound('pop');
+  }, [cancelPrefetch]);
 
+  const handleStudentNavigate = useCallback(() => switchTab("student"), [switchTab]);
+  const handleEventsNavigate = useCallback(() => switchTab("events"), [switchTab]);
+  const handleDioceseNavigate = useCallback(() => switchTab("diocese"), [switchTab]);
+  const handleOverrideConsumed = useCallback(() => setAdminForceViewCode(null), []);
+  const handleExternalVerified = useCallback(() => setTargetVerifyCode(null), []);
+
+  // Pré-carregamento sob demanda acionado apenas quando o usuário mantém o foco/hover por um tempo mínimo
+  const prefetchTab = useCallback((
+    tab: "student" | "courses" | "events" | "appointments" | "diocese" | "admin",
+    minHoverDelay = 180
+  ) => {
+    cancelPrefetch();
+
+    // Respeita modo de economia de dados do usuário
+    if (typeof navigator !== "undefined" && (navigator as any).connection?.saveData) {
+      return;
+    }
+
+    // Evita consumo redundante caso a aba já esteja aberta ou já tenha sido baixada
+    if (activeTab === tab || prefetchedTabsRef.current.has(tab)) {
+      return;
+    }
+
+    const loadComponent = () => {
+      if (prefetchedTabsRef.current.has(tab)) return;
+      prefetchedTabsRef.current.add(tab);
+      try {
+        if (tab === "student") import("./components/StudentPortal");
+        else if (tab === "courses") import("./components/CoursesOffers");
+        else if (tab === "events") import("./components/EventsPage");
+        else if (tab === "diocese") import("./components/DioceseHub");
+        else if (tab === "appointments") import("./components/PublicAppointmentsList");
+        else if (tab === "admin") import("./components/Admin");
+      } catch {
+        prefetchedTabsRef.current.delete(tab);
+      }
+    };
+
+    if (minHoverDelay > 0) {
+      hoverPrefetchTimerRef.current = setTimeout(loadComponent, minHoverDelay);
+    } else {
+      loadComponent();
+    }
+  }, [activeTab, cancelPrefetch]);
+
+  // Limpeza de timers de pré-carregamento: elimina consumo de dados/memória na inicialização
   useEffect(() => {
-    setVisitedTabs((prev) => {
-      if (prev.has(activeTab)) return prev;
-      const next = new Set(prev);
-      next.add(activeTab);
-      return next;
-    });
-  }, [activeTab]);
-
-  // Pré-carregamento suave em segundo plano após inicialização estável da tela
-  useEffect(() => {
-    if (typeof window === "undefined") return;
-    const timer = setTimeout(async () => {
-      try {
-        await import("./components/StudentPortal");
-      } catch (e) {
-        console.debug("[Prefetch] StudentPortal deferido:", e);
+    return () => {
+      if (hoverPrefetchTimerRef.current) {
+        clearTimeout(hoverPrefetchTimerRef.current);
       }
-      try {
-        await import("./components/EventsPage");
-      } catch (e) {
-        console.debug("[Prefetch] EventsPage deferido:", e);
-      }
-      try {
-        await import("./components/CoursesOffers");
-      } catch (e) {
-        console.debug("[Prefetch] CoursesOffers deferido:", e);
-      }
-    }, 2500);
-
-    return () => clearTimeout(timer);
+    };
   }, []);
   const [targetVerifyCode, setTargetVerifyCode] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
@@ -257,10 +281,7 @@ export default function App() {
   };
 
   const handleOpenAdmin = () => {
-    playSound('pop');
-    if (activeTab !== "admin") {
-      setActiveTab("admin");
-    }
+    switchTab("admin");
     // Redireciona na tela para as opções (dashboard, membros, eventos, agendamentos, etc.)
     setTimeout(() => {
       window.dispatchEvent(new CustomEvent("focus-admin-options"));
@@ -331,9 +352,9 @@ export default function App() {
 
   useEffect(() => {
     const handleClick = (e: MouseEvent) => {
-      const target = e.target as HTMLElement;
-      if (!target || !target.closest) return;
-      if (target.closest('button') || target.closest('a') || target.closest('[role="button"]') || target.closest('input[type="checkbox"]')) {
+      const target = e.target as HTMLElement | null;
+      if (!target?.closest) return;
+      if (target.closest('button, a, [role="button"], input[type="checkbox"]')) {
         playSound('pop');
       }
     };
@@ -403,6 +424,7 @@ export default function App() {
 
     // Verificação inicial imediata
     performSafeVersionCheck(false, settings?.version);
+    triggerSWCheck().catch(() => {});
 
     // Telemetry and Realtime Presence
     recordAppAccess();
@@ -411,6 +433,7 @@ export default function App() {
     // Verificação periódica ativa a cada 40 segundos para detectar novas publicações imediatamente
     const versionInterval = setInterval(() => {
       performSafeVersionCheck(false, settings?.version);
+      triggerSWCheck().catch(() => {});
     }, 40 * 1000);
 
     const onVisibilityOrFocus = () => {
@@ -420,9 +443,34 @@ export default function App() {
       }
     };
 
-    const onServiceWorkerUpdated = () => {
-      console.log("[App] Evento de Service Worker atualizado recebido. Executando atualização segura...");
-      performSafeVersionCheck(true, settings?.version);
+    const onServiceWorkerUpdated = async () => {
+      console.log("[App] Evento de Service Worker atualizado recebido. Executando atualização automática segura...");
+      const now = Date.now();
+      let lastReload = 0;
+      try {
+        lastReload = parseInt(sessionStorage.getItem('davvero_sw_last_reload') || '0', 10);
+      } catch {}
+      if (now - lastReload < 12000) {
+        console.log("[App] Atualização recente evitada pelo circuit breaker.");
+        return;
+      }
+      try {
+        sessionStorage.setItem('davvero_sw_last_reload', String(now));
+      } catch {}
+
+      setIsLoopBlocked(false);
+      setIsUpdating(true);
+      setUpdateProgress(30);
+
+      try {
+        await clearAppCaches();
+      } catch {}
+      setUpdateProgress(80);
+
+      setTimeout(async () => {
+        setUpdateProgress(100);
+        await safeReloadApp();
+      }, 400);
     };
 
     window.addEventListener('focus', onVisibilityOrFocus);
@@ -444,12 +492,12 @@ export default function App() {
 
   const handleGlobalVerify = (code: string) => {
     setTargetVerifyCode(code);
-    setActiveTab("verifier");
+    switchTab("verifier");
   };
 
   const handleAdminForceView = (code: string) => {
     setAdminForceViewCode(code);
-    setActiveTab("student");
+    switchTab("student");
   };
 
   const handleUpdateClick = () => {
@@ -466,13 +514,13 @@ export default function App() {
     // Expose global triggers for deep components
     (window as any).triggerVerification = handleGlobalVerify;
     (window as any).triggerAdminForceView = handleAdminForceView;
-    (window as any).triggerTab = (tab: any) => setActiveTab(tab);
+    (window as any).triggerTab = (tab: any) => switchTab(tab);
     (window as any).triggerStudentTab = (subTab?: string) => {
       if (subTab) {
         sessionStorage.setItem("student_target_tab", subTab);
         window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: subTab } }));
       }
-      setActiveTab("student");
+      switchTab("student");
     };
     (window as any).triggerWelcomeModal = () => setShowWelcomeModal(true);
     (window as any).triggerCheckUpdates = handleInteractiveUpdateCheck;
@@ -487,14 +535,14 @@ export default function App() {
           const code = params.get("cert") || params.get("verify");
           if (code) {
             setTargetVerifyCode(code);
-            setActiveTab("verifier");
+            switchTab("verifier");
           }
           return;
         }
 
         const tab = params.get("tab") || params.get("view");
         if (tab === "events" || tab === "eventos" || params.has("event") || params.has("checkin")) {
-          setActiveTab("events");
+          switchTab("events");
         } else if (
           tab === "student" ||
           tab === "aluno" ||
@@ -505,18 +553,20 @@ export default function App() {
           params.has("eventId") ||
           params.has("certType")
         ) {
-          setActiveTab("student");
+          switchTab("student");
           if (tab === "certificates" || tab === "certificados" || params.get("subTab") === "certificates") {
             setTimeout(() => {
               window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: "certificates" } }));
             }, 80);
           }
         } else if (tab === "diocese") {
-          setActiveTab("diocese");
+          switchTab("diocese");
         } else if (tab === "appointments" || tab === "agendamentos") {
-          setActiveTab("appointments");
+          switchTab("appointments");
+        } else if (tab === "courses" || tab === "cursos") {
+          switchTab("courses");
         } else if (tab === "admin") {
-          setActiveTab("admin");
+          switchTab("admin");
         }
       } catch (e) {
         console.warn("handleUrlNavigation error:", e);
@@ -629,16 +679,16 @@ export default function App() {
         <div className="absolute -top-32 -left-32 w-64 h-64 bg-sky-300 dark:bg-sky-600 rounded-full mix-blend-multiply dark:mix-blend-screen blur-[90px] opacity-30 pointer-events-none print:hidden" />
         <div className="absolute -bottom-32 -right-32 w-64 h-64 bg-emerald-300 dark:bg-emerald-600 rounded-full mix-blend-multiply dark:mix-blend-screen blur-[90px] opacity-30 pointer-events-none print:hidden" />
 
+        {/* MODAL DE BOAS-VINDAS */}
+        <WelcomeModal 
+          isOpen={showWelcomeModal && !isUpdating && !showUpdateModal}
+          onClose={() => {
+            localStorage.setItem("has_seen_welcome", "true");
+            setShowWelcomeModal(false);
+          }} 
+        />
+
         <AnimatePresence>
-            <Suspense fallback={null} key="welcome-suspense">
-              <WelcomeModal 
-                isOpen={showWelcomeModal && !isUpdating && !showUpdateModal}
-                onClose={() => {
-                  localStorage.setItem("has_seen_welcome", "true");
-                  setShowWelcomeModal(false);
-                }} 
-              />
-            </Suspense>
           {/* MODAL DE BUSCA INTERATIVA DE ATUALIZAÇÕES */}
           {updateCheckModal.isOpen && (
             <motion.div
@@ -992,6 +1042,9 @@ export default function App() {
             >
               <button
                 onClick={() => switchTab("student")}
+                onMouseEnter={() => prefetchTab("student")}
+                onMouseLeave={cancelPrefetch}
+                onTouchStart={() => prefetchTab("student", 120)}
                 className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "student" ? "bg-white dark:bg-amber-500 text-amber-600 dark:text-amber-50 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
               >
                 <User className="w-4 h-4 mb-0.5" />
@@ -999,6 +1052,7 @@ export default function App() {
               </button>
               <button
                 onClick={() => switchTab("verifier")}
+                onMouseEnter={cancelPrefetch}
                 className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "verifier" ? "bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
               >
                 <Shield className="w-4 h-4 mb-0.5" />
@@ -1007,6 +1061,9 @@ export default function App() {
               {settings.coursesEnabled !== false && (
                 <button
                   onClick={() => switchTab("courses")}
+                  onMouseEnter={() => prefetchTab("courses")}
+                  onMouseLeave={cancelPrefetch}
+                  onTouchStart={() => prefetchTab("courses", 120)}
                   className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "courses" ? "bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                 >
                   <GraduationCap className="w-4 h-4 mb-0.5" />
@@ -1017,6 +1074,9 @@ export default function App() {
               {settings.eventsEnabled !== false && (
                 <button
                   onClick={() => switchTab("events")}
+                  onMouseEnter={() => prefetchTab("events")}
+                  onMouseLeave={cancelPrefetch}
+                  onTouchStart={() => prefetchTab("events", 120)}
                   className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "events" ? "bg-white dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                 >
                   <Calendar className="w-4 h-4 mb-0.5" />
@@ -1026,6 +1086,9 @@ export default function App() {
               {settings.appointmentsEnabled !== false && (
                 <button
                   onClick={() => switchTab("appointments")}
+                  onMouseEnter={() => prefetchTab("appointments")}
+                  onMouseLeave={cancelPrefetch}
+                  onTouchStart={() => prefetchTab("appointments", 120)}
                   className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "appointments" ? "bg-white dark:bg-purple-600 text-purple-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
                 >
                   <HeartHandshake className="w-4 h-4 mb-0.5" />
@@ -1034,6 +1097,9 @@ export default function App() {
               )}
               <button
                 onClick={() => switchTab("diocese")}
+                onMouseEnter={() => prefetchTab("diocese")}
+                onMouseLeave={cancelPrefetch}
+                onTouchStart={() => prefetchTab("diocese", 120)}
                 className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "diocese" ? "bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
               >
                 <Landmark className="w-4 h-4 mb-0.5" />
@@ -1049,65 +1115,51 @@ export default function App() {
                 </div>
               }
             >
-              {visitedTabs.has("verifier") && (
-                <div className={activeTab === "verifier" ? "block" : "hidden"}>
-                  <div className="space-y-6">
-                    <div id="certificate-verifier-root" className="scroll-mt-6">
-                      <Verifier
-                        externalCode={targetVerifyCode}
-                        onExternalVerified={() => setTargetVerifyCode(null)}
-                      />
-                    </div>
-                    {!targetVerifyCode && <HomePollsWidget />}
+              {activeTab === "verifier" && (
+                <div className="space-y-6">
+                  <div id="certificate-verifier-root" className="scroll-mt-6">
+                    <Verifier
+                      externalCode={targetVerifyCode}
+                      onExternalVerified={handleExternalVerified}
+                    />
                   </div>
+                  {!targetVerifyCode && <HomePollsWidget />}
                 </div>
               )}
 
-              {visitedTabs.has("admin") && (
-                <div className={activeTab === "admin" ? "block" : "hidden"}>
-                  <div id="admin-section" className="scroll-mt-20">
-                    <Admin />
-                  </div>
+              {activeTab === "admin" && (
+                <div id="admin-section" className="scroll-mt-20">
+                  <Admin />
                 </div>
               )}
 
-              {visitedTabs.has("events") && (
-                <div className={activeTab === "events" ? "block" : "hidden"}>
-                  <EventsPage onNavigateToStudent={() => setActiveTab("student")} />
-                </div>
+              {activeTab === "events" && (
+                <EventsPage onNavigateToStudent={handleStudentNavigate} />
               )}
 
-              {visitedTabs.has("appointments") && (
-                <div className={activeTab === "appointments" ? "block" : "hidden"}>
-                  <PublicAppointmentsList member={null} onNavigateToStudent={() => setActiveTab("student")} />
-                </div>
+              {activeTab === "appointments" && (
+                <PublicAppointmentsList member={null} onNavigateToStudent={handleStudentNavigate} />
               )}
 
-              {visitedTabs.has("courses") && (
-                <div className={activeTab === "courses" ? "block" : "hidden"}>
-                  <CoursesOffers
-                    onNavigateToStudent={() => switchTab("student")}
-                    onNavigateToDiocese={() => switchTab("diocese")}
-                  />
-                </div>
+              {activeTab === "courses" && (
+                <CoursesOffers
+                  onNavigateToStudent={handleStudentNavigate}
+                  onNavigateToDiocese={handleDioceseNavigate}
+                />
               )}
 
-              {visitedTabs.has("diocese") && (
-                <div className={activeTab === "diocese" ? "block" : "hidden"}>
-                  <DioceseHub
-                    member={null}
-                    onNavigateToEvents={() => setActiveTab("events")}
-                  />
-                </div>
+              {activeTab === "diocese" && (
+                <DioceseHub
+                  member={null}
+                  onNavigateToEvents={handleEventsNavigate}
+                />
               )}
 
-              {visitedTabs.has("student") && (
-                <div className={activeTab === "student" ? "block" : "hidden"}>
-                  <StudentPortal
-                    overrideCode={adminForceViewCode}
-                    onOverrideConsumed={() => setAdminForceViewCode(null)}
-                  />
-                </div>
+              {activeTab === "student" && (
+                <StudentPortal
+                  overrideCode={adminForceViewCode}
+                  onOverrideConsumed={handleOverrideConsumed}
+                />
               )}
             </Suspense>
           </div>

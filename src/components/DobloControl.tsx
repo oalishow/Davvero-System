@@ -6,8 +6,6 @@ import { Member, AVAILABLE_SEMINARIES } from "../types";
 import { getDoc, getDocs, limit, where } from "firebase/firestore";
 import { onAuthStateChanged } from "firebase/auth";
 import { Car, Trash2, Calendar, Search, Edit2, Fingerprint, FileDown, CheckCircle2, KeyRound, X } from "lucide-react";
-import jsPDF from "jspdf";
-import autoTable from "jspdf-autotable";
 import EditDobloModal from "./EditDobloModal";
 import RecycleBinModal from "./RecycleBinModal";
 
@@ -350,7 +348,9 @@ export default function DobloControl({ currentUser: initialCurrentUser, isAdmin:
     }
   };
 
-  const handleExportPDF = () => {
+  const handleExportPDF = async () => {
+    const { default: jsPDF } = await import("jspdf");
+    const { default: autoTable } = await import("jspdf-autotable");
     const doc = new jsPDF();
     doc.setFontSize(16);
     doc.text(`Relatório de Uso da Doblô - ${viewMode === 'monthly' ? selectedMonth : selectedWeek}`, 14, 15);

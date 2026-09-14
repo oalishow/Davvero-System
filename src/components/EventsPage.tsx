@@ -49,21 +49,21 @@ import {
 } from "../lib/firebase";
 import type { Event, Attendance, Member } from "../types";
 import { AVAILABLE_DIOCESES } from "../types";
-import PublicAttendeesModal from "./PublicAttendeesModal";
 import Modal from "./Modal";
-import PublicRequestModal from "./PublicRequestModal";
-import RegistrationSuccessModal from "./RegistrationSuccessModal";
-import EventQrCodeModal from "./EventQrCodeModal";
-import QuickEventEnrollModal from "./QuickEventEnrollModal";
-import CreateDioceseEventModal from "./CreateDioceseEventModal";
-import EventAttendeesModal from "./EventAttendeesModal";
-import CertificateEditor from "./CertificateEditor";
-import EventCheckInModal from "./EventCheckInModal";
+const PublicAttendeesModal = React.lazy(() => import("./PublicAttendeesModal"));
+const PublicRequestModal = React.lazy(() => import("./PublicRequestModal"));
+const RegistrationSuccessModal = React.lazy(() => import("./RegistrationSuccessModal"));
+const EventQrCodeModal = React.lazy(() => import("./EventQrCodeModal"));
+const QuickEventEnrollModal = React.lazy(() => import("./QuickEventEnrollModal"));
+const CreateDioceseEventModal = React.lazy(() => import("./CreateDioceseEventModal"));
+const EventAttendeesModal = React.lazy(() => import("./EventAttendeesModal"));
+const CertificateEditor = React.lazy(() => import("./CertificateEditor"));
+const EventCheckInModal = React.lazy(() => import("./EventCheckInModal"));
+const EventManagement = React.lazy(() => import("./EventManagement"));
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import { DEFAULT_PUBLIC_URL } from "../lib/constants";
 import { isEventCertificateReleased, getEventEndTime } from "../lib/certificateAuth";
-import EventManagement from "./EventManagement";
 
 export default function EventsPage({ onNavigateToStudent, renderSeminary = false }: { onNavigateToStudent?: () => void, renderSeminary?: boolean }) {
   const { showAlert } = useDialog();
@@ -99,7 +99,18 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     }
     return null;
   });
-  const [events, setEvents] = useState<Event[]>([]);
+  const [events, setEvents] = useState<Event[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("fajopa_cached_events");
+        if (cached) {
+          const parsed = JSON.parse(cached);
+          if (Array.isArray(parsed) && parsed.length > 0) return parsed;
+        }
+      } catch {}
+    }
+    return [];
+  });
   const [eventTypeTab, setEventTypeTab] = useState<"general" | "seminary" | "diocese" | "appointments">(renderSeminary ? "seminary" : "general");
   const [subTab, setSubTab] = useState<"upcoming" | "past">("upcoming");
   const [myAttendances, setMyAttendances] = useState<Attendance[]>([]);
@@ -236,6 +247,9 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
         return aIsFuture ? -1 : 1;
       });
       setEvents(evts);
+      try {
+        localStorage.setItem("fajopa_cached_events", JSON.stringify(evts.slice(0, 50)));
+      } catch {}
     }, (err) => {
       console.warn("Notice in EventsPage events listener:", err?.message || err);
     });
@@ -562,10 +576,12 @@ END:VCALENDAR`;
     <div className="space-y-6">
       <div className={`${renderSeminary ? 'bg-amber-600 dark:bg-amber-700 border-amber-500 dark:border-amber-600' : 'bg-sky-600 dark:bg-sky-700 border-sky-500 dark:border-sky-600'} rounded-3xl p-6 sm:p-8 text-white relative overflow-hidden shadow-lg border`}>
         {viewPublicAttendeesEvent && (
-          <PublicAttendeesModal
-            event={viewPublicAttendeesEvent}
-            onClose={() => setViewPublicAttendeesEvent(null)}
-          />
+          <React.Suspense fallback={null}>
+            <PublicAttendeesModal
+              event={viewPublicAttendeesEvent}
+              onClose={() => setViewPublicAttendeesEvent(null)}
+            />
+          </React.Suspense>
         )}
         <div className="relative z-10 flex flex-col items-center text-center">
           <div className="w-16 h-16 bg-white/20 backdrop-blur-sm rounded-2xl flex items-center justify-center mb-4">
@@ -596,7 +612,16 @@ END:VCALENDAR`;
             title="Gerenciamento de Eventos"
           >
             <div className="max-h-[80vh] overflow-y-auto custom-scrollbar p-1">
-               <EventManagement adminAccessLevel="ADMIN" member={member} />
+              <React.Suspense
+                fallback={
+                  <div className="p-12 text-center text-slate-500 font-bold flex flex-col items-center justify-center">
+                    <div className="w-8 h-8 border-3 border-sky-500 border-t-transparent rounded-full animate-spin mb-3" />
+                    <span>Carregando Gerenciador de Eventos...</span>
+                  </div>
+                }
+              >
+                <EventManagement adminAccessLevel="ADMIN" member={member} />
+              </React.Suspense>
             </div>
           </Modal>
         )}
@@ -1438,109 +1463,111 @@ END:VCALENDAR`;
         </div>
       </Modal>
 
-      {selectedQrEvent && (
-        <EventQrCodeModal
-          event={selectedQrEvent}
-          onClose={() => setSelectedQrEvent(null)}
-        />
-      )}
+      <React.Suspense fallback={null}>
+        {selectedQrEvent && (
+          <EventQrCodeModal
+            event={selectedQrEvent}
+            onClose={() => setSelectedQrEvent(null)}
+          />
+        )}
 
-      {quickEnrollEvent && (
-        <QuickEventEnrollModal
-          event={quickEnrollEvent}
-          onClose={() => setQuickEnrollEvent(null)}
-          onSuccess={(createdMember) => {
-            setMember(createdMember);
-            setQuickEnrollEvent(null);
-            showAlert("Inscrição confirmada com sucesso!", { type: 'success' });
-          }}
-        />
-      )}
+        {quickEnrollEvent && (
+          <QuickEventEnrollModal
+            event={quickEnrollEvent}
+            onClose={() => setQuickEnrollEvent(null)}
+            onSuccess={(createdMember) => {
+              setMember(createdMember);
+              setQuickEnrollEvent(null);
+              showAlert("Inscrição confirmada com sucesso!", { type: 'success' });
+            }}
+          />
+        )}
 
-      {showPublicReq && (
-        <PublicRequestModal
-          onClose={() => setShowPublicReq(false)}
-          onSubmitSuccess={() => {
-            setShowPublicReq(false);
-            setShowRegistrationSuccessModal(true);
-          }}
-        />
-      )}
+        {showPublicReq && (
+          <PublicRequestModal
+            onClose={() => setShowPublicReq(false)}
+            onSubmitSuccess={() => {
+              setShowPublicReq(false);
+              setShowRegistrationSuccessModal(true);
+            }}
+          />
+        )}
 
-      {showRegistrationSuccessModal && (
-        <RegistrationSuccessModal 
-          isOpen={showRegistrationSuccessModal} 
-          onClose={() => setShowRegistrationSuccessModal(false)}
-        />
-      )}
+        {showRegistrationSuccessModal && (
+          <RegistrationSuccessModal 
+            isOpen={showRegistrationSuccessModal} 
+            onClose={() => setShowRegistrationSuccessModal(false)}
+          />
+        )}
 
-      {showCreateDioceseModal && (
-        <CreateDioceseEventModal
-          isOpen={showCreateDioceseModal}
-          onClose={() => {
-            setShowCreateDioceseModal(false);
-            setDioceseEventToEdit(null);
-          }}
-          onSuccess={(newEventId) => {
-            setShowCreateDioceseModal(false);
-            showAlert(
-              dioceseEventToEdit
-                ? "Evento da Diocese atualizado com sucesso!"
-                : "Evento da Diocese criado com sucesso!",
-              { type: "success" }
-            );
-            setDioceseEventToEdit(null);
-            setEventTypeTab("diocese");
-          }}
-          member={member}
-          eventToEdit={dioceseEventToEdit}
-          defaultDiocese={selectedDioceseFilter !== "all" ? selectedDioceseFilter : member?.diocese}
-        />
-      )}
+        {showCreateDioceseModal && (
+          <CreateDioceseEventModal
+            isOpen={showCreateDioceseModal}
+            onClose={() => {
+              setShowCreateDioceseModal(false);
+              setDioceseEventToEdit(null);
+            }}
+            onSuccess={(newEventId) => {
+              setShowCreateDioceseModal(false);
+              showAlert(
+                dioceseEventToEdit
+                  ? "Evento da Diocese atualizado com sucesso!"
+                  : "Evento da Diocese criado com sucesso!",
+                { type: "success" }
+              );
+              setDioceseEventToEdit(null);
+              setEventTypeTab("diocese");
+            }}
+            member={member}
+            eventToEdit={dioceseEventToEdit}
+            defaultDiocese={selectedDioceseFilter !== "all" ? selectedDioceseFilter : member?.diocese}
+          />
+        )}
 
-      {adminAttendeesEvent && (
-        <EventAttendeesModal
-          event={adminAttendeesEvent}
-          isAdmin={isSystemAdmin}
-          onClose={() => setAdminAttendeesEvent(null)}
-        />
-      )}
+        {adminAttendeesEvent && (
+          <EventAttendeesModal
+            event={adminAttendeesEvent}
+            isAdmin={isSystemAdmin}
+            onClose={() => setAdminAttendeesEvent(null)}
+          />
+        )}
 
-      {certificateEditorEvent && (
-        <CertificateEditor
-          event={certificateEditorEvent.event}
-          type={certificateEditorEvent.type}
-          onClose={() => setCertificateEditorEvent(null)}
-          onSaved={() => {
-            setCertificateEditorEvent(null);
-            showAlert("Modelo de certificado salvo com sucesso!", { type: "success" });
-          }}
-        />
-      )}
+        {certificateEditorEvent && (
+          <CertificateEditor
+            event={certificateEditorEvent.event}
+            type={certificateEditorEvent.type}
+            onClose={() => setCertificateEditorEvent(null)}
+            onSaved={() => {
+              setCertificateEditorEvent(null);
+              showAlert("Modelo de certificado salvo com sucesso!", { type: "success" });
+            }}
+          />
+        )}
 
-      {checkInEvent && (
-        <EventCheckInModal
-          event={checkInEvent}
-          currentMember={member}
-          onClose={() => {
-            setCheckInEvent(null);
-            if (typeof window !== "undefined" && window.location.search.includes("checkin_event")) {
-              const u = new URL(window.location.href);
-              u.searchParams.delete("checkin_event");
-              window.history.replaceState({}, "", u.toString());
-            }
-          }}
-          onSuccess={() => {
-            // refresh or handle
-          }}
-          onRequestRegistration={() => {
-            setShowPublicReq(true);
-          }}
-          onNavigateToLogin={() => {
-            if (onNavigateToStudent) onNavigateToStudent();
-          }}
-        />
-      )}
+        {checkInEvent && (
+          <EventCheckInModal
+            event={checkInEvent}
+            currentMember={member}
+            onClose={() => {
+              setCheckInEvent(null);
+              if (typeof window !== "undefined" && window.location.search.includes("checkin_event")) {
+                const u = new URL(window.location.href);
+                u.searchParams.delete("checkin_event");
+                window.history.replaceState({}, "", u.toString());
+              }
+            }}
+            onSuccess={() => {
+              // refresh or handle
+            }}
+            onRequestRegistration={() => {
+              setShowPublicReq(true);
+            }}
+            onNavigateToLogin={() => {
+              if (onNavigateToStudent) onNavigateToStudent();
+            }}
+          />
+        )}
+      </React.Suspense>
     </div>
   );
 }

@@ -21,7 +21,7 @@ import {
   BookMarked,
 } from "lucide-react";
 import { CourseOffer } from "../types";
-import { getCoursesList, subscribeToCourses } from "../lib/coursesService";
+import { getCoursesList, subscribeToCourses, getCachedCourses } from "../lib/coursesService";
 import Modal from "./Modal";
 import { motion, AnimatePresence } from "motion/react";
 
@@ -31,15 +31,17 @@ interface CoursesOffersProps {
 }
 
 export default function CoursesOffers({ onNavigateToStudent, onNavigateToDiocese }: CoursesOffersProps) {
-  const [courses, setCourses] = useState<CourseOffer[]>([]);
-  const [loading, setLoading] = useState(true);
+  const [courses, setCourses] = useState<CourseOffer[]>(() => getCachedCourses());
+  const [loading, setLoading] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [selectedCategory, setSelectedCategory] = useState<string>("all");
   const [selectedCourseModal, setSelectedCourseModal] = useState<CourseOffer | null>(null);
 
   const loadCourses = async (forceRefresh = false) => {
     try {
-      setLoading(true);
+      if (forceRefresh) {
+        setLoading(true);
+      }
       const data = await getCoursesList(forceRefresh);
       setCourses(data);
     } catch (err) {
@@ -50,7 +52,8 @@ export default function CoursesOffers({ onNavigateToStudent, onNavigateToDiocese
   };
 
   useEffect(() => {
-    loadCourses();
+    // Sincronização em tempo real não bloqueante
+    loadCourses(false);
     const unsub = subscribeToCourses((updated) => {
       setCourses(updated);
       setLoading(false);
@@ -295,6 +298,8 @@ export default function CoursesOffers({ onNavigateToStudent, onNavigateToDiocese
                     <img
                       src={course.imageUrl}
                       alt={course.title}
+                      loading="lazy"
+                      decoding="async"
                       className={`${
                         isLivro || course.imageFit === "contain"
                           ? "max-h-full max-w-full object-contain rounded-lg shadow-md group-hover:scale-105 transition-transform duration-300"

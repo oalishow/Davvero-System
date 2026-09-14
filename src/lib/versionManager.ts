@@ -1,4 +1,4 @@
-import { APP_VERSION } from "./constants";
+import { APP_VERSION, APP_BUILD } from "./constants";
 
 const STORAGE_KEYS = {
   ATTEMPT_COUNT: "davvero_version_reload_count",
@@ -155,6 +155,7 @@ export async function checkServerVersionWithAntiLoop(
   lastCheckTime = now;
 
   let candidateVersion: string | null = null;
+  let candidateBuild: string | null = null;
 
   // 1. Try static /version.json (works on static hosts like Netlify, GitHub Pages, Vite dev, and production)
   try {
@@ -163,11 +164,13 @@ export async function checkServerVersionWithAntiLoop(
       headers: { Pragma: "no-cache", "Cache-Control": "no-cache" },
     });
     if (res.ok) {
-      const contentType = res.headers.get("content-type") || "";
-      if (contentType.includes("json")) {
-        const data = await res.json();
-        if (data && data.version && typeof data.version === "string") {
+      const data = await res.json().catch(() => null);
+      if (data && typeof data === "object") {
+        if (data.version && typeof data.version === "string") {
           candidateVersion = data.version;
+        }
+        if (data.build && typeof data.build === "string") {
+          candidateBuild = data.build;
         }
       }
     }
@@ -183,11 +186,13 @@ export async function checkServerVersionWithAntiLoop(
         headers: { Pragma: "no-cache", "Cache-Control": "no-cache" },
       });
       if (res.ok) {
-        const contentType = res.headers.get("content-type") || "";
-        if (contentType.includes("json")) {
-          const data = await res.json();
-          if (data && data.version && typeof data.version === "string") {
+        const data = await res.json().catch(() => null);
+        if (data && typeof data === "object") {
+          if (data.version && typeof data.version === "string") {
             candidateVersion = data.version;
+          }
+          if (data.build && typeof data.build === "string") {
+            candidateBuild = data.build;
           }
         }
       }
@@ -209,7 +214,13 @@ export async function checkServerVersionWithAntiLoop(
   }
 
   const serverVersion = candidateVersion || APP_VERSION;
-  const isObsolete = isVersionOutdated(APP_VERSION, serverVersion);
+  const isVersionNewer = isVersionOutdated(APP_VERSION, serverVersion);
+  const isBuildDifferent = Boolean(
+    candidateBuild &&
+      candidateBuild !== APP_BUILD &&
+      compareVersions(serverVersion, APP_VERSION) >= 0
+  );
+  const isObsolete = isVersionNewer || isBuildDifferent;
 
   if (!isObsolete) {
     // Running latest version! Clean any previous session loop flags

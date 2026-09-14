@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import React, { useState, useEffect } from "react";
 import { KeyRound, UserPlus, LogIn, ChevronRight, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
 import { PASSWORD_STORAGE_KEY, DEFAULT_ADMIN_PASSWORD, isInstitutionalAdminEmail } from "../lib/constants";

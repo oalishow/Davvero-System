@@ -4,7 +4,7 @@ import { APP_VERSION, APP_BUILD } from '../lib/constants';
 import { safeReloadApp } from '../lib/versionManager';
 import { useSettings } from '../context/SettingsContext';
 import { useDialog } from '../context/DialogContext';
-import { useState, useEffect, useRef } from 'react';
+import React, { useState, useEffect, useRef } from 'react';
 import { useNotifications } from '../hooks/useNotifications';
 import { useOnlineStatus } from '../hooks/useOnlineStatus';
 import { markAllNotificationsAsRead, markNotificationAsRead, clearAllNotifications, clearNotification } from '../lib/firebase';
@@ -17,6 +17,56 @@ import YouTubeLiveButton from './YouTubeLiveButton';
 
 const STUDENT_BOND_KEY = 'davveroId_student_identity';
 const STUDENT_TRACK_KEY = 'davveroId_student_track_ra';
+
+interface ScannerLogoProps {
+  instColor?: string;
+  instLogo?: string | null;
+}
+
+const ScannerLogo = React.memo(function ScannerLogo({ instColor = '#0284c7', instLogo }: ScannerLogoProps) {
+  return (
+    <div className="relative flex flex-col items-center justify-center w-32 h-32 sm:w-40 sm:h-40 bg-slate-50 dark:bg-slate-800/80 rounded-3xl shadow-[inset_0_4px_20px_rgba(0,0,0,0.05)] border-[1.5px] border-slate-200 dark:border-slate-700 overflow-hidden select-none will-change-transform">
+      {/* Shield background subtle glow */}
+      <div 
+        className="absolute inset-0 opacity-10 pointer-events-none"
+        style={{ backgroundColor: instColor }}
+      />
+      
+      <div 
+        className="w-[75%] h-[75%] flex items-center justify-center z-10 pointer-events-none"
+        style={{ filter: 'drop-shadow(0 0 2px white) drop-shadow(0 0 1px white)' }}
+      >
+        <DavveroLogo 
+          src={instLogo} 
+          color={instColor} 
+          className="w-full h-full object-contain"
+          iconClassName="w-full h-full"
+        />
+      </div>
+      
+      {/* Scanning line animation - Pure GPU CSS Compositor Transform */}
+      <div 
+        className="absolute top-0 left-0 w-full h-[3px] blur-[0.5px] opacity-90 z-20 pointer-events-none animate-icon-scanner-line"
+        style={{ 
+          backgroundColor: instColor,
+          boxShadow: `0 0 12px 2px ${instColor}b3`
+        }}
+      />
+      
+      {/* Scanning beam gradient animation - Pure GPU CSS Compositor Transform */}
+      <div 
+        className="absolute top-0 left-0 w-full h-24 z-0 pointer-events-none animate-icon-scanner-glow"
+        style={{ 
+          background: `linear-gradient(to bottom, transparent 0%, ${instColor}26 60%, transparent 100%)`
+        }}
+      />
+
+      <div className="absolute bottom-2 font-black text-[9px] tracking-[0.15em] text-blue-900 dark:text-sky-100 bg-white/80 dark:bg-slate-900/60 backdrop-blur-md px-2.5 py-0.5 rounded shadow-sm border border-white/40 dark:border-slate-600/50 z-30 pointer-events-none">
+        DAVVERO System
+      </div>
+    </div>
+  );
+});
 
 export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
   const { settings } = useSettings();
@@ -141,51 +191,6 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
     instColor, 
     instDescription 
   } = settings;
-
-  // Versão SVG robusta...
-
-  const ScannerLogo = () => (
-    <div className="relative flex flex-col items-center justify-center w-32 h-32 sm:w-40 sm:h-40 bg-slate-50 dark:bg-slate-800/80 rounded-3xl shadow-[inset_0_4px_20px_rgba(0,0,0,0.05)] border-[1.5px] border-slate-200 dark:border-slate-700 overflow-hidden">
-       {/* Shield background subtle glow */}
-       <div 
-         className="absolute inset-0 opacity-10"
-         style={{ backgroundColor: instColor }}
-       ></div>
-       
-       <div 
-         className="w-[75%] h-[75%] flex items-center justify-center z-10"
-         style={{ filter: 'drop-shadow(0 0 2px white) drop-shadow(0 0 1px white)' }}
-       >
-         <DavveroLogo 
-           src={instLogo} 
-           color={instColor || '#0284c7'} 
-           className="w-full h-full object-contain"
-           iconClassName="w-full h-full"
-         />
-       </div>
-       
-       {/* Scanning line animation */}
-       <motion.div 
-         className="absolute top-0 left-0 w-full h-[3px] blur-[0.5px] opacity-80 z-20"
-         style={{ 
-           backgroundColor: instColor,
-           boxShadow: `0 0 12px 2px ${instColor}b3`
-         }}
-         animate={{ y: [-10, 170, -10] }}
-         transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
-       />
-       <motion.div 
-         className="absolute top-0 left-0 w-full h-24 bg-gradient-to-b from-transparent z-0"
-         style={{ backgroundColor: `${instColor}1a` }}
-         animate={{ y: [-100, 160, -100] }}
-         transition={{ repeat: Infinity, duration: 3, ease: "linear" }}
-       />
-
-      <div className="absolute bottom-2 font-black text-[9px] tracking-[0.15em] text-blue-900 dark:text-sky-100 bg-white/80 dark:bg-slate-900/60 backdrop-blur-md px-2.5 py-0.5 rounded shadow-sm border border-white/40 dark:border-slate-600/50 z-30">
-        DAVVERO System
-      </div>
-    </div>
-  );
 
   return (
     <div className="text-center relative print:hidden no-print pt-14">
@@ -514,29 +519,17 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
       </div>
       <div className="flex flex-col justify-center mb-5 no-print min-h-[140px] items-center relative">
         <motion.div
-          initial={{ scale: 0.8, opacity: 0, y: 20 }}
-          animate={{ 
-            scale: 1, 
-            opacity: 1, 
-            y: [0, -10, 0],
-          }}
-          transition={{
-            y: {
-              duration: 4,
-              repeat: Infinity,
-              ease: "easeInOut"
-            },
-            scale: { duration: 0.8 },
-            opacity: { duration: 0.8 }
-          }}
+          initial={{ scale: 0.85, opacity: 0 }}
+          animate={{ scale: 1, opacity: 1 }}
+          transition={{ duration: 0.5, ease: "easeOut" }}
           whileHover={{ scale: 1.05 }}
-          className="relative z-10"
+          className="relative z-10 animate-icon-float"
         >
-          {/* Brilho de Fundo Pulsante */}
-          <div className="absolute inset-x-0 -inset-y-8 bg-sky-400/20 dark:bg-sky-400/30 blur-3xl rounded-full scale-125 animate-pulse-slow pointer-events-none" />
+          {/* Brilho de Fundo Pulsante Otimizado com GPU */}
+          <div className="absolute inset-x-0 -inset-y-8 bg-sky-400/20 dark:bg-sky-400/30 blur-2xl rounded-full scale-125 animate-pulse-slow pointer-events-none will-change-transform" />
           
           <div className="relative z-10 flex items-center justify-center">
-            <ScannerLogo />
+            <ScannerLogo instColor={instColor} instLogo={instLogo} />
           </div>
         </motion.div>
 

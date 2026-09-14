@@ -29,14 +29,17 @@ let lastSoundType = '';
 
 export const playSound = (type: 'click' | 'success' | 'error' | 'notification' | 'pop' | 'flip' | 'scan' | 'generating' | 'login' | 'logout' | 'enroll') => {
   const nowMs = Date.now();
-  // Debounce duplicate sound triggers (e.g., when both global click listener and element onClick fire)
-  if (type === lastSoundType && nowMs - lastSoundTime < 50) {
+  // Fast debounce: don't flood sound/haptics when multiple listeners or rapid taps occur
+  if (nowMs - lastSoundTime < 65) {
     return;
   }
+  const vol = getSoundVolume();
+  if (vol <= 0) return; // Completely muted - skip all work
+
   lastSoundTime = nowMs;
   lastSoundType = type;
 
-  // Defer haptics & audio graph creation off the synchronous click path to guarantee 0ms input lag
+  // Defer haptics & audio graph off the synchronous click path to guarantee 0ms input lag
   setTimeout(() => {
     // Trigger haptic feedback based on sound type
     if (type === 'error') {
@@ -61,9 +64,7 @@ export const playSound = (type: 'click' | 'success' | 'error' | 'notification' |
       
       const ctx = sharedAudioContext;
       if (ctx && ctx.state === 'suspended') {
-        try {
-          ctx.resume().catch(() => {});
-        } catch (e) {}
+        ctx.resume().catch(() => {});
       }
 
       const osc = ctx.createOscillator();
@@ -73,9 +74,6 @@ export const playSound = (type: 'click' | 'success' | 'error' | 'notification' |
       gain.connect(ctx.destination);
 
       const now = ctx.currentTime;
-      const vol = getSoundVolume();
-
-      if (vol <= 0) return; // Muted
 
     if (type === 'click') {
       osc.type = 'sine';

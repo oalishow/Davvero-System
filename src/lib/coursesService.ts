@@ -168,6 +168,17 @@ export async function restoreDefaultCourses(): Promise<CourseOffer[]> {
   return DEFAULT_COURSES;
 }
 
+/**
+ * Retorna os cursos do cache local ou padrão imediatamente (0ms de espera)
+ */
+export function getCachedCourses(): CourseOffer[] {
+  const cached = getLocalCache();
+  if (Array.isArray(cached) && cached.length > 0) {
+    return cached.sort((a, b) => (Number(a.order) || 99) - (Number(b.order) || 99));
+  }
+  return DEFAULT_COURSES;
+}
+
 export async function getCoursesList(forceRefresh = false): Promise<CourseOffer[]> {
   // 1. Tentar ler do cache local primeiro se não for refresh forçado
   try {

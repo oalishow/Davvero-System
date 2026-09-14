@@ -24,11 +24,6 @@ import {
   Search,
   PenTool,
 } from "lucide-react";
-import * as XLSX from "xlsx";
-import JSZip from "jszip";
-import { jsPDF } from "jspdf";
-import { toCanvas } from "html-to-image";
-import html2canvas from "html2canvas";
 import {
   collection,
   getDocs,
@@ -318,8 +313,9 @@ export default function StandaloneCertificateModal({
       reader.readAsText(file);
     } else {
       // Excel ou CSV via XLSX
-      reader.onload = (evt) => {
+      reader.onload = async (evt) => {
         try {
+          const XLSX = await import("xlsx");
           const data = new Uint8Array(evt.target?.result as ArrayBuffer);
           const workbook = XLSX.read(data, { type: "array" });
           const firstSheet = workbook.SheetNames[0];
@@ -736,6 +732,7 @@ export default function StandaloneCertificateModal({
     await new Promise((resolve) => setTimeout(resolve, 180));
 
     try {
+      const { toCanvas } = await import("html-to-image");
       const canvas = await toCanvas(node, {
         pixelRatio: 2.2,
         skipFonts: false,
@@ -744,6 +741,7 @@ export default function StandaloneCertificateModal({
       return canvas;
     } catch (errCanvas) {
       console.warn("toCanvas falhou, usando fallback html2canvas:", errCanvas);
+      const html2canvas = (await import("html2canvas")).default;
       const canvas = await html2canvas(node, {
         scale: 2.2,
         useCORS: true,
@@ -756,7 +754,8 @@ export default function StandaloneCertificateModal({
   };
 
   // Gerar objeto jsPDF em A4 Paisagem
-  const generatePdfFromCanvas = (canvas: HTMLCanvasElement): jsPDF => {
+  const generatePdfFromCanvas = async (canvas: HTMLCanvasElement) => {
+    const { jsPDF } = await import("jspdf");
     const imgData = canvas.toDataURL("image/jpeg", 0.96);
     const pdf = new jsPDF({
       orientation: "landscape",
@@ -786,7 +785,7 @@ export default function StandaloneCertificateModal({
     try {
       const nodeId = `standalone-hidden-cert-${rec.id}`;
       const canvas = await renderCertificateToCanvas(nodeId);
-      const pdf = generatePdfFromCanvas(canvas);
+      const pdf = await generatePdfFromCanvas(canvas);
 
       const typeStr = certType === "organizer" ? "Organizacao" : "Participacao";
       const cleanName = sanitizeFilename(rec.name || "Participante");
@@ -816,6 +815,7 @@ export default function StandaloneCertificateModal({
     });
 
     try {
+      const JSZip = (await import("jszip")).default;
       const zip = new JSZip();
       const cleanTitle = sanitizeFilename(title || "Certificados");
       const total = recipients.length;
@@ -833,7 +833,7 @@ export default function StandaloneCertificateModal({
 
         const nodeId = `standalone-hidden-cert-${rec.id}`;
         const canvas = await renderCertificateToCanvas(nodeId);
-        const pdf = generatePdfFromCanvas(canvas);
+        const pdf = await generatePdfFromCanvas(canvas);
 
         const typeStr = certType === "organizer" ? "Organizacao" : "Participacao";
         const cleanName = sanitizeFilename(rec.name || `Participante_${stepNum}`);

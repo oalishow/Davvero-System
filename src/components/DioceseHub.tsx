@@ -1,4 +1,4 @@
-import React, { useState, useEffect, useMemo } from "react";
+import React, { useState, useEffect, useMemo, lazy, Suspense } from "react";
 import {
   Landmark,
   Globe,
@@ -40,7 +40,7 @@ import { useSettings } from "../context/SettingsContext";
 import { auth } from "../lib/firebase";
 import { onAuthStateChanged } from "firebase/auth";
 import Modal from "./Modal";
-import DioceseManager from "./DioceseManager";
+const DioceseManager = lazy(() => import("./DioceseManager"));
 import { QRCodeCanvas } from "qrcode.react";
 
 interface DioceseHubProps {
@@ -770,10 +770,19 @@ export default function DioceseHub({ member, onNavigateToEvents }: DioceseHubPro
           title="Configuração & Gerenciamento de Dioceses"
           maxWidth="max-w-5xl"
         >
-          <DioceseManager
-            initialDioceseKey={selectedDioceseKey}
-            onClose={() => setShowConfigModal(false)}
-          />
+          <Suspense
+            fallback={
+              <div className="p-12 text-center text-slate-500 font-bold flex flex-col items-center justify-center">
+                <div className="w-8 h-8 border-3 border-sky-500 border-t-transparent rounded-full animate-spin mb-3" />
+                <span>Carregando Gerenciador de Dioceses...</span>
+              </div>
+            }
+          >
+            <DioceseManager
+              initialDioceseKey={selectedDioceseKey}
+              onClose={() => setShowConfigModal(false)}
+            />
+          </Suspense>
         </Modal>
       )}
 

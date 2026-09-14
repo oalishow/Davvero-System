@@ -44,25 +44,28 @@ export const setupPWA = () => {
         navigator.serviceWorker.addEventListener('controllerchange', () => {
             if (refreshing) return;
             const now = Date.now();
-            if (now - lastSwRefreshAttempt > 20000) {
-                refreshing = true;
-                lastSwRefreshAttempt = now;
-                console.log("[PWA] Novo Service Worker ativo e controlando a página. Disparando evento de atualização...");
-                window.dispatchEvent(new CustomEvent('swUpdated'));
+            let lastReload = 0;
+            try {
+                lastReload = parseInt(sessionStorage.getItem('davvero_sw_last_reload') || '0', 10);
+            } catch {}
+            if (now - lastReload < 12000) {
+                console.log("[PWA] Service Worker ativo, mas atualização recente impediu auto-reload em loop.");
+                return;
             }
+            refreshing = true;
+            try {
+                sessionStorage.setItem('davvero_sw_last_reload', String(now));
+            } catch {}
+            console.log("[PWA] Novo Service Worker ativo e controlando a página. Disparando evento de atualização automática...");
+            window.dispatchEvent(new CustomEvent('swUpdated'));
         });
 
         const updateSW = registerSW({
             immediate: true,
             onNeedRefresh() {
-                const now = Date.now();
-                // Anti-loop safeguard: não forçar refresh contínuo do SW com menos de 20 segundos
-                if (now - lastSwRefreshAttempt > 20000) {
-                    lastSwRefreshAttempt = now;
-                    console.log("[PWA] Novo conteúdo detectado no Service Worker. Atualizando com segurança...");
-                    window.dispatchEvent(new CustomEvent('swNeedRefresh'));
-                    updateSW(true);
-                }
+                console.log("[PWA] Novo conteúdo detectado no Service Worker. Ativando novo SW...");
+                window.dispatchEvent(new CustomEvent('swNeedRefresh'));
+                updateSW(true);
             },
             onOfflineReady() {
                 console.log("[PWA] Aplicativo pronto para funcionamento offline.");
@@ -70,10 +73,10 @@ export const setupPWA = () => {
             onRegistered(r) {
                 if (r) {
                     swRegistration = r;
-                    // Verificação periódica a cada 45 segundos em segundo plano
+                    // Verificação periódica a cada 40 segundos em segundo plano
                     setInterval(() => {
                         r.update().catch(err => console.warn("[PWA] Verificação periódica do SW:", err));
-                    }, 45 * 1000);
+                    }, 40 * 1000);
                 }
             }
         });

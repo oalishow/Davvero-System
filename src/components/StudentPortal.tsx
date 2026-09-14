@@ -1,5 +1,4 @@
 import React, { useState, useEffect, memo, useRef, useMemo, lazy, Suspense } from "react";
-import { createPortal } from "react-dom";
 import {
   User,
   CreditCard,
@@ -28,23 +27,10 @@ import {
   MailCheck,
   MailX,
   AlertTriangle,
-  ZoomIn,
-  ZoomOut,
-  RotateCw,
-  Maximize2,
-  MoveHorizontal,
-  Printer,
-  Search,
-  Filter,
-  Calendar,
 } from "lucide-react";
-import { printCertificateNode } from "../lib/certificatePrint";
 import { isEventCertificateReleased, getDefaultCertificateTemplate, resolveCertificateReleaseDate } from "../lib/certificateAuth";
 import { usePushNotifications } from "../hooks/usePushNotifications";
 import { motion, AnimatePresence } from "motion/react";
-import { jsPDF } from "jspdf";
-import html2canvas from "html2canvas";
-import { toCanvas } from "html-to-image";
 import {
   collection,
   query,
@@ -59,14 +45,24 @@ import {
 import { db, appId, enrollStudent, loginAnon, auth } from "../lib/firebase";
 import type { Member, Event, Attendance, CertificateTemplate } from "../types";
 import VerificationResult from "./VerificationResult";
+import StudentSecurityGate from "./student/StudentSecurityGate";
+import StudentCardTab from "./student/StudentCardTab";
+import StudentEventsTab from "./student/StudentEventsTab";
+import StudentCertificatesTab from "./student/StudentCertificatesTab";
+import AsyncCertificateRenderer from "./student/AsyncCertificateRenderer";
+import CertificatePreviewModal from "./student/CertificatePreviewModal";
+import useStudentBiometrics from "./student/useStudentBiometrics";
+import StudentPortalHeader, { StudentTabType } from "./student/StudentPortalHeader";
+import StudentAccountTab from "./student/StudentAccountTab";
+import StudentAcademicTab from "./student/StudentAcademicTab";
+import StudentLibraryTab from "./student/StudentLibraryTab";
+import StudentSeminaryTab from "./student/StudentSeminaryTab";
 import Modal from "./Modal";
 import PublicRequestModal from "./PublicRequestModal";
 import RegistrationSuccessModal from "./RegistrationSuccessModal";
 import ApprovalSuccessModal from "./ApprovalSuccessModal";
-const EventsPage = lazy(() => import("./EventsPage"));
 import SuggestEditModal from "./SuggestEditModal";
 import { ASSETS_DOC_PATH } from "../lib/constants";
-import { CertificateRenderer } from "./CertificateRenderer";
 import { useDialog } from "../context/DialogContext";
 import { useSettings } from "../context/SettingsContext";
 import TermsOfUseModal from "./TermsOfUseModal";
@@ -74,539 +70,6 @@ import HomePollsWidget from "./HomePollsWidget";
 import { playSound } from '../lib/sounds';
 import { isWebAuthnSupported, registerBiometric, verifyBiometric, cancelBiometric, checkBiometricAvailability } from "../lib/webauthn";
 import { compressOriginalImage } from "../lib/cropUtils";
-
-const AsyncCertificateRenderer = memo(
-  ({
-    event,
-    member,
-    isOrganizer,
-    id,
-  }: {
-    event: Event;
-    member: Member;
-    isOrganizer?: boolean;
-    id?: string;
-  }) => {
-    const getInitialTemplate = (): CertificateTemplate => {
-      if (isOrganizer) {
-        if (event.organizationCertificateTemplate) {
-          return event.organizationCertificateTemplate;
-        }
-        if (event.certificateTemplate) {
-          return {
-            ...event.certificateTemplate,
-            subtitleText: event.certificateTemplate.subtitleText || "DE ORGANIZAÇÃO",
-          };
-        }
-        return {
-          bgStyle: "theme-classic",
-          fontFamily: "serif",
-          titleText: "CERTIFICADO",
-          subtitleText: "DE ORGANIZAÇÃO",
-          bodyText: "",
-          signatureName: "",
-          signatureRole: "",
-          isApproved: false,
-        };
-      }
-      return (
-        event.certificateTemplate || {
-          bgStyle: "theme-classic",
-          fontFamily: "serif",
-          titleText: "CERTIFICADO",
-          subtitleText: "DE PARTICIPAÇÃO",
-          bodyText: "",
-          signatureName: "",
-          signatureRole: "",
-          isApproved: false,
-        }
-      );
-    };
-
-    const [template, setTemplate] = useState<CertificateTemplate>(getInitialTemplate);
-
-    useEffect(() => {
-      setTemplate(getInitialTemplate());
-    }, [event.id, isOrganizer, event.organizationCertificateTemplate, event.certificateTemplate]);
-
-    useEffect(() => {
-      let isMounted = true;
-
-      const applyAssets = (assets: any) => {
-        if (!assets || !isMounted) return;
-        setTemplate((prev) =>
-          prev
-            ? {
-                ...prev,
-                ...(assets.backgroundImageUrl && {
-                  backgroundImageUrl: assets.backgroundImageUrl,
-                }),
-                ...(assets.logoUrl && {
-                  logoUrl: assets.logoUrl,
-                }),
-                ...(assets.logo2Url && {
-                  logo2Url: assets.logo2Url,
-                }),
-                ...(assets.fajopaDirectorSignatureUrl && {
-                  fajopaDirectorSignatureUrl:
-                    assets.fajopaDirectorSignatureUrl,
-                }),
-                ...(assets.seminarRectorSignatureUrl && {
-                  seminarRectorSignatureUrl:
-                    assets.seminarRectorSignatureUrl,
-                }),
-                ...(assets.signature1Url && {
-                  signature1Url: assets.signature1Url,
-                }),
-                ...(assets.signature2Url && {
-                  signature2Url: assets.signature2Url,
-                }),
-                ...(assets.signature3Url && {
-                  signature3Url: assets.signature3Url,
-                }),
-              }
-            : prev,
-        );
-      };
-
-      // 1. Immediate direct fetch for instantaneous rendering with fallback for organizer
-      const fetchAssets = async () => {
-        try {
-          if (isOrganizer) {
-            const orgDocRef = doc(db, ASSETS_DOC_PATH(appId, `cert_assets_org_${event.id}`));
-            const orgSnap = await getDoc(orgDocRef);
-            if (isMounted && orgSnap.exists()) {
-              const snapData = orgSnap.data();
-              const assets = snapData?.data !== undefined ? snapData.data : snapData;
-              if (assets && Object.keys(assets).length > 0) {
-                applyAssets(assets);
-                return;
-              }
-            }
-          }
-          // Fallback to primary event assets
-          const mainDocRef = doc(db, ASSETS_DOC_PATH(appId, `cert_assets_${event.id}`));
-          const mainSnap = await getDoc(mainDocRef);
-          if (isMounted && mainSnap.exists()) {
-            const snapData = mainSnap.data();
-            const assets = snapData?.data !== undefined ? snapData.data : snapData;
-            applyAssets(assets);
-          }
-        } catch (err) {
-          console.warn("Notice loading cert assets", err);
-        }
-      };
-
-      fetchAssets();
-
-      // 2. Realtime listener for live sync
-      const primaryDocId = isOrganizer ? `cert_assets_org_${event.id}` : `cert_assets_${event.id}`;
-      const unsub = onSnapshot(doc(db, ASSETS_DOC_PATH(appId, primaryDocId)), (snap) => {
-        if (snap.exists()) {
-          const snapData = snap.data();
-          const assets = snapData?.data !== undefined ? snapData.data : snapData;
-          applyAssets(assets);
-        }
-      }, (err) => {
-        console.warn("Notice in cert assets snapshot", err);
-      });
-
-      return () => {
-        isMounted = false;
-        unsub();
-      };
-    }, [event.id, isOrganizer, event.organizationCertificateTemplate, event.certificateTemplate]);
-
-    if (!template) return null;
-    return (
-      <CertificateRenderer
-        id={id || `cert-node-${isOrganizer ? "org" : "part"}-${event.id}`}
-        event={event}
-        template={template}
-        member={member}
-        isOrganizer={isOrganizer}
-      />
-    );
-  },
-);
-
-interface CertificatePreviewModalProps {
-  previewCertEvent: { event: Event; type: "participant" | "organizer" };
-  member: Member;
-  onClose: () => void;
-  onDownload: () => void;
-  isDownloading: boolean;
-  downloadingCertKey: string | null;
-}
-
-function CertificatePreviewModal({
-  previewCertEvent,
-  member,
-  onClose,
-  onDownload,
-  isDownloading,
-  downloadingCertKey,
-}: CertificatePreviewModalProps) {
-  const containerRef = useRef<HTMLDivElement>(null);
-  const scrollRef = useRef<HTMLDivElement>(null);
-  const overlayRef = useRef<HTMLDivElement>(null);
-  const cardRef = useRef<HTMLDivElement>(null);
-  const [containerWidth, setContainerWidth] = useState<number>(360);
-  const [mode, setMode] = useState<"fit" | "zoom" | "rotate">("fit");
-  const [zoomLevel, setZoomLevel] = useState<number>(1);
-
-  // Drag touch state for smartphone panning
-  const touchStartRef = useRef<{ x: number; y: number; scrollLeft: number; scrollTop: number } | null>(null);
-
-  useEffect(() => {
-    // Bloqueia rolagem de fundo e redireciona a visão do smartphone diretamente para o modal
-    const originalOverflow = document.body.style.overflow;
-    document.body.style.overflow = "hidden";
-
-    // Garante que o scroll do viewport e do modal subam imediatamente para a visualização do certificado
-    window.scrollTo({ top: 0, behavior: "instant" });
-    if (overlayRef.current) {
-      overlayRef.current.scrollTop = 0;
-    }
-    if (cardRef.current) {
-      cardRef.current.scrollIntoView({ behavior: "instant", block: "start" });
-    }
-
-    return () => {
-      document.body.style.overflow = originalOverflow;
-    };
-  }, []);
-
-  useEffect(() => {
-    const updateSize = () => {
-      if (containerRef.current) {
-        setContainerWidth(containerRef.current.clientWidth);
-      }
-    };
-    updateSize();
-    const ro = new ResizeObserver(updateSize);
-    if (containerRef.current) ro.observe(containerRef.current);
-    window.addEventListener("resize", updateSize);
-    return () => {
-      ro.disconnect();
-      window.removeEventListener("resize", updateSize);
-    };
-  }, []);
-
-  const CERT_W = 1122;
-  const CERT_H = 793;
-
-  const fitScale = useMemo(() => {
-    const avail = Math.max(260, containerWidth - 16);
-    return Math.min(0.95, Math.max(0.18, avail / CERT_W));
-  }, [containerWidth]);
-
-  const rotateScale = useMemo(() => {
-    const avail = Math.max(260, containerWidth - 16);
-    return Math.min(1.05, Math.max(0.24, avail / CERT_H));
-  }, [containerWidth]);
-
-  const activeScale = useMemo(() => {
-    if (mode === "fit") return fitScale;
-    if (mode === "rotate") return rotateScale;
-    return Math.min(1.3, Math.max(0.55, fitScale * 2.2 * zoomLevel));
-  }, [mode, fitScale, rotateScale, zoomLevel]);
-
-  const handleTouchStart = (e: React.TouchEvent) => {
-    if (!scrollRef.current || e.touches.length !== 1) return;
-    touchStartRef.current = {
-      x: e.touches[0].clientX,
-      y: e.touches[0].clientY,
-      scrollLeft: scrollRef.current.scrollLeft,
-      scrollTop: scrollRef.current.scrollTop,
-    };
-  };
-
-  const handleTouchMove = (e: React.TouchEvent) => {
-    if (!touchStartRef.current || !scrollRef.current || e.touches.length !== 1) return;
-    const dx = e.touches[0].clientX - touchStartRef.current.x;
-    const dy = e.touches[0].clientY - touchStartRef.current.y;
-    scrollRef.current.scrollLeft = touchStartRef.current.scrollLeft - dx;
-    scrollRef.current.scrollTop = touchStartRef.current.scrollTop - dy;
-  };
-
-  const handleTouchEnd = () => {
-    touchStartRef.current = null;
-  };
-
-  const scrollToSide = (target: "left" | "center" | "right") => {
-    if (!scrollRef.current) return;
-    if (target === "left") {
-      scrollRef.current.scrollTo({ left: 0, behavior: "smooth" });
-    } else if (target === "center") {
-      const maxScroll = scrollRef.current.scrollWidth - scrollRef.current.clientWidth;
-      scrollRef.current.scrollTo({ left: maxScroll / 2, behavior: "smooth" });
-    } else {
-      scrollRef.current.scrollTo({ left: scrollRef.current.scrollWidth, behavior: "smooth" });
-    }
-  };
-
-  const renderedWidth = mode === "rotate" ? CERT_H * activeScale : CERT_W * activeScale;
-  const isOverflowing = renderedWidth > containerWidth;
-
-  if (typeof document === "undefined") return null;
-
-  return createPortal(
-    <div 
-      ref={overlayRef}
-      id="certificate-preview-modal-overlay"
-      className="fixed inset-0 z-[99999] flex items-start sm:items-center justify-center p-2 sm:p-4 bg-slate-950/90 backdrop-blur-md overflow-y-auto"
-      style={{ WebkitOverflowScrolling: "touch" }}
-      onClick={(e) => {
-        if (e.target === overlayRef.current) onClose();
-      }}
-    >
-      <div 
-        ref={cardRef}
-        id="certificate-preview-modal-card"
-        className="bg-white dark:bg-slate-900 rounded-2xl sm:rounded-3xl max-w-5xl w-full p-3.5 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col my-auto max-h-[96vh] min-h-0"
-      >
-        {/* Header */}
-        <div className="flex items-center justify-between w-full mb-3 pb-3 border-b border-slate-100 dark:border-slate-800">
-          <div className="flex items-center gap-2.5">
-            <div className="p-2 rounded-xl bg-sky-500/10 text-sky-600 dark:text-sky-400">
-              <ShieldCheck className="w-5 h-5" />
-            </div>
-            <div>
-              <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-white leading-tight">
-                Prévia do Certificado ({previewCertEvent.type === "participant" ? "Participação" : "Organização"})
-              </h3>
-              <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[240px] sm:max-w-md">
-                {previewCertEvent.event.title}
-              </p>
-            </div>
-          </div>
-          <button
-            onClick={onClose}
-            className="p-2 rounded-xl text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors font-bold text-base cursor-pointer"
-            title="Fechar Prévia"
-          >
-            ✕
-          </button>
-        </div>
-
-        {/* Toolbar: Mode controls (Fit, Rotate, Zoom) */}
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3 bg-slate-50 dark:bg-slate-950/60 p-2 rounded-2xl border border-slate-200/80 dark:border-slate-800">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => { setMode("fit"); setZoomLevel(1); }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                mode === "fit"
-                  ? "bg-sky-600 text-white shadow-sm"
-                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800"
-              }`}
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              Ajustar à Tela
-            </button>
-
-            <button
-              onClick={() => { setMode("rotate"); setZoomLevel(1); }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                mode === "rotate"
-                  ? "bg-sky-600 text-white shadow-sm"
-                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800"
-              }`}
-              title="Gira 90 graus para leitura vertical em smartphones"
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-              Girar no Celular
-            </button>
-
-            <button
-              onClick={() => { setMode("zoom"); }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                mode === "zoom"
-                  ? "bg-sky-600 text-white shadow-sm"
-                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800"
-              }`}
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-              Zoom Detalhes
-            </button>
-          </div>
-
-          {/* Zoom +/- controls */}
-          <div className="flex items-center gap-1">
-            {mode === "zoom" && (
-              <>
-                <button
-                  onClick={() => setZoomLevel((prev) => Math.max(0.6, prev - 0.2))}
-                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                  title="Diminuir Zoom"
-                >
-                  <ZoomOut className="w-4 h-4" />
-                </button>
-                <span className="text-[11px] font-bold text-slate-500 dark:text-slate-400 px-1">
-                  {Math.round(activeScale * 100)}%
-                </span>
-                <button
-                  onClick={() => setZoomLevel((prev) => Math.min(1.8, prev + 0.2))}
-                  className="p-1.5 rounded-lg text-slate-600 dark:text-slate-300 hover:bg-slate-200 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-                  title="Aumentar Zoom"
-                >
-                  <ZoomIn className="w-4 h-4" />
-                </button>
-              </>
-            )}
-            <span className="hidden sm:inline-block text-[11px] text-slate-400 dark:text-slate-500 ml-2">
-              (1122 × 793 px - A4 Paisagem)
-            </span>
-          </div>
-        </div>
-
-        {/* Quick Side Jump Navigation Buttons (shown when horizontally scrollable) */}
-        {isOverflowing && mode !== "fit" && (
-          <div className="flex items-center justify-between gap-2 px-2 py-1 mb-2 bg-sky-50/70 dark:bg-sky-950/40 rounded-xl border border-sky-100 dark:border-sky-900/60 text-[11px] font-semibold text-sky-800 dark:text-sky-300">
-            <span className="flex items-center gap-1 text-[10px] uppercase font-bold text-sky-600 dark:text-sky-400">
-              <MoveHorizontal className="w-3.5 h-3.5" /> Navegação Rápida:
-            </span>
-            <div className="flex items-center gap-1">
-              <button
-                type="button"
-                onClick={() => scrollToSide("left")}
-                className="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 shadow-xs hover:bg-sky-100 dark:hover:bg-slate-700 transition-colors cursor-pointer text-[10px] font-bold text-slate-700 dark:text-slate-200"
-              >
-                ◀ Lado Esquerdo
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollToSide("center")}
-                className="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 shadow-xs hover:bg-sky-100 dark:hover:bg-slate-700 transition-colors cursor-pointer text-[10px] font-bold text-slate-700 dark:text-slate-200"
-              >
-                ◉ Centro
-              </button>
-              <button
-                type="button"
-                onClick={() => scrollToSide("right")}
-                className="px-2 py-0.5 rounded-lg bg-white dark:bg-slate-800 shadow-xs hover:bg-sky-100 dark:hover:bg-slate-700 transition-colors cursor-pointer text-[10px] font-bold text-slate-700 dark:text-slate-200"
-              >
-                ▶ Lado Direito
-              </button>
-            </div>
-          </div>
-        )}
-
-        {/* Main Certificate Scroll / Viewport Box */}
-        <div
-          ref={containerRef}
-          className="w-full flex-1 min-h-[260px] sm:min-h-[380px] max-h-[62vh] bg-slate-100/80 dark:bg-slate-950/80 rounded-2xl p-2 sm:p-4 overflow-hidden border border-slate-200 dark:border-slate-800 flex flex-col justify-center relative shadow-inner"
-        >
-          <div
-            ref={scrollRef}
-            onTouchStart={handleTouchStart}
-            onTouchMove={handleTouchMove}
-            onTouchEnd={handleTouchEnd}
-            className={`w-full h-full overflow-auto flex py-2 select-none touch-pan-x touch-pan-y ${
-              isOverflowing ? "justify-start" : "justify-center"
-            }`}
-            style={{ WebkitOverflowScrolling: "touch" }}
-          >
-            {mode === "rotate" ? (
-              // Rotated container: certificate scaled and rotated 90 degrees
-              <div
-                className="shrink-0 transition-transform duration-200"
-                style={{
-                  width: `${Math.round(CERT_H * activeScale)}px`,
-                  height: `${Math.round(CERT_W * activeScale)}px`,
-                  display: "flex",
-                  alignItems: "center",
-                  justifyContent: "center",
-                  position: "relative",
-                }}
-              >
-                <div
-                  style={{
-                    transform: `rotate(90deg) scale(${activeScale})`,
-                    transformOrigin: "center center",
-                    width: `${CERT_W}px`,
-                    height: `${CERT_H}px`,
-                  }}
-                >
-                  <AsyncCertificateRenderer
-                    id="preview-cert-modal-node"
-                    event={previewCertEvent.event}
-                    member={member}
-                    isOrganizer={previewCertEvent.type === "organizer"}
-                  />
-                </div>
-              </div>
-            ) : (
-              // Standard landscape container (Fit or Zoom mode)
-              <div
-                className="shrink-0 transition-transform duration-200"
-                style={{
-                  width: `${Math.round(CERT_W * activeScale)}px`,
-                  height: `${Math.round(CERT_H * activeScale)}px`,
-                  position: "relative",
-                }}
-              >
-                <div
-                  style={{
-                    transform: `scale(${activeScale})`,
-                    transformOrigin: "top left",
-                    width: `${CERT_W}px`,
-                    height: `${CERT_H}px`,
-                  }}
-                >
-                  <AsyncCertificateRenderer
-                    id="preview-cert-modal-node"
-                    event={previewCertEvent.event}
-                    member={member}
-                    isOrganizer={previewCertEvent.type === "organizer"}
-                  />
-                </div>
-              </div>
-            )}
-          </div>
-        </div>
-
-        {/* Footer Actions */}
-        <div className="flex flex-col sm:flex-row gap-3 w-full justify-between items-center mt-4 pt-3 border-t border-slate-100 dark:border-slate-800">
-          <div className="text-[11px] text-slate-500 dark:text-slate-400 flex items-center gap-1.5">
-            <span>Dica: Em smartphones, use <strong>"Girar no Celular"</strong> ou arraste para os lados.</span>
-          </div>
-
-          <div className="flex items-center gap-2.5 w-full sm:w-auto justify-end">
-            <button
-              onClick={onClose}
-              className="py-2.5 px-5 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-300 font-bold text-xs hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors cursor-pointer"
-            >
-              Fechar
-            </button>
-            <button
-              onClick={() => printCertificateNode(document.getElementById("preview-cert-modal-node"))}
-              className="py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
-              title="Imprimir Certificado isolado"
-            >
-              <Printer className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-              Imprimir
-            </button>
-            <button
-              onClick={onDownload}
-              disabled={isDownloading}
-              className="py-2.5 px-6 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all shadow-md flex items-center justify-center gap-2 disabled:opacity-50 cursor-pointer"
-            >
-              {downloadingCertKey === `${previewCertEvent.event.id}_${previewCertEvent.type}` ? (
-                <Loader2 className="w-4 h-4 animate-spin" />
-              ) : (
-                <>
-                  <Download className="w-4 h-4" /> Baixar Certificado em PDF
-                </>
-              )}
-            </button>
-          </div>
-        </div>
-      </div>
-    </div>,
-    document.body
-  );
-}
 
 const STUDENT_BOND_KEY = "davveroId_student_identity";
 const STUDENT_TRACK_KEY = "davveroId_student_track_ra";
@@ -617,7 +80,7 @@ interface StudentPortalProps {
   onOverrideConsumed?: () => void;
 }
 
-export default function StudentPortal({
+const StudentPortal = memo(function StudentPortal({
   overrideCode,
   onOverrideConsumed,
 }: StudentPortalProps) {
@@ -686,7 +149,6 @@ export default function StudentPortal({
   const [alphaCode, setAlphaCode] = useState("");
   const [isPrePinAnimation, setIsPrePinAnimation] = useState(false);
   const [isGenerating, setIsGenerating] = useState(false);
-  const [isBiometricAuthenticating, setIsBiometricAuthenticating] = useState(false);
   const [modalIframeBiometric, setModalIframeBiometric] = useState(false);
   const [pendingCertTarget, setPendingCertTarget] = useState<{
     eventId: string;
@@ -765,7 +227,6 @@ export default function StudentPortal({
   const [modalPinReset, setModalPinReset] = useState(false);
   const [modalDNEOpen, setModalDNEOpen] = useState(false);
   const [showAccountEditModal, setShowAccountEditModal] = useState(false);
-  const [showDeletionConfirmModal, setShowDeletionConfirmModal] = useState(false);
   const [showPublicReq, setShowPublicReq] = useState(false);
   const [showRegisterTypeSelection, setShowRegisterTypeSelection] = useState(false);
   const [showVisitorRegisterModal, setShowVisitorRegisterModal] = useState(false);
@@ -788,15 +249,17 @@ export default function StudentPortal({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const scrollToCard = () => {
-    // Dynamic adaptive scroll considering device screen size, viewport height and header elements
+    // Dynamic adaptive scroll preserving page header and top controls visibility
     if (typeof window === 'undefined') return;
     window.requestAnimationFrame(() => {
       const el = cardRef.current || document.getElementById('student-carteirinha-container');
       if (el) {
         const rect = el.getBoundingClientRect();
-        // Só aciona scroll se a carteirinha estiver fora do viewport visível
-        if (rect.top < 0 || rect.bottom > window.innerHeight) {
+        // Só aciona scroll se a carteirinha estiver completamente fora da visão
+        if (rect.top > window.innerHeight) {
           el.scrollIntoView({ behavior: 'smooth', block: 'nearest' });
+        } else if (rect.top < 0) {
+          window.scrollTo({ top: 0, behavior: 'smooth' });
         }
       }
     });
@@ -1073,8 +536,6 @@ export default function StudentPortal({
     }
   }, [member, pendingCertTarget, allEvents]);
 
-  const [isUpdatingEmailPref, setIsUpdatingEmailPref] = useState(false);
-
   useEffect(() => {
     if (typeof window !== "undefined") {
       const params = new URLSearchParams(window.location.search);
@@ -1127,42 +588,6 @@ export default function StudentPortal({
       }
     }
   }, [member]);
-
-  const handleToggleEmailNotifications = async () => {
-    if (!member) return;
-    setIsUpdatingEmailPref(true);
-    try {
-      const currentVal = member.emailNotificationsEnabled !== false; // default true
-      const newVal = !currentVal;
-      const docRef = doc(db, `artifacts/${appId}/public/data/students`, member.id);
-      await updateDoc(docRef, {
-        emailNotificationsEnabled: newVal,
-        ...(newVal ? {} : { emailUnsubscribedAt: new Date().toISOString() })
-      });
-      const updatedMember = {
-        ...member,
-        emailNotificationsEnabled: newVal,
-        ...(newVal ? {} : { emailUnsubscribedAt: new Date().toISOString() })
-      };
-      setMember(updatedMember);
-      try {
-        localStorage.setItem("davvero_cached_member", JSON.stringify(updatedMember));
-      } catch {}
-      playSound("success");
-      showAlert(
-        newVal
-          ? "Notificações por e-mail ativadas com sucesso! Você receberá avisos sobre certificados liberados e avisos acadêmicos."
-          : "Notificações por e-mail desativadas. Você não receberá mais comunicados automáticos por e-mail.",
-        { type: "success" }
-      );
-    } catch (err) {
-      console.error(err);
-      playSound("error");
-      showAlert("Erro ao atualizar preferência de e-mail.", { type: "error" });
-    } finally {
-      setIsUpdatingEmailPref(false);
-    }
-  };
 
   const formatDateTime = (dateStr: string | undefined) => {
     if (!dateStr) return "---";
@@ -1256,6 +681,7 @@ export default function StudentPortal({
 
       let canvas: HTMLCanvasElement;
       try {
+        const { toCanvas } = await import("html-to-image");
         canvas = await toCanvas(node, {
           pixelRatio: 2,
           skipFonts: false,
@@ -1263,6 +689,7 @@ export default function StudentPortal({
         });
       } catch (errCanvas) {
         console.warn("toCanvas error, falling back to html2canvas", errCanvas);
+        const html2canvas = (await import("html2canvas")).default;
         canvas = await html2canvas(node, {
           scale: 2,
           useCORS: true,
@@ -1274,6 +701,7 @@ export default function StudentPortal({
 
       const imgData = canvas.toDataURL("image/jpeg", 0.95);
 
+      const { jsPDF } = await import("jspdf");
       const pdf = new jsPDF({
         orientation: "landscape",
         unit: "mm",
@@ -1840,93 +1268,27 @@ export default function StudentPortal({
     }
   };
 
-  const handleBiometricAuth = async () => {
-    try {
-      setError(null);
-
-      // Verificação prévia para evitar travamentos silenciosos
-      const availability = await checkBiometricAvailability();
-      if (availability.isIframe) {
-        setModalIframeBiometric(true);
-        return;
-      }
-      if (!availability.supported) {
-        setError("Seu navegador ou dispositivo não suporta autenticação biométrica WebAuthn.");
-        playSound('error');
-        return;
-      }
-      if (!availability.hasPlatformSensor) {
-        setError("Nenhum leitor biométrico (digital/facial) detectado ou ativado neste aparelho. Acesse com sua senha PIN de 4 dígitos.");
-        playSound('error');
-        return;
-      }
-
-      setIsBiometricAuthenticating(true);
-      const credId = localStorage.getItem("student_biometric_credential_id");
-      if (credId) {
-        try {
-          await verifyBiometric(credId);
-        } catch (verifyErr: any) {
-          const errName = verifyErr?.name || "";
-          const msg = verifyErr?.message || "";
-          // Se falhou por cancelamento explícito do usuário, encerra sem alterar credencial
-          if (errName === "AbortError" || msg.includes("cancelad") || errName === "NotAllowedError") {
-            throw verifyErr;
-          }
-          // Caso a credencial guardada não coincida mais com a chave do sensor, renova
-          console.warn("Credencial biométrica anterior não reconhecida, tentando novo cadastro...", verifyErr);
-          localStorage.removeItem("student_biometric_credential_id");
-          if (member) {
-            const newCredId = await registerBiometric(member.email || "aluno@fajopa", member.name);
-            localStorage.setItem("student_biometric_credential_id", newCredId);
-          } else {
-            throw verifyErr;
-          }
-        }
-      } else {
-        if (!member) {
-          setIsBiometricAuthenticating(false);
-          setError("Dados institucionais não encontrados para habilitar biometria. Use sua senha PIN.");
-          return;
-        }
-        const newCredId = await registerBiometric(member.email || "aluno@fajopa", member.name);
-        localStorage.setItem("student_biometric_credential_id", newCredId);
-      }
-
-      // Biometria validada com sucesso: agora exibe a preparação final segura e abre
-      setIsBiometricAuthenticating(false);
+  const {
+    isBiometricAuthenticating,
+    setIsBiometricAuthenticating,
+    handleBiometricAuth,
+    handleCancelBiometric,
+  } = useStudentBiometrics({
+    member,
+    onSuccess: async () => {
       setIsGenerating(true);
       sessionStorage.setItem("davveroId_unlocked", "true");
       playSound('generating');
-      await new Promise(r => setTimeout(r, 600));
+      await new Promise((r) => setTimeout(r, 600));
       setIsUnlocked(true);
       setIsGenerating(false);
       setPinMode("none");
       playSound('login');
       scrollToCard();
-    } catch (e: any) {
-      console.error("Erro na biometria:", e);
-      setIsBiometricAuthenticating(false);
-      setIsGenerating(false);
-      const errorMsg = e.message || "";
-
-      if (e.name === "AbortError" || errorMsg.includes("cancelad")) {
-        // Cancelamento pelo próprio usuário
-        setError(null);
-      } else if (e.name === "NotAllowedError") {
-        setError("Validação biométrica cancelada ou não reconhecida. Tente novamente ou use seu PIN.");
-        playSound('error');
-      } else if (e.name === "TimeoutError" || errorMsg.includes("Tempo limite")) {
-        setError("Tempo limite esgotado. Tente novamente ou use seu PIN.");
-        playSound('error');
-      } else {
-        setError(errorMsg || "Falha na leitura biométrica. Você pode usar sua senha PIN.");
-        playSound('error');
-      }
-    } finally {
-      setIsBiometricAuthenticating(false);
-    }
-  };
+    },
+    onError: (msg) => setError(msg),
+    onOpenIframeModal: () => setModalIframeBiometric(true),
+  });
 
   const handleUnlockScreen = () => {
     const hasPin = localStorage.getItem(STUDENT_FALLBACK_PIN);
@@ -2118,257 +1480,33 @@ export default function StudentPortal({
         );
       }
 
-      if (pinMode !== "none") {
-        const title =
-          pinMode === "create"
-            ? !pinConfirm
-              ? "Criar Senha/PIN (4 dígitos)"
-              : "Confirme a Senha"
-            : "Digite sua Senha/PIN";
-        return (
-          <div className="flex flex-col items-center py-20 px-4 text-center space-y-6 animate-fade-in max-w-[320px] sm:max-w-sm mx-auto h-full">
-            <Modal
-              isOpen={modalPinReset}
-              onClose={() => setModalPinReset(false)}
-              title="Esqueci minha senha"
-              confirmLabel="Redefinir Senha"
-              onConfirm={handlePinResetAttempt}
-            >
-              <p className="mb-4">
-                Para redefinir sua senha, informe seu código de uso (presente na
-                sua aprovação de cadastro ou verso da carteirinha em PDF):
-              </p>
-              <input
-                type="text"
-                placeholder="Seu código de uso"
-                autoCapitalize="characters"
-                value={resetCodeStr}
-                onChange={(e) => setResetCodeStr(e.target.value.toUpperCase())}
-                className="input-modern w-full rounded-xl py-3 px-4 text-center font-bold tracking-widest text-lg"
-              />
-            </Modal>
-
-            <Lock className="w-12 h-12 text-sky-500" />
-            <h2 className="text-xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">
-              {title}
-            </h2>
-            <input
-              type="tel"
-              inputMode="numeric"
-              maxLength={4}
-              value={pinInput}
-              autoComplete="off"
-              data-lpignore="true"
-              data-form-type="other"
-              style={{ WebkitTextSecurity: "disc" } as React.CSSProperties}
-              onChange={(e) => setPinInput(e.target.value.replace(/\D/g, ""))}
-              onKeyDown={(e) => {
-                if (e.key === "Enter") handlePinSubmit();
-              }}
-              className="text-center text-4xl tracking-[1em] font-black w-full py-4 rounded-xl bg-slate-100 dark:bg-slate-800 border-none outline-none text-slate-900 dark:text-white placeholder-slate-300 ml-[0.5em]"
-              placeholder="••••"
-            />
-            {error && (
-              <p className="text-xs text-rose-500 font-bold uppercase">
-                {error}
-              </p>
-            )}
-            <button
-              onClick={handlePinSubmit}
-              className="w-full py-4 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl font-bold shadow-xl shadow-sky-600/20 transition-all active:scale-95"
-            >
-              Confirmar
-            </button>
-            {isWebAuthnSupported() && (
-              isBiometricAuthenticating ? (
-                <div className="w-full p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex flex-col items-center gap-2 animate-fade-in">
-                  <Fingerprint className="w-8 h-8 text-sky-600 dark:text-sky-400 animate-pulse" />
-                  <p className="text-xs font-bold text-sky-900 dark:text-sky-200">
-                    Aguardando leitor biométrico...
-                  </p>
-                  <p className="text-[11px] text-sky-700 dark:text-sky-300 text-center">
-                    Toque no sensor do aparelho ou use o Face ID
-                  </p>
-                  <button
-                    type="button"
-                    onClick={() => {
-                      cancelBiometric();
-                      setIsBiometricAuthenticating(false);
-                    }}
-                    className="mt-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white py-1.5 px-4 rounded-lg bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all active:scale-95 shadow-sm"
-                  >
-                    Cancelar Leitura
-                  </button>
-                </div>
-              ) : (
-                <button
-                  type="button"
-                  onClick={handleBiometricAuth}
-                  className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
-                >
-                  <Fingerprint className="w-5 h-5 text-indigo-500" />
-                  {localStorage.getItem("student_biometric_credential_id") ? "Usar Biometria" : "Cadastrar Biometria"}
-                </button>
-              )
-            )}
-            <div className="flex flex-col gap-2 mt-4 w-full">
-              {pinMode === "verify" && (
-                <button
-                  onClick={() => {
-                    setModalPinReset(true);
-                    setError(null);
-                  }}
-                  className="text-xs text-slate-500 hover:text-sky-600 font-bold w-full p-2"
-                >
-                  Esqueci minha senha
-                </button>
-              )}
-              <button
-                onClick={() => {
-                  setPinMode("none");
-                  setModalUnlinkOpen(true);
-                }}
-                className="text-xs text-rose-400 hover:text-rose-600 font-bold w-full p-2"
-              >
-                Cancelar e Remover Conta
-              </button>
-            </div>
-          </div>
-        );
-      }
-
       return (
-        <>
-          <Modal
-            isOpen={modalUnlinkOpen}
-            onClose={() => setModalUnlinkOpen(false)}
-            title="Remover Vínculo"
-            confirmLabel="Sim, Remover"
-            confirmVariant="danger"
-            onConfirm={confirmUnlink}
-          >
-            Deseja remover sua identidade institucional deste dispositivo? Você
-            precisará do código de segurança para vincular novamente.
-          </Modal>
-
-          <Modal
-            isOpen={modalIframeBiometric}
-            onClose={() => setModalIframeBiometric(false)}
-            title="Biometria no Modo Prévia"
-            confirmLabel="Entendido"
-            onConfirm={() => setModalIframeBiometric(false)}
-          >
-            <div className="space-y-4 text-left">
-              <div className="flex items-start gap-3 p-3 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 rounded-xl text-amber-800 dark:text-amber-300 text-sm">
-                <Fingerprint className="w-5 h-5 shrink-0 text-amber-600 mt-0.5" />
-                <div>
-                  <p className="font-bold">Acesso biométrico protegido</p>
-                  <p className="text-xs mt-0.5 text-amber-700 dark:text-amber-300">
-                    O leitor biométrico físico (Face ID / digital) é restrito pelo navegador quando o app é executado em janelas embutidas (iframe).
-                  </p>
-                </div>
-              </div>
-              <p className="text-sm text-slate-600 dark:text-slate-300">
-                Para autenticar com sua digital ou Face ID, abra o portal em uma nova aba do navegador, ou utilize seu <strong>PIN de 4 dígitos</strong>.
-              </p>
-              <div className="pt-2 flex flex-col gap-2">
-                <a
-                  href={window.location.href}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="w-full py-3 text-center bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold shadow-md transition-all flex items-center justify-center gap-2"
-                >
-                  <ExternalLink className="w-4 h-4" />
-                  Abrir em Nova Aba
-                </a>
-                <button
-                  type="button"
-                  onClick={() => {
-                    setModalIframeBiometric(false);
-                    handleUnlockScreen();
-                  }}
-                  className="w-full py-3 text-center bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl font-bold transition-all"
-                >
-                  Digitar Senha / PIN
-                </button>
-              </div>
-            </div>
-          </Modal>
-
-          <div className="flex flex-col items-center justify-center py-12 px-4 text-center space-y-8 animate-fade-in relative max-w-[320px] sm:max-w-sm mx-auto h-full min-h-[60vh]">
-            <div className="absolute inset-0 bg-slate-900/5 backdrop-blur-[2px] rounded-3xl -z-10" />
-            <div className="w-24 h-24 bg-sky-100 dark:bg-sky-500/10 rounded-full flex items-center justify-center text-sky-600 dark:text-sky-400 shadow-inner">
-              <Lock className="w-12 h-12" />
-            </div>
-            <div>
-              <h2 className="text-2xl font-black text-slate-800 dark:text-white uppercase tracking-tighter">
-                Acesso Bloqueado
-              </h2>
-              <p className="text-sm text-slate-500 mt-2 font-medium">
-                Use sua senha para desbloquear a sua carteirinha.
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 w-full">
-              <button
-                onClick={handleUnlockScreen}
-                className="w-full py-4 bg-slate-900 hover:bg-slate-800 text-white rounded-2xl font-bold shadow-xl shadow-slate-900/20 transition-all active:scale-95 flex items-center justify-center gap-2"
-              >
-                <KeyRound className="w-5 h-5" />
-                {localStorage.getItem(STUDENT_FALLBACK_PIN)
-                  ? "Digitar Senha / PIN"
-                  : "Criar Senha de Acesso"}
-              </button>
-
-              {isWebAuthnSupported() && (
-                isBiometricAuthenticating ? (
-                  <div className="w-full p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex flex-col items-center gap-2.5 animate-fade-in shadow-sm">
-                    <div className="relative flex items-center justify-center py-1">
-                      <Fingerprint className="w-10 h-10 text-sky-600 dark:text-sky-400 animate-pulse" />
-                    </div>
-                    <div className="text-center">
-                      <p className="text-sm font-bold text-sky-900 dark:text-sky-200">
-                        Aguardando Leitor Biométrico...
-                      </p>
-                      <p className="text-xs text-sky-700 dark:text-sky-300 mt-0.5">
-                        Toque no leitor do aparelho ou use o Face ID
-                      </p>
-                    </div>
-                    <button
-                      type="button"
-                      onClick={() => {
-                        cancelBiometric();
-                        setIsBiometricAuthenticating(false);
-                      }}
-                      className="mt-1 text-xs font-bold text-slate-600 dark:text-slate-300 hover:text-slate-900 dark:hover:text-white py-1.5 px-4 rounded-xl bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 transition-all active:scale-95 shadow-sm"
-                    >
-                      Cancelar / Usar Senha PIN
-                    </button>
-                  </div>
-                ) : (
-                  <button
-                    type="button"
-                    onClick={handleBiometricAuth}
-                    className="w-full py-4 bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/30 dark:hover:bg-sky-900/50 dark:text-sky-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm"
-                  >
-                    <Fingerprint className="w-5 h-5 text-sky-600 dark:text-sky-400" />
-                    {localStorage.getItem("student_biometric_credential_id") ? "Acessar com Biometria" : "Habilitar Biometria"}
-                  </button>
-                )
-              )}
-            </div>
-            {error && (
-              <p className="text-[10px] text-rose-500 font-bold uppercase">
-                {error}
-              </p>
-            )}
-            <button
-              onClick={() => setModalUnlinkOpen(true)}
-              className="text-xs text-rose-400 hover:text-rose-600 font-bold transition-colors"
-            >
-              Desvincular Carteirinha
-            </button>
-          </div>
-        </>
+        <StudentSecurityGate
+          member={member}
+          pinMode={pinMode}
+          setPinMode={setPinMode}
+          pinInput={pinInput}
+          setPinInput={setPinInput}
+          pinConfirm={pinConfirm}
+          error={error}
+          setError={setError}
+          handlePinSubmit={handlePinSubmit}
+          isBiometricAuthenticating={isBiometricAuthenticating}
+          handleBiometricAuth={handleBiometricAuth}
+          cancelBiometric={handleCancelBiometric}
+          setIsBiometricAuthenticating={setIsBiometricAuthenticating}
+          modalPinReset={modalPinReset}
+          setModalPinReset={setModalPinReset}
+          resetCodeStr={resetCodeStr}
+          setResetCodeStr={setResetCodeStr}
+          handlePinResetAttempt={handlePinResetAttempt}
+          modalUnlinkOpen={modalUnlinkOpen}
+          setModalUnlinkOpen={setModalUnlinkOpen}
+          confirmUnlink={confirmUnlink}
+          modalIframeBiometric={modalIframeBiometric}
+          setModalIframeBiometric={setModalIframeBiometric}
+          handleUnlockScreen={handleUnlockScreen}
+        />
       );
     }
 
@@ -2406,1395 +1544,92 @@ export default function StudentPortal({
         </Modal>
 
         <div ref={portalContainerRef} className="w-full flex flex-col items-center animate-fade-in mt-6 max-w-sm sm:max-w-[600px] mx-auto">
-          {isSupported && !subscription && !isOverrideMode && (
-             <div className="w-full mb-6 no-print">
-                <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
-                   <div className="flex items-center gap-3">
-                      <div className="bg-sky-500 p-2.5 rounded-xl text-white shadow-md">
-                         <BellRing className="w-5 h-5" />
-                      </div>
-                      <div>
-                         <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200">Não perca nada!</h4>
-                         <p className="text-xs text-slate-500 dark:text-slate-400 leading-relaxed">Ative as notificações em segundo plano para receber avisos importantes, mesmo com o app fechado. Não gasta bateria.</p>
-                      </div>
-                   </div>
-                   <button
-                      onClick={() => {
-                        playSound('click');
-                        subscribe();
-                      }}
-                      className="w-full sm:w-auto bg-sky-600 hover:bg-sky-700 text-white px-5 py-2.5 rounded-xl font-bold text-xs shadow-sm transition active:scale-95 whitespace-nowrap"
-                   >
-                      Ativar Notificações
-                   </button>
-                </div>
-             </div>
-          )}
-          <div className="w-full flex justify-between items-center mb-6 px-2 no-print print:hidden">
-            <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1">
-              <ShieldCheck className="w-3 h-3" /> Acesso Seguro Ativo
-            </span>
-            <div className="flex gap-1">
-              {!isOverrideMode && (
-                <>
-                  {isSupported && !subscription && (
-                    <button
-                      onClick={() => {
-                        playSound('click');
-                        subscribe();
-                      }}
-                      className="p-2 text-sky-500 hover:text-sky-600 dark:text-sky-400 dark:hover:text-sky-300 transition-colors animate-pulse relative"
-                      title="Ativar Notificações"
-                    >
-                      <Bell className="w-5 h-5" />
-                      <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full animate-ping"></span>
-                      <span className="absolute top-1 right-1 w-2 h-2 bg-rose-500 rounded-full"></span>
-                    </button>
-                  )}
-                  {isSupported && subscription && (
-                    <button
-                      className="p-2 text-emerald-500 hover:text-emerald-600 transition-colors cursor-default"
-                      title="Notificações Ativas"
-                    >
-                      <BellRing className="w-5 h-5" />
-                    </button>
-                  )}
-                  <button
-                    onClick={() => {
-                      playSound('logout');
-                      setIsUnlocked(false);
-                    }}
-                    className="p-2 text-slate-400 hover:text-sky-500 transition-colors"
-                    title="Bloquear Proteção"
-                  >
-                    <Lock className="w-5 h-5" />
-                  </button>
-                  <button
-                    onClick={() => {
-                      playSound('click');
-                      setModalUnlinkOpen(true);
-                    }}
-                    className="p-2 text-slate-400 hover:text-rose-500 transition-colors"
-                    title="Sair / Desvincular"
-                  >
-                    <LogOut className="w-5 h-5" />
-                  </button>
-                </>
-              )}
-              {isOverrideMode && (
-                <span className="text-[10px] font-black text-amber-500 uppercase tracking-widest flex items-center bg-amber-500/10 px-2 py-1 rounded-full">
-                  MODO VISUALIZAÇÃO
-                </span>
-              )}
-            </div>
-          </div>
-          {/* TAB NAVIGATION */}
-          <div className="w-full mt-2 flex flex-wrap justify-center gap-1.5 sm:gap-2 no-print print:hidden mb-4">
-            <button
-              onClick={() => {
-                playSound('click');
-                setActiveTab("id");
-                scrollToCard();
-              }}
-              className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-                activeTab === "id"
-                  ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm"
-                  : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-              }`}
-            >
-              <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span>Minha ID</span>
-            </button>
-            <button
-              onClick={() => {
-                playSound('click');
-                setActiveTab("events");
-              }}
-              className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-                activeTab === "events"
-                  ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm"
-                  : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-              }`}
-            >
-              <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span>Eventos</span>
-            </button>
-            <button
-              onClick={() => {
-                playSound('click');
-                setActiveTab("certificates");
-              }}
-              className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-                activeTab === "certificates"
-                  ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm"
-                  : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-              } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
-            >
-              <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span>Certificados</span>
-            </button>
-            <button
-              onClick={() => {
-                playSound('click');
-                setActiveTab("academic");
-              }}
-              className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-                activeTab === "academic"
-                  ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm"
-                  : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-              } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
-            >
-              <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span className="hidden sm:inline">Acadêmico</span>
-              <span className="sm:hidden">Acad.</span>
-            </button>
-
-            {(member?.roles?.some(r => ["SEMINARISTA", "PADRE", "REITOR", "VICE-REITOR", "PSICÓLOGA", "DIRETOR ESPIRITUAL", "DIRETORA ESPIRITUAL"].includes(r.toUpperCase()))) && (
-              <button
-                onClick={() => setActiveTab("seminary_events")}
-                className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-                  activeTab === "seminary_events"
-                    ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30 shadow-sm"
-                    : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-                } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
-              >
-                <CalendarHeart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-                <span>Eventos Seminário</span>
-              </button>
-            )}
-            <button
-              onClick={() => setActiveTab("biblioteca")}
-              className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-                activeTab === "biblioteca"
-                  ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30 shadow-sm"
-                  : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-              } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
-            >
-              <Library className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span>Biblioteca</span>
-            </button>
-            <button
-              onClick={() => setActiveTab("account")}
-              className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-                activeTab === "account"
-                  ? "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-500/30 shadow-sm"
-                  : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
-              } ${member?.isApproved === false ? "opacity-30 cursor-not-allowed pointer-events-none" : ""}`}
-            >
-              <User className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
-              <span>Conta</span>
-            </button>
-          </div>
+          <StudentPortalHeader
+            member={member}
+            activeTab={activeTab}
+            setActiveTab={setActiveTab}
+            isOverrideMode={isOverrideMode}
+            isPushSupported={isSupported}
+            pushSubscription={subscription}
+            onSubscribePush={subscribe}
+            onLockSecurity={() => setIsUnlocked(false)}
+            onOpenUnlinkModal={() => setModalUnlinkOpen(true)}
+            onScrollToCard={scrollToCard}
+          />
 
           <div className="w-full mt-2">
             {activeTab === "id" && (
-              <motion.div
-                ref={cardRef}
-                id="student-carteirinha-container"
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
-              >
-                <VerificationResult
-                  member={member}
-                  status={(!member.isApproved && member.isApproved !== undefined) || member.isApproved === false ? "PENDING" : (member.isActive ? "VALID" : "INACTIVE")}
-                  onReset={() => {
-                    playSound('logout');
-                    clearStudentSession();
-                    setMember(null);
-                    setBondedId(null);
-                    setIsUnlocked(false);
-                    setPinMode("none");
-                  }}
-                  isMyID={true}
-                />
-
-                <HomePollsWidget currentMemberName={member?.name} currentMemberId={member?.id} />
-
-                <div className="px-4 py-6 bg-blue-50/50 dark:bg-blue-900/10 rounded-3xl border border-blue-100 dark:border-blue-900/30">
-                  <p className="text-xs text-blue-700 dark:text-blue-400 font-medium leading-relaxed">
-                    Esta é a sua Identidade Estudantil oficial. Use o QR Code
-                    acima para validar sua presença em eventos e garantir seu
-                    acesso aos benefícios estudantis.
-                  </p>
-                </div>
-
-                <div className="px-4 py-6 bg-slate-50 dark:bg-slate-800/50 rounded-3xl border border-slate-200 dark:border-slate-700/50 text-center no-print print:hidden">
-                  <h3 className="text-sm font-black text-slate-800 dark:text-white uppercase tracking-widest mb-3 leading-tight">
-                    Validade Nacional
-                  </h3>
-                  <p className="text-[10px] text-slate-500 mb-4 px-4 leading-relaxed font-medium">
-                    O DAVVERO System é seu documento institucional. Para eventos
-                    nacionais que exijam o padrão ITI com certificação
-                    ICP-Brasil, você pode solicitar o DNE oficial.
-                  </p>
-                  <button
-                    onClick={() => setModalDNEOpen(true)}
-                    className="w-full py-3.5 px-4 bg-white dark:bg-slate-800 border border-slate-300 dark:border-slate-600 rounded-xl text-slate-700 dark:text-slate-200 text-xs font-bold hover:bg-slate-50 dark:hover:bg-slate-700 transition-all flex items-center justify-center gap-2 active:scale-95 shadow-sm"
-                  >
-                    Solicitar Documento Nacional (DNE)
-                  </button>
-                </div>
-              </motion.div>
+              <StudentCardTab
+                member={member}
+                cardRef={cardRef}
+                onResetSession={() => {
+                  playSound('logout');
+                  clearStudentSession();
+                  setMember(null);
+                  setBondedId(null);
+                  setIsUnlocked(false);
+                  setPinMode("none");
+                }}
+                onOpenDNE={() => setModalDNEOpen(true)}
+              />
             )}
 
             {activeTab === "events" && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-4"
-              >
-                {/* SUB-TABS for Events */}
-                <div className="flex gap-2 p-1 bg-slate-100 dark:bg-slate-800/30 rounded-2xl mb-6">
-                  <button
-                    onClick={() => setEventsSubTab("upcoming")}
-                    className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                      eventsSubTab === "upcoming"
-                        ? "bg-white dark:bg-slate-700 text-sky-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    Próximos
-                  </button>
-                  <button
-                    onClick={() => setEventsSubTab("past")}
-                    className={`flex-1 py-2.5 rounded-xl text-[10px] font-black uppercase tracking-widest transition-all ${
-                      eventsSubTab === "past"
-                        ? "bg-white dark:bg-slate-700 text-sky-600 shadow-sm"
-                        : "text-slate-400 hover:text-slate-600"
-                    }`}
-                  >
-                    Histórico
-                  </button>
-                </div>
-
-                {eventsSubTab === "upcoming" ? (
-                  <>
-                    <div className="flex items-center justify-between mb-2 px-1">
-                      <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                        <QrCode className="w-4 h-4 text-sky-500" /> Próximos
-                        Eventos
-                      </h3>
-                    </div>
-
-                    {availableEvents.length > 0 ? (
-                      <div className="space-y-4">
-                        {availableEvents.map((event) => {
-                          const isEnrolled = myAttendances.some(
-                            (a) => a.eventId === event.id,
-                          );
-                          const isPastDeadline = event.registrationDeadline
-                            ? new Date() > new Date(event.registrationDeadline)
-                            : false;
-                          const isPaused = event.isRegistrationPaused === true;
-
-                          const canEnroll = !isPastDeadline && !isPaused;
-
-                          let cannotEnrollReason = "";
-                          if (isPaused) cannotEnrollReason = "Inscrições Pausadas";
-                          else if (isPastDeadline) cannotEnrollReason = "Inscrições Encerradas";
-                          return (
-                            <div
-                              key={event.id}
-                              className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-3xl p-5 shadow-sm"
-                            >
-                              <div className="flex justify-between items-start mb-3">
-                                <span
-                                  className={`text-[9px] font-black uppercase px-2 py-1 rounded-full ${
-                                    event.format === "presencial"
-                                      ? "bg-amber-100 dark:bg-amber-500/20 text-amber-700 dark:text-amber-400"
-                                      : event.format === "hibrido"
-                                      ? "bg-fuchsia-100 dark:bg-fuchsia-500/20 text-fuchsia-700 dark:text-fuchsia-400"
-                                      : "bg-sky-100 dark:bg-sky-500/20 text-sky-700 dark:text-sky-400"
-                                  }`}
-                                >
-                                  {event.format === "presencial"
-                                    ? "Presencial"
-                                    : event.format === "hibrido"
-                                    ? "Híbrido"
-                                    : "Online"}
-                                </span>
-                                {isEnrolled && (
-                                  <span className="text-[9px] font-black uppercase px-2 py-1 bg-emerald-100 dark:bg-emerald-500/20 text-emerald-700 dark:text-emerald-400 rounded-full flex items-center gap-1">
-                                    <ShieldCheck className="w-3 h-3" /> Inscrito
-                                  </span>
-                                )}
-                              </div>
-                              <h4 className="font-bold text-slate-800 dark:text-white text-sm mb-1 leading-tight">
-                                {event.title}
-                              </h4>
-                              <div className="mb-4">
-                                <p className={`text-xs text-slate-600 dark:text-slate-300 ${expandedPortalEvents[event.id] ? "whitespace-pre-wrap break-words leading-relaxed" : "line-clamp-2"} transition-all`}>
-                                  {event.description.split(/(https?:\/\/[^\s]+|www\.[^\s]+)/g).map((part, i) => {
-                                    if (part.match(/(https?:\/\/[^\s]+|www\.[^\s]+)/)) {
-                                      const href = part.startsWith("http") ? part : `https://${part}`;
-                                      return (
-                                        <a
-                                          key={i}
-                                          href={href}
-                                          target="_blank"
-                                          rel="noopener noreferrer"
-                                          onClick={(e) => e.stopPropagation()}
-                                          className="text-sky-600 dark:text-sky-400 underline font-semibold hover:text-sky-700"
-                                        >
-                                          {part}
-                                        </a>
-                                      );
-                                    }
-                                    return part;
-                                  })}
-                                </p>
-                                {event.description && event.description.length > 70 && (
-                                  <button
-                                    type="button"
-                                    onClick={(e) => {
-                                      e.stopPropagation();
-                                      setExpandedPortalEvents(prev => ({
-                                        ...prev,
-                                        [event.id]: !prev[event.id]
-                                      }));
-                                    }}
-                                    className="mt-1 text-[11px] font-bold text-sky-600 hover:text-sky-700 dark:text-sky-400 dark:hover:text-sky-300 flex items-center gap-1 cursor-pointer transition-colors"
-                                  >
-                                    {expandedPortalEvents[event.id] ? "Ver menos" : "Ver descrição completa..."}
-                                  </button>
-                                )}
-                              </div>
-
-                              <div className="flex items-center gap-4 text-[10px] text-slate-500 dark:text-slate-400 font-bold uppercase tracking-tight mb-4">
-                                <div className="flex items-center gap-1.5">
-                                  <Clock className="w-3.5 h-3.5" />
-                                  {new Date(event.startDate).toLocaleDateString(
-                                    "pt-BR",
-                                  )}
-                                </div>
-                                {event.hours && (
-                                  <div className="flex items-center gap-1.5">
-                                    <LogOut className="w-3.5 h-3.5 rotate-180" />
-                                    {event.hours}H
-                                  </div>
-                                )}
-                              </div>
-                              {!isEnrolled ? (
-                                canEnroll ? (
-                                  <button
-                                    onClick={() => handleEnroll(event.id)}
-                                    disabled={isEnrollingInProgress === event.id}
-                                    className="w-full py-3 bg-sky-600 hover:bg-sky-500 disabled:bg-slate-400 text-white rounded-2xl font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2"
-                                  >
-                                    {isEnrollingInProgress === event.id ? (
-                                      <Loader2 className="w-4 h-4 animate-spin" />
-                                    ) : (
-                                      "Inscrever-se Agora"
-                                    )}
-                                  </button>
-                                ) : (
-                                  <div className="w-full py-3 bg-slate-100 dark:bg-slate-800 text-slate-500 dark:text-slate-400 rounded-2xl font-bold border border-slate-200 dark:border-slate-700/50 text-center text-xs flex items-center justify-center gap-2">
-                                    {cannotEnrollReason}
-                                  </div>
-                                )
-                              ) : (
-                                <div className="w-full py-3 bg-emerald-50 dark:bg-emerald-900/10 text-emerald-600 dark:text-emerald-500 rounded-2xl font-bold border border-emerald-100 dark:border-emerald-900/30 text-center text-xs">
-                                  Inscrição confirmada
-                                </div>
-                              )}
-
-                              {/* Event Links Section */}
-                              {(event.schedulePdfUrl || event.link || event.locationOrLink) && (
-                                <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 text-xs font-bold uppercase mt-5 pt-4 border-t border-slate-200 dark:border-slate-700/80">
-                                  {event.schedulePdfUrl && (
-                                    <>
-                                      <a
-                                        href={event.schedulePdfUrl.startsWith("http") ? event.schedulePdfUrl : `https://${event.schedulePdfUrl}`}
-                                        download
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center justify-center sm:justify-start gap-2 bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20 hover:bg-sky-100 dark:hover:bg-sky-500/20 px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                                      >
-                                        <Download className="w-4 h-4" /> Baixar conteúdo
-                                      </a>
-                                      <a
-                                        href={event.schedulePdfUrl.startsWith("http") ? event.schedulePdfUrl : `https://${event.schedulePdfUrl}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center justify-center sm:justify-start gap-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                                      >
-                                        <ExternalLink className="w-4 h-4" /> Abrir Link Conteúdo
-                                      </a>
-                                    </>
-                                  )}
-                                  {(event.link || (event.locationOrLink && (event.locationOrLink.startsWith("http") || event.locationOrLink.startsWith("www.")))) && (
-                                    <a
-                                      href={event.link ? (event.link.startsWith("http") ? event.link : `https://${event.link}`) : (event.locationOrLink?.startsWith("http") ? event.locationOrLink : `https://${event.locationOrLink}`)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center justify-center sm:justify-start gap-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                                    >
-                                      <Video className="w-4 h-4" /> {event.format === "presencial" ? "Acessar Conteúdo (Formulário)" : "Acessar Link do Evento"}
-                                    </a>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          );
-                        })}
-                      </div>
-                    ) : (
-                      <div className="bg-slate-50 dark:bg-slate-800/30 p-10 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2">
-                          Nenhum evento aberto
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          No momento não há inscrições abertas para novos
-                          eventos.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                ) : (
-                  <>
-                    <div className="flex items-center justify-between mb-2 px-1">
-                      <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                        <History className="w-4 h-4 text-slate-500" /> Eventos
-                        Encerrados
-                      </h3>
-                    </div>
-
-                    {pastEvents.filter((e) =>
-                      myAttendances.some((a) => a.eventId === e.id),
-                    ).length > 0 ? (
-                      <div className="space-y-4">
-                        {pastEvents
-                          .filter((e) =>
-                            myAttendances.some((a) => a.eventId === e.id),
-                          )
-                          .map((event) => (
-                            <div
-                              key={event.id}
-                              className="bg-slate-50 dark:bg-slate-800/50 border border-slate-200 dark:border-slate-700/50 rounded-3xl p-5 shadow-sm"
-                            >
-                              <h4 className="font-bold text-slate-700 dark:text-white text-sm mb-1 leading-tight">
-                                {event.title}
-                              </h4>
-                              <p className="text-[10px] text-slate-500 dark:text-slate-400 mb-3 uppercase font-bold">
-                                {new Date(event.startDate).toLocaleDateString(
-                                  "pt-BR",
-                                )}{" "}
-                                •{" "}
-                                {event.format === "presencial"
-                                  ? "Presencial"
-                                  : event.format === "hibrido"
-                                  ? "Híbrido"
-                                  : "Online"}
-                              </p>
-                              <div className="flex items-center gap-2">
-                                {myAttendances.find(
-                                  (a) => a.eventId === event.id,
-                                )?.status === "presente" ||
-                                myAttendances.find(
-                                  (a) => a.eventId === event.id,
-                                )?.status === "apto_para_certificado" ? (
-                                  <span className="text-[10px] font-black uppercase text-emerald-600 dark:text-emerald-500 flex items-center gap-1">
-                                    <CheckCircle className="w-3 h-3" /> Presença
-                                    Confirmada
-                                  </span>
-                                ) : (
-                                  <span className="text-[10px] font-black uppercase text-slate-400 flex items-center gap-1 font-medium">
-                                    <LogOut className="w-3 h-3" /> Evento
-                                    Finalizado
-                                  </span>
-                                )}
-                              </div>
-                              {(() => {
-                                const att = myAttendances.find((a) => a.eventId === event.id);
-                                if (att?.checkInDates && att.checkInDates.length > 0) {
-                                  return (
-                                    <div className="flex flex-wrap items-center gap-1.5 mt-2">
-                                      <span className="text-[9px] font-semibold text-slate-500 dark:text-slate-400">Assinaturas:</span>
-                                      {att.checkInDates.map((dateStr) => {
-                                        const parts = dateStr.split("-");
-                                        const dFormatted = parts.length === 3 ? `${parts[2]}/${parts[1]}` : dateStr;
-                                        return (
-                                          <span
-                                            key={dateStr}
-                                            className="text-[9px] font-bold uppercase px-2 py-0.5 rounded-md bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-800/50 flex items-center gap-1"
-                                          >
-                                            <CheckCircle className="w-2.5 h-2.5" /> Dia {dFormatted}
-                                          </span>
-                                        );
-                                      })}
-                                    </div>
-                                  );
-                                }
-                                return null;
-                              })()}
-                              {/* Event Links Section */}
-                              {(event.schedulePdfUrl || event.link || event.locationOrLink) && (
-                                <div className="flex flex-col sm:flex-row flex-wrap items-stretch sm:items-center gap-3 text-xs font-bold uppercase mt-5 pt-4 border-t border-slate-200 dark:border-slate-700/80">
-                                  {event.schedulePdfUrl && (
-                                    <>
-                                      <a
-                                        href={event.schedulePdfUrl.startsWith("http") ? event.schedulePdfUrl : `https://${event.schedulePdfUrl}`}
-                                        download
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center justify-center sm:justify-start gap-2 bg-sky-50 dark:bg-sky-500/10 text-sky-700 dark:text-sky-400 border border-sky-200 dark:border-sky-500/20 hover:bg-sky-100 dark:hover:bg-sky-500/20 px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                                      >
-                                        <Download className="w-4 h-4" /> Baixar conteúdo
-                                      </a>
-                                      <a
-                                        href={event.schedulePdfUrl.startsWith("http") ? event.schedulePdfUrl : `https://${event.schedulePdfUrl}`}
-                                        target="_blank"
-                                        rel="noopener noreferrer"
-                                        className="flex items-center justify-center sm:justify-start gap-2 bg-emerald-50 dark:bg-emerald-500/10 text-emerald-700 dark:text-emerald-400 border border-emerald-200 dark:border-emerald-500/20 hover:bg-emerald-100 dark:hover:bg-emerald-500/20 px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                                      >
-                                        <ExternalLink className="w-4 h-4" /> Abrir Link Conteúdo
-                                      </a>
-                                    </>
-                                  )}
-                                  {(event.link || (event.locationOrLink && (event.locationOrLink.startsWith("http") || event.locationOrLink.startsWith("www.")))) && (
-                                    <a
-                                      href={event.link ? (event.link.startsWith("http") ? event.link : `https://${event.link}`) : (event.locationOrLink?.startsWith("http") ? event.locationOrLink : `https://${event.locationOrLink}`)}
-                                      target="_blank"
-                                      rel="noopener noreferrer"
-                                      className="flex items-center justify-center sm:justify-start gap-2 bg-indigo-50 dark:bg-indigo-500/10 text-indigo-700 dark:text-indigo-400 border border-indigo-200 dark:border-indigo-500/20 hover:bg-indigo-100 dark:hover:bg-indigo-500/20 px-4 py-2.5 rounded-xl transition-all shadow-sm"
-                                    >
-                                      <Video className="w-4 h-4" /> {event.format === "presencial" ? "Acessar Conteúdo (Formulário)" : "Acessar Link do Evento"}
-                                    </a>
-                                  )}
-                                </div>
-                              )}
-                            </div>
-                          ))}
-                      </div>
-                    ) : (
-                      <div className="bg-slate-50 dark:bg-slate-800/30 p-10 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
-                        <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2">
-                          Sem histórico
-                        </p>
-                        <p className="text-xs text-slate-500">
-                          Você ainda não participou ou não possui histórico em
-                          eventos encerrados.
-                        </p>
-                      </div>
-                    )}
-                  </>
-                )}
-              </motion.div>
+              <StudentEventsTab
+                eventsSubTab={eventsSubTab}
+                setEventsSubTab={setEventsSubTab}
+                availableEvents={availableEvents}
+                pastEvents={pastEvents}
+                myAttendances={myAttendances}
+                expandedPortalEvents={expandedPortalEvents}
+                setExpandedPortalEvents={setExpandedPortalEvents}
+                handleEnroll={handleEnroll}
+                isEnrollingInProgress={isEnrollingInProgress}
+              />
             )}
 
             {activeTab === "certificates" && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-6"
-              >
-                {/* FAJOPA Plus & Davvero Cards */}
-                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                  <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-3xl shadow-lg flex flex-col justify-between items-start text-white relative overflow-hidden">
-                    <div className="absolute -right-6 -top-6 opacity-10">
-                       <ShieldCheck className="w-32 h-32" />
-                    </div>
-                    <div className="relative z-10">
-                      <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-white/20 text-emerald-100 text-[10px] font-black uppercase tracking-widest mb-3">
-                        Validação de Certificados
-                      </div>
-                      <h3 className="text-lg font-black uppercase tracking-tight mb-2 flex items-center gap-2">
-                        <ExternalLink className="w-5 h-5" /> FAJOPA Plus
-                      </h3>
-                      <p className="text-xs text-emerald-50 max-w-sm mb-6 leading-relaxed">
-                        Acesse a validação e autenticidade oficial de certificados da rede FAJOPA Plus.
-                      </p>
-                    </div>
-                    <button
-                      onClick={() => {
-                        const targetUrl = settings.certificateValidationUrl || "https://plus.fajopa.org/validar";
-                        window.open(targetUrl, '_blank');
-                      }}
-                      className="bg-white hover:bg-emerald-50 text-emerald-900 font-bold py-2.5 px-5 rounded-xl transition-all active:scale-95 w-full sm:w-auto text-xs shadow-md flex items-center justify-center gap-2"
-                    >
-                      <ExternalLink className="w-4 h-4" /> Validar no FAJOPA Plus
-                    </button>
-                  </div>
-                  
-                  <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700 flex flex-col justify-between items-start relative overflow-hidden">
-                      <div className="absolute -right-6 -top-6 opacity-[0.03] dark:opacity-[0.05]">
-                         <ShieldCheck className="w-32 h-32 text-slate-900 dark:text-white" />
-                      </div>
-                      <div className="relative z-10">
-                        <div className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-full bg-sky-50 dark:bg-sky-950/60 text-sky-700 dark:text-sky-300 text-[10px] font-black uppercase tracking-widest mb-3">
-                          Nativo & Verificável
-                        </div>
-                        <h3 className="text-lg font-black uppercase tracking-tight mb-2 flex items-center gap-2 text-slate-800 dark:text-slate-100">
-                          <ShieldCheck className="w-5 h-5 text-sky-500" /> DAVVERO System
-                        </h3>
-                        <p className="text-xs text-slate-500 dark:text-slate-400 max-w-sm mb-6 leading-relaxed">
-                          Seus certificados oficiais gerados diretamente pela plataforma, com código QR e validação digital instantânea.
-                        </p>
-                      </div>
-                      <button
-                         onClick={() => {
-                            const el = document.getElementById("davvero-certificates-list");
-                            if(el) el.scrollIntoView({behavior: 'smooth'});
-                         }}
-                         className="bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 font-bold py-2.5 px-5 rounded-xl transition-all active:scale-95 w-full sm:w-auto text-xs flex items-center justify-center gap-2"
-                      >
-                         Ver Certificados Oficiais Abaixo
-                      </button>
-                  </div>
-                </div>
-
-                <div id="davvero-certificates-list">
-                  <>
-                    <div className="flex items-center justify-between mb-4 px-1">
-                      <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">
-                        <ShieldCheck className="w-4 h-4 text-emerald-500" /> Certificados de Eventos Concluídos
-                      </h3>
-                    </div>
-
-                    {/* Aviso de Armazenamento Temporário de Certificados */}
-                    <div className="mb-4 p-4 rounded-2xl bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 flex items-start gap-3 text-amber-900 dark:text-amber-200">
-                      <AlertTriangle className="w-5 h-5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-                      <div className="text-xs leading-relaxed space-y-1">
-                        <p className="font-bold">Aviso Importante sobre Armazenamento:</p>
-                        <p className="text-amber-800 dark:text-amber-300">
-                          Os certificados ficam temporariamente no painel, por isso é responsabilidade do aluno baixar e armazenar em seu dispositivo. O Davvero não se responsabilizará em emitir uma segunda via, ficando sob responsabilidade da instituição se fará ou não a produção da segunda via.
-                        </p>
-                      </div>
-                    </div>
-
-                    {/* Filtros e Barra de Pesquisa de Certificados */}
-                    {(() => {
-                      const eligibleEvents = allEvents.filter((e) => {
-                        const attendance = myAttendances.find((a) => a.eventId === e.id);
-                        if (!attendance) return false;
-                        const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
-                        const isEligible = attendance.status === "presente" || attendance.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
-                        const isPartRevoked = attendance.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_participant`);
-                        const isOrgRevoked = attendance.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_organizer`);
-                        const hasPartCert = isReleased && isEligible && !isPartRevoked;
-                        const hasOrgCert = isReleased && attendance.isOrganizer === true && !isOrgRevoked;
-                        return hasPartCert || hasOrgCert;
-                      });
-
-                      const getSemesterInfo = (ev: Event) => {
-                        const dateStr = ev.startDate || ev.createdAt;
-                        const d = dateStr ? new Date(dateStr) : new Date();
-                        const year = isNaN(d.getFullYear()) ? new Date().getFullYear() : d.getFullYear();
-                        const month = isNaN(d.getMonth()) ? 1 : d.getMonth() + 1;
-                        const semNum = month <= 6 ? 1 : 2;
-                        return {
-                          key: `${year}.${semNum}`,
-                          label: `${year}.${semNum} (${semNum}º Semestre de ${year})`,
-                          year,
-                          semNum
-                        };
-                      };
-
-                      // Obter lista única de semestres disponíveis
-                      const semesterMap = new Map<string, { key: string; label: string; year: number; semNum: number; count: number }>();
-                      eligibleEvents.forEach(e => {
-                        const info = getSemesterInfo(e);
-                        const existing = semesterMap.get(info.key);
-                        if (existing) {
-                          existing.count++;
-                        } else {
-                          semesterMap.set(info.key, { ...info, count: 1 });
-                        }
-                      });
-
-                      const availableSemesters = Array.from(semesterMap.values()).sort((a, b) => b.key.localeCompare(a.key));
-
-                      // Filtrar por busca, tipo e semestre
-                      const filteredEvents = eligibleEvents.filter(e => {
-                        const semInfo = getSemesterInfo(e);
-                        if (certSemesterFilter !== "all" && semInfo.key !== certSemesterFilter) {
-                          return false;
-                        }
-
-                        const attendance = myAttendances.find((a) => a.eventId === e.id);
-                        const isReleased = e.status === "encerrado" || isEventCertificateReleased(e) || e.isCertificateReleased === true;
-                        const isEligible = attendance?.status === "presente" || attendance?.status === "apto_para_certificado" || e.allowAllRegisteredCertificates;
-                        const isPartRevoked = attendance?.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_participant`);
-                        const isOrgRevoked = attendance?.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${e.id}_organizer`);
-                        const hasPart = isReleased && isEligible && !isPartRevoked;
-                        const hasOrg = isReleased && attendance?.isOrganizer === true && !isOrgRevoked;
-
-                        if (certTypeFilter === "participant" && !hasPart) return false;
-                        if (certTypeFilter === "organizer" && !hasOrg) return false;
-
-                        if (certSearchTerm.trim()) {
-                          const term = certSearchTerm.toLowerCase();
-                          const matchTitle = e.title?.toLowerCase().includes(term);
-                          const matchHours = (e.hours?.toString() || "").includes(term);
-                          const matchFormat = e.format?.toLowerCase().includes(term);
-                          const matchSem = semInfo.label.toLowerCase().includes(term) || semInfo.key.includes(term);
-                          return matchTitle || matchHours || matchFormat || matchSem;
-                        }
-
-                        return true;
-                      });
-
-                      // Agrupar eventos filtrados por semestre
-                      const groupedBySemester = new Map<string, { info: { key: string; label: string; year: number; semNum: number }; events: Event[] }>();
-                      const sortedEvents = [...filteredEvents].sort((a, b) => {
-                        const da = new Date(a.startDate || 0).getTime();
-                        const db = new Date(b.startDate || 0).getTime();
-                        return db - da;
-                      });
-
-                      sortedEvents.forEach(e => {
-                        const info = getSemesterInfo(e);
-                        const group = groupedBySemester.get(info.key) || { info, events: [] };
-                        group.events.push(e);
-                        groupedBySemester.set(info.key, group);
-                      });
-
-                      const semesterGroups = Array.from(groupedBySemester.values());
-
-                      if (eligibleEvents.length === 0) {
-                        return (
-                          <div className="bg-slate-50 dark:bg-slate-800/30 p-10 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
-                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-2">Nenhum certificado disponível</p>
-                            <p className="text-xs text-slate-500">Os certificados aparecem aqui após a confirmação da sua participação e aprovação do modelo pelo administrador.</p>
-                          </div>
-                        );
-                      }
-
-                      return (
-                        <div className="space-y-6">
-                          {/* Barra de Busca e Filtros de Semestre */}
-                          <div className="bg-slate-50/80 dark:bg-slate-800/60 p-4 rounded-3xl border border-slate-200 dark:border-slate-700/60 space-y-3">
-                            <div className="flex flex-col sm:flex-row gap-2.5">
-                              {/* Campo de Pesquisa */}
-                              <div className="relative flex-1">
-                                <Search className="w-4 h-4 absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                                <input
-                                  type="text"
-                                  placeholder="Buscar certificado por nome do evento, carga horária..."
-                                  value={certSearchTerm}
-                                  onChange={(e) => setCertSearchTerm(e.target.value)}
-                                  className="w-full pl-9 pr-8 py-2.5 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs text-slate-800 dark:text-slate-100 placeholder:text-slate-400 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                                />
-                                {certSearchTerm && (
-                                  <button
-                                    onClick={() => setCertSearchTerm("")}
-                                    className="absolute right-2.5 top-1/2 -translate-y-1/2 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200 text-xs p-1"
-                                  >
-                                    ✕
-                                  </button>
-                                )}
-                              </div>
-
-                              {/* Filtro de Semestre Dropdown */}
-                              <div className="flex items-center gap-2">
-                                <div className="relative min-w-[170px] sm:w-56">
-                                  <select
-                                    value={certSemesterFilter}
-                                    onChange={(e) => setCertSemesterFilter(e.target.value)}
-                                    className="w-full py-2.5 px-3 bg-white dark:bg-slate-900 border border-slate-200 dark:border-slate-700 rounded-2xl text-xs font-semibold text-slate-700 dark:text-slate-200 focus:outline-none focus:ring-2 focus:ring-sky-500"
-                                  >
-                                    <option value="all">Todos os Semestres ({eligibleEvents.length})</option>
-                                    {availableSemesters.map((sem) => (
-                                      <option key={sem.key} value={sem.key}>
-                                        Semestre {sem.key} ({sem.count})
-                                      </option>
-                                    ))}
-                                  </select>
-                                </div>
-                              </div>
-                            </div>
-
-                            {/* Filtro por Tipo de Certificado */}
-                            <div className="flex flex-wrap items-center justify-between gap-2 pt-1 border-t border-slate-200/50 dark:border-slate-700/50">
-                              <div className="flex flex-wrap gap-1.5 items-center">
-                                <span className="text-[10px] font-bold uppercase tracking-wider text-slate-400 mr-1 flex items-center gap-1">
-                                  <Filter className="w-3 h-3" /> Tipo:
-                                </span>
-                                <button
-                                  onClick={() => setCertTypeFilter("all")}
-                                  className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                                    certTypeFilter === "all"
-                                      ? "bg-sky-600 text-white shadow-sm"
-                                      : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
-                                  }`}
-                                >
-                                  Todos
-                                </button>
-                                <button
-                                  onClick={() => setCertTypeFilter("participant")}
-                                  className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                                    certTypeFilter === "participant"
-                                      ? "bg-sky-600 text-white shadow-sm"
-                                      : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
-                                  }`}
-                                >
-                                  Participante
-                                </button>
-                                <button
-                                  onClick={() => setCertTypeFilter("organizer")}
-                                  className={`px-3 py-1 rounded-xl text-[11px] font-bold transition-all cursor-pointer ${
-                                    certTypeFilter === "organizer"
-                                      ? "bg-amber-500 text-white shadow-sm"
-                                      : "bg-white dark:bg-slate-700 text-slate-600 dark:text-slate-300 hover:bg-slate-100"
-                                  }`}
-                                >
-                                  Organização
-                                </button>
-                              </div>
-
-                              <span className="text-[10px] font-medium text-slate-500">
-                                Exibindo <strong>{filteredEvents.length}</strong> de {eligibleEvents.length} certificados
-                              </span>
-                            </div>
-                          </div>
-
-                          {/* Lista de Certificados Agrupados por Semestre */}
-                          {semesterGroups.length > 0 ? (
-                            <div className="space-y-6">
-                              {semesterGroups.map(({ info, events }) => {
-                                const totalHours = events.reduce((acc, ev) => acc + (Number(ev.hours) || 0), 0);
-
-                                return (
-                                  <div key={info.key} className="space-y-3">
-                                    {/* Cabeçalho do Semestre */}
-                                    <div className="flex items-center justify-between px-2 py-1.5 bg-gradient-to-r from-sky-50 to-indigo-50 dark:from-sky-950/30 dark:to-indigo-950/30 rounded-2xl border border-sky-100 dark:border-sky-900/40">
-                                      <div className="flex items-center gap-2">
-                                        <div className="w-7 h-7 rounded-xl bg-sky-500 text-white flex items-center justify-center font-black text-xs shadow-sm">
-                                          <Calendar className="w-3.5 h-3.5" />
-                                        </div>
-                                        <div>
-                                          <h4 className="text-xs font-black text-slate-800 dark:text-slate-100 uppercase tracking-wider">
-                                            Semestre {info.key} <span className="font-medium text-[11px] text-slate-500 dark:text-slate-400">({info.semNum}º Semestre de {info.year})</span>
-                                          </h4>
-                                        </div>
-                                      </div>
-
-                                      <div className="flex items-center gap-2">
-                                        <span className="text-[10px] font-extrabold uppercase bg-sky-100 dark:bg-sky-900/50 text-sky-800 dark:text-sky-300 px-2 py-0.5 rounded-lg">
-                                          {events.length} {events.length === 1 ? 'Certificado' : 'Certificados'}
-                                        </span>
-                                        {totalHours > 0 && (
-                                          <span className="text-[10px] font-extrabold uppercase bg-indigo-100 dark:bg-indigo-900/50 text-indigo-800 dark:text-indigo-300 px-2 py-0.5 rounded-lg">
-                                            {totalHours} horas
-                                          </span>
-                                        )}
-                                      </div>
-                                    </div>
-
-                                    {/* Cards de Certificados deste Semestre */}
-                                    <div className="space-y-3">
-                                      {events.map((event) => {
-                                        const startStr = new Date(event.startDate).toLocaleDateString("pt-BR");
-                                        const endStr = event.endDate ? new Date(event.endDate).toLocaleDateString("pt-BR") : startStr;
-                                        const periodText = startStr === endStr ? startStr : `${startStr} a ${endStr}`;
-                                        const formatText = event.format === "online" ? "Online" : event.format === "hibrido" ? "Híbrido" : "Presencial";
-                                        const attendance = myAttendances.find((a) => a.eventId === event.id);
-                                        const isReleased = event.status === "encerrado" || isEventCertificateReleased(event) || event.isCertificateReleased === true;
-                                        const isEligible = attendance?.status === "presente" || attendance?.status === "apto_para_certificado" || event.allowAllRegisteredCertificates;
-                                        const isPartRevoked = attendance?.revokedParticipantCert === true || (member as any).revokedCertKeys?.includes(`${event.id}_participant`);
-                                        const isOrgRevoked = attendance?.revokedOrgCert === true || (member as any).revokedCertKeys?.includes(`${event.id}_organizer`);
-                                        const hasPartCert = isReleased && isEligible && !isPartRevoked;
-                                        const hasOrgCert = isReleased && attendance?.isOrganizer === true && !isOrgRevoked;
-                                        const releaseInfo = resolveCertificateReleaseDate(event, undefined, member);
-
-                                        return (
-                                          <div key={event.id} className="bg-white dark:bg-slate-800 p-5 rounded-3xl border border-slate-200 dark:border-slate-700 text-left shadow-sm flex flex-col gap-3 hover:border-sky-300 dark:hover:border-sky-600 transition-colors">
-                                            <div>
-                                              <div className="flex flex-col sm:flex-row sm:items-center justify-between gap-1 mb-1">
-                                                <h4 className="font-bold text-slate-800 dark:text-slate-100 text-sm sm:text-base leading-snug">{event.title}</h4>
-                                                <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700 text-slate-600 dark:text-slate-300 px-2 py-0.5 rounded-md self-start sm:self-auto">
-                                                  Semestre {info.key}
-                                                </span>
-                                              </div>
-                                              <div className="flex flex-wrap gap-2 mt-2">
-                                                <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{formatText}</span>
-                                                <span className="text-[10px] font-bold uppercase bg-slate-100 dark:bg-slate-700/60 px-2.5 py-1 rounded-lg text-slate-600 dark:text-slate-300">{periodText}</span>
-                                                <span className="text-[10px] font-bold uppercase bg-indigo-50 dark:bg-indigo-950/60 text-indigo-700 dark:text-indigo-300 px-2.5 py-1 rounded-lg">{event.hours || 0} horas</span>
-                                                <span className="text-[10px] font-bold uppercase bg-emerald-50 dark:bg-emerald-950/60 text-emerald-700 dark:text-emerald-300 px-2.5 py-1 rounded-lg">Liberado em {releaseInfo.formattedDate}</span>
-                                              </div>
-                                            </div>
-
-                                            <div className="pt-2 border-t border-slate-100 dark:border-slate-700/50 flex flex-col sm:flex-row gap-2">
-                                              {hasPartCert && (
-                                                <div className="flex-1 flex gap-2">
-                                                  <button 
-                                                    onClick={() => {
-                                                      if (downloadingCertKey) return;
-                                                      handleDownloadCertificate(event, "participant");
-                                                    }} 
-                                                    disabled={downloadingCertKey === `${event.id}_participant`}
-                                                    className={`flex-1 py-3 px-4 bg-sky-600 hover:bg-sky-500 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 cursor-pointer ${
-                                                      downloadingCertKey === `${event.id}_participant` ? "opacity-75 pointer-events-none" : ""
-                                                    }`}
-                                                  >
-                                                    {downloadingCertKey === `${event.id}_participant` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Certificado (PDF)</>}
-                                                  </button>
-                                                  <button 
-                                                    onClick={() => setPreviewCertEvent({ event, type: "participant" })}
-                                                    className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
-                                                    title="Visualizar Certificado"
-                                                  >
-                                                    <Eye className="w-4 h-4" /> Visualizar
-                                                  </button>
-                                                </div>
-                                              )}
-                                              {hasOrgCert && (
-                                                <div className="flex-1 flex gap-2">
-                                                  <button 
-                                                    onClick={() => {
-                                                      if (downloadingCertKey) return;
-                                                      handleDownloadCertificate(event, "organizer");
-                                                    }} 
-                                                    disabled={downloadingCertKey === `${event.id}_organizer`}
-                                                    className={`flex-1 py-3 px-4 bg-amber-500 hover:bg-amber-400 text-white rounded-2xl text-xs font-bold transition-all active:scale-95 shadow-md flex items-center justify-center gap-2 cursor-pointer ${
-                                                      downloadingCertKey === `${event.id}_organizer` ? "opacity-75 pointer-events-none" : ""
-                                                    }`}
-                                                  >
-                                                    {downloadingCertKey === `${event.id}_organizer` ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Download className="w-4 h-4" /> Baixar Organização (PDF)</>}
-                                                  </button>
-                                                  <button 
-                                                    onClick={() => setPreviewCertEvent({ event, type: "organizer" })}
-                                                    className="py-3 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-2xl text-xs font-bold transition-all active:scale-95 flex items-center justify-center gap-1.5 cursor-pointer"
-                                                    title="Visualizar Certificado de Organização"
-                                                  >
-                                                    <Eye className="w-4 h-4" /> Visualizar
-                                                  </button>
-                                                </div>
-                                              )}
-                                            </div>
-                                          </div>
-                                        );
-                                      })}
-                                    </div>
-                                  </div>
-                                );
-                              })}
-                            </div>
-                          ) : (
-                            <div className="bg-slate-50 dark:bg-slate-800/30 p-8 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
-                              <p className="text-xs font-bold text-slate-700 dark:text-slate-300 mb-1">Nenhum certificado encontrado para os filtros selecionados</p>
-                              <p className="text-[11px] text-slate-400 mb-3">Tente alterar o termo da busca ou o semestre selecionado.</p>
-                              <button
-                                onClick={() => {
-                                  setCertSearchTerm("");
-                                  setCertSemesterFilter("all");
-                                  setCertTypeFilter("all");
-                                }}
-                                className="px-4 py-2 bg-slate-200 dark:bg-slate-700 hover:bg-slate-300 text-slate-700 dark:text-slate-200 text-xs font-bold rounded-xl transition-all cursor-pointer"
-                              >
-                                Limpar Filtros
-                              </button>
-                            </div>
-                          )}
-                        </div>
-                      );
-                    })()}
-
-                    <div className="mt-8">
-                      <div className="flex items-center justify-between mb-4 px-1">
-                        <h3 className="text-xs font-black text-slate-800 dark:text-white uppercase tracking-widest flex items-center gap-2">Certificados Anexados</h3>
-                      </div>
-                      <div className="space-y-4">
-                        {(member?.externalCertificates && member.externalCertificates.length > 0) ? (
-                          <div className="space-y-3">
-                            {member.externalCertificates.map(cert => (
-                              <div key={cert.id} className="bg-white dark:bg-slate-800 p-4 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-sm flex items-center justify-between">
-                                <div className="flex-1 min-w-0 pr-4">
-                                  <h4 className="font-bold text-slate-800 dark:text-slate-100 text-xs truncate mb-1">{cert.title}</h4>
-                                  <p className="text-[9px] text-slate-500 uppercase">{formatDateTime(cert.uploadedAt)}</p>
-                                </div>
-                                <div className="flex items-center gap-2">
-                                  <button
-                                    onClick={() => handleDownloadExternalCertificate(cert)}
-                                    className="p-2 text-sky-600 dark:text-sky-400 bg-sky-50 dark:bg-sky-900/30 rounded-xl hover:bg-sky-100 dark:hover:bg-sky-900/50 transition-colors"
-                                    title="Baixar Certificado"
-                                  >
-                                    <Download className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleOpenExternalCertificate(cert)}
-                                    className="p-2 text-emerald-600 dark:text-emerald-400 bg-emerald-50 dark:bg-emerald-900/30 rounded-xl hover:bg-emerald-100 dark:hover:bg-emerald-900/50 transition-colors"
-                                    title="Visualizar Certificado"
-                                  >
-                                    <Eye className="w-4 h-4" />
-                                  </button>
-                                  <button
-                                    onClick={() => handleDeleteExternalCertificate(cert.id)}
-                                    className="p-2 text-rose-600 dark:text-rose-400 bg-rose-50 dark:bg-rose-900/30 rounded-xl hover:bg-rose-100 dark:hover:bg-rose-900/50 transition-colors"
-                                    title="Excluir Certificado"
-                                  >
-                                    <Trash2 className="w-4 h-4" />
-                                  </button>
-                                </div>
-                              </div>
-                            ))}
-                          </div>
-                        ) : (
-                          <div className="bg-slate-50 dark:bg-slate-800/30 p-8 rounded-3xl border border-dashed border-slate-200 dark:border-slate-700 text-center">
-                            <p className="text-[10px] uppercase font-bold text-slate-400 tracking-widest mb-1">Nenhum certificado anexado</p>
-                          </div>
-                        )}
-                        <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-dashed border-sky-300 dark:border-sky-700 text-center">
-                           <label className="cursor-pointer text-xs font-bold text-sky-600 dark:text-sky-400 flex flex-col items-center justify-center gap-2 hover:text-sky-500 transition-colors py-2">
-                             {isUploadingCert ? <Loader2 className="w-6 h-6 animate-spin" /> : <ShieldCheck className="w-6 h-6" />}
-                             <span>{isUploadingCert ? "Anexando..." : "Anexar Novo Certificado (PDF ou Imagem)"}</span>
-                             <input type="file" className="hidden" accept="image/*,application/pdf" onChange={handleUploadExternalCertificate} disabled={isUploadingCert} />
-                           </label>
-                        </div>
-                      </div>
-                    </div>
-                  </>
-                </div>
-              </motion.div>
+              <StudentCertificatesTab
+                member={member}
+                settings={settings}
+                allEvents={allEvents}
+                myAttendances={myAttendances}
+                certSearchTerm={certSearchTerm}
+                setCertSearchTerm={setCertSearchTerm}
+                certSemesterFilter={certSemesterFilter}
+                setCertSemesterFilter={setCertSemesterFilter}
+                certTypeFilter={certTypeFilter}
+                setCertTypeFilter={setCertTypeFilter}
+                downloadingCertKey={downloadingCertKey}
+                handleDownloadCertificate={handleDownloadCertificate}
+                setPreviewCertEvent={setPreviewCertEvent}
+                handleDownloadExternalCertificate={handleDownloadExternalCertificate}
+                handleOpenExternalCertificate={handleOpenExternalCertificate}
+                handleDeleteExternalCertificate={handleDeleteExternalCertificate}
+                handleUploadExternalCertificate={handleUploadExternalCertificate}
+                isUploadingCert={isUploadingCert}
+                formatDateTime={formatDateTime}
+              />
             )}
 
-            {activeTab === "academic" && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-4"
-              >
-                <div className="bg-white dark:bg-slate-800 p-4 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-lg text-center flex flex-col items-center justify-center min-h-[500px]">
-                  <div className="p-4 bg-sky-50 dark:bg-sky-900/30 rounded-full text-sky-600 dark:text-sky-400 mb-6">
-                    <GraduationCap className="w-12 h-12" />
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white uppercase tracking-widest leading-tight mb-4 px-2 break-words max-w-full text-center">
-                    Portal Acadêmico
-                  </h3>
-                  <p className="text-sm text-slate-500 max-w-md mx-auto mb-8 px-4">
-                    Por medidas de segurança do Sistema Integrado FAJOPA (Sophia), o portal não permite visualização integrada. Por favor, acesse o sistema através do botão abaixo usando seu navegador comum.
-                  </p>
-                  <a
-                    href="https://portal.sophia.com.br/SophiA_107/Acesso.aspx?escola=9087"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex sm:inline-flex flex-wrap items-center justify-center gap-2 px-4 sm:px-8 py-4 w-full sm:w-auto bg-sky-600 hover:bg-sky-500 text-white rounded-2xl font-bold shadow-xl shadow-sky-600/20 transition-all active:scale-95 text-xs sm:text-sm uppercase tracking-wider text-center"
-                  >
-                    Acessar o portal do aluno
-                    <ExternalLink className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                  </a>
-                </div>
-              </motion.div>
+            {activeTab === "academic" && <StudentAcademicTab />}
+
+            {activeTab === "biblioteca" && <StudentLibraryTab />}
+
+            {activeTab === "account" && member && (
+              <StudentAccountTab
+                member={member}
+                setMember={setMember}
+                onOpenEditModal={() => setShowAccountEditModal(true)}
+                isPushSupported={isSupported}
+                pushSubscription={subscription}
+                pushPermission={permission}
+                isSubscribingPush={isSubscribing}
+                onTogglePush={handleTogglePush}
+              />
             )}
 
-
-
-            {activeTab === "biblioteca" && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-4"
-              >
-                <div className="bg-white dark:bg-slate-800 p-4 sm:p-8 rounded-3xl border border-slate-200 dark:border-slate-700 shadow-lg text-center flex flex-col items-center justify-center min-h-[500px]">
-                  <div className="p-4 bg-emerald-50 dark:bg-emerald-900/30 rounded-full text-emerald-600 dark:text-emerald-400 mb-6">
-                    <Library className="w-12 h-12" />
-                  </div>
-                  <h3 className="text-xl sm:text-2xl font-black text-slate-800 dark:text-white uppercase tracking-widest leading-tight mb-4 px-2 break-words max-w-full text-center">
-                    Biblioteca Pessoal
-                  </h3>
-                  <p className="text-sm text-slate-500 max-w-md mx-auto mb-8 px-4">
-                    Por medidas de segurança, o Acervo Digital Institucional não permite visualização integrada. Por favor, acesse o sistema através do botão abaixo usando seu navegador comum.
-                  </p>
-                  <a
-                    href="https://biblioteca.sophia.com.br/1291/"
-                    target="_blank"
-                    rel="noopener noreferrer"
-                    className="flex sm:inline-flex flex-wrap items-center justify-center gap-2 px-4 sm:px-8 py-4 w-full sm:w-auto bg-emerald-600 hover:bg-emerald-500 text-white rounded-2xl font-bold shadow-xl shadow-emerald-600/20 transition-all active:scale-95 text-xs sm:text-sm uppercase tracking-wider text-center"
-                  >
-                    Abrir no Navegador
-                    <ExternalLink className="w-4 h-4 sm:w-5 sm:h-5 flex-shrink-0" />
-                  </a>
-                </div>
-              </motion.div>
-            )}
-
-            {activeTab === "account" && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-4"
-              >
-                <div className="bg-white dark:bg-slate-800 p-6 rounded-3xl shadow-sm border border-slate-200 dark:border-slate-700">
-                  <div className="flex flex-col sm:flex-row items-center sm:items-start gap-6">
-                    <div className="relative">
-                      <div className="w-24 h-24 rounded-full overflow-hidden border-4 border-slate-100 dark:border-slate-700 shadow-xl bg-white">
-                        <img 
-                            src={member?.photoUrl || `https://ui-avatars.com/api/?name=${encodeURIComponent(member?.name || 'User')}&background=e2e8f0&color=475569&size=200`} 
-                            alt={member?.name} 
-                            className="w-full h-full object-cover"
-                        />
-                      </div>
-                    </div>
-                    
-                    <div className="flex-1 text-center sm:text-left">
-                      <h3 className="text-xl font-black text-slate-800 dark:text-white uppercase mb-1">
-                        {member?.name}
-                      </h3>
-                      <p className="text-sm font-semibold text-slate-500 mb-1">{member?.email || 'Nenhum e-mail cadastrado'}</p>
-                      
-                      <div className="flex items-center justify-center sm:justify-start gap-2 flex-wrap mt-3">
-                         {member?.roles?.map((r, i) => (
-                           <span key={i} className="bg-sky-100 dark:bg-sky-900/30 text-sky-700 dark:text-sky-300 text-[10px] font-bold px-2 py-1 rounded-md uppercase">
-                             {r}
-                           </span>
-                         ))}
-                      </div>
-                    </div>
-
-                    <div className="flex flex-col gap-2 w-full sm:w-auto">
-                        <button 
-                           onClick={() => setShowAccountEditModal(true)}
-                           className="btn-modern px-5 py-2.5 bg-rose-50 text-rose-600 hover:bg-rose-100 dark:bg-rose-900/20 dark:text-rose-400 dark:hover:bg-rose-900/40 rounded-xl font-bold flex items-center justify-center gap-2 transition"
-                        >
-                            <User className="w-4 h-4 inline-block -mt-0.5 mr-1" />
-                            Editar Informações
-                        </button>
-                    </div>
-                  </div>
-
-                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mt-8 pt-8 border-t border-slate-100 dark:border-slate-700/50">
-                     <div>
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">RA / Matrícula</p>
-                       <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{member?.ra}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">CPF</p>
-                       <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{member?.cpf}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Data de Nascimento</p>
-                       <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{member?.birthdate}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Curso</p>
-                       <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{member?.course || '-'}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Diocese</p>
-                       <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{member?.diocese || '-'}</p>
-                     </div>
-                     <div>
-                       <p className="text-[10px] font-bold text-slate-400 uppercase tracking-wider mb-1">Seminário</p>
-                       <p className="font-semibold text-slate-700 dark:text-slate-300 text-sm">{member?.seminary || '-'}</p>
-                     </div>
-                  </div>
-
-                   <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700/50">
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-4 flex items-center gap-2">
-                       <Mail className="w-4 h-4 text-sky-500" /> Notificações por E-mail
-                    </h4>
-                    
-                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/50">
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <div className="text-center sm:text-left">
-                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                            E-mail Cadastrado: <span className="font-mono text-sky-600 dark:text-sky-400">{member?.email || 'Nenhum e-mail vinculado'}</span>
-                          </p>
-                          <div className="flex items-center justify-center sm:justify-start gap-2 mt-1.5">
-                            {member?.emailNotificationsEnabled === false ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-700 dark:bg-amber-950/40 dark:text-amber-300 border border-amber-200 dark:border-amber-800/50">
-                                <MailX className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400" /> E-mails Desativados (Opt-out)
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-100 text-emerald-700 dark:bg-emerald-950/40 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800/50">
-                                <MailCheck className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400" /> Ativo para Receber Notificações
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                            {member?.emailNotificationsEnabled === false
-                              ? "Você optou por não receber e-mails automáticos. Novos certificados liberados e avisos do sistema não serão enviados para sua caixa de entrada."
-                              : "Você receberá avisos quando novos certificados forem liberados, atualizações de carteirinha e comunicados acadêmicos."}
-                          </p>
-                        </div>
-
-                        <div className="flex-shrink-0 w-full sm:w-auto">
-                          <button
-                            type="button"
-                            disabled={isUpdatingEmailPref || !member?.email}
-                            onClick={() => {
-                              playSound('pop');
-                              handleToggleEmailNotifications();
-                            }}
-                            className={`w-full sm:w-auto px-5 py-2.5 rounded-xl text-sm font-bold shadow-sm transition active:scale-95 whitespace-nowrap flex items-center justify-center gap-2 ${
-                              member?.emailNotificationsEnabled === false
-                                ? "bg-emerald-600 hover:bg-emerald-700 text-white shadow-emerald-600/20"
-                                : "bg-slate-200 hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-700 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 text-slate-700 dark:text-slate-300"
-                            }`}
-                          >
-                            {isUpdatingEmailPref ? (
-                              <>
-                                <Loader2 className="w-4 h-4 animate-spin" />
-                                <span>Atualizando...</span>
-                              </>
-                            ) : member?.emailNotificationsEnabled === false ? (
-                              <>
-                                <MailCheck className="w-4 h-4" />
-                                <span>Ativar E-mails</span>
-                              </>
-                            ) : (
-                              <>
-                                <MailX className="w-4 h-4" />
-                                <span>Desativar E-mails</span>
-                              </>
-                            )}
-                          </button>
-                        </div>
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700/50">
-                    <h4 className="text-sm font-bold text-slate-800 dark:text-slate-200 uppercase tracking-widest mb-4 flex items-center gap-2">
-                       <BellRing className="w-4 h-4 text-sky-500" /> Serviço de Notificações Push
-                    </h4>
-                    
-                    <div className="bg-slate-50 dark:bg-slate-800/50 rounded-2xl p-4 border border-slate-100 dark:border-slate-700/50">
-                      <div className="flex flex-col sm:flex-row items-center justify-between gap-4">
-                        <div className="text-center sm:text-left">
-                          <p className="text-sm font-semibold text-slate-700 dark:text-slate-300">
-                            Status Atual
-                          </p>
-                          <div className="flex items-center justify-center sm:justify-start gap-2 mt-1">
-                            {!isSupported ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-slate-100 text-slate-500 dark:bg-slate-800 dark:text-slate-400">
-                                <ShieldCheck className="w-3.5 h-3.5" /> Não Suportado
-                              </span>
-                            ) : permission === "denied" ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-rose-100 text-rose-600 dark:bg-rose-900/30 dark:text-rose-400">
-                                <ShieldCheck className="w-3.5 h-3.5" /> Erro (Bloqueado)
-                              </span>
-                            ) : subscription || (permission === "granted" && typeof window !== "undefined" && localStorage.getItem("davvero_push_subscribed") === "true") ? (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-emerald-100 text-emerald-600 dark:bg-emerald-900/30 dark:text-emerald-400">
-                                <ShieldCheck className="w-3.5 h-3.5" /> Conectado e Ativo
-                              </span>
-                            ) : (
-                              <span className="inline-flex items-center gap-1.5 px-2.5 py-1 rounded-md text-xs font-bold bg-amber-100 text-amber-600 dark:bg-amber-900/30 dark:text-amber-400">
-                                <ShieldCheck className="w-3.5 h-3.5" /> Pendente
-                              </span>
-                            )}
-                          </div>
-                          <p className="text-xs text-slate-500 dark:text-slate-400 mt-2">
-                            {subscription || (permission === "granted" && typeof window !== "undefined" && localStorage.getItem("davvero_push_subscribed") === "true")
-                              ? "Seu dispositivo está ativo e apto a receber comunicados urgentes e avisos em tempo real."
-                              : permission === "denied"
-                              ? "Você bloqueou as notificações. Libere a permissão nas configurações do seu navegador para receber comunicados."
-                              : "Ative as notificações para receber avisos importantes da secretaria."}
-                          </p>
-                        </div>
-                        {isSupported && (
-                          <div className="flex-shrink-0 w-full sm:w-auto">
-                            {!(subscription || (permission === "granted" && typeof window !== "undefined" && localStorage.getItem("davvero_push_subscribed") === "true")) && permission !== "denied" ? (
-                              <button
-                                type="button"
-                                disabled={isSubscribing}
-                                onClick={() => {
-                                  playSound('click');
-                                  handleTogglePush();
-                                }}
-                                className="w-full sm:w-auto px-5 py-2.5 bg-sky-600 hover:bg-sky-700 disabled:opacity-60 text-white rounded-xl text-sm font-bold shadow-sm transition active:scale-95 whitespace-nowrap flex items-center justify-center gap-2"
-                              >
-                                {isSubscribing ? (
-                                  <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Conectando...</span>
-                                  </>
-                                ) : (
-                                  <span>Ativar Notificações</span>
-                                )}
-                              </button>
-                            ) : (subscription || (permission === "granted" && typeof window !== "undefined" && localStorage.getItem("davvero_push_subscribed") === "true")) ? (
-                              <button
-                                type="button"
-                                disabled={isSubscribing}
-                                onClick={() => {
-                                  playSound('click');
-                                  handleTogglePush();
-                                }}
-                                className="w-full sm:w-auto px-5 py-2.5 bg-slate-200 hover:bg-rose-50 hover:text-rose-600 dark:bg-slate-700 dark:hover:bg-rose-950/40 dark:hover:text-rose-400 disabled:opacity-60 text-slate-700 dark:text-slate-300 rounded-xl text-sm font-bold transition active:scale-95 whitespace-nowrap flex items-center justify-center gap-2"
-                              >
-                                {isSubscribing ? (
-                                  <>
-                                    <Loader2 className="w-4 h-4 animate-spin" />
-                                    <span>Processando...</span>
-                                  </>
-                                ) : (
-                                  <span>Desativar</span>
-                                )}
-                              </button>
-                            ) : null}
-                          </div>
-                        )}
-                      </div>
-                    </div>
-                  </div>
-
-                  <div className="mt-8 pt-8 border-t border-slate-100 dark:border-slate-700/50">
-                    <h4 className="text-sm font-bold text-red-600 dark:text-red-400 uppercase tracking-widest mb-3 flex items-center gap-2">
-                       <Trash2 className="w-4 h-4" /> Zona de Perigo (LGPD)
-                    </h4>
-                    {member?.deletionRequested ? (
-                      <div className="bg-red-50 dark:bg-red-900/10 border border-red-200 dark:border-red-900/30 p-4 rounded-xl">
-                        <p className="text-xs font-semibold text-red-700 dark:text-red-400">
-                          Sua solicitação de exclusão de dados foi recebida e está aguardando a aprovação do administrador.
-                        </p>
-                      </div>
-                    ) : (
-                      <button
-                        onClick={() => setShowDeletionConfirmModal(true)}
-                        className="px-5 py-2.5 bg-red-100 hover:bg-red-200 text-red-700 dark:bg-red-900/30 dark:hover:bg-red-900/50 dark:text-red-300 rounded-xl font-bold flex items-center justify-center gap-2 transition text-sm"
-                      >
-                         <Trash2 className="w-4 h-4" /> Solicitar Exclusão de Conta (LGPD)
-                      </button>
-                    )}
-                  </div>
-                </div>
-              </motion.div>
-            )}
-
-            <Modal
-              isOpen={showDeletionConfirmModal}
-              onClose={() => setShowDeletionConfirmModal(false)}
-              title="Exclusão de Conta"
-              confirmLabel="Confirmar"
-              confirmVariant="danger"
-              onConfirm={async () => {
-                 try {
-                   if (!member) return;
-                   // Request deletion
-                   await updateDoc(doc(db, `artifacts/${appId}/public/data/students`, member.id), { deletionRequested: true, deletionRequestedAt: new Date().toISOString() });
-                   setShowDeletionConfirmModal(false);
-                   await showAlert("Solicitação Enviada", "Sua solicitação de exclusão foi enviada com sucesso ao administrador.");
-                 } catch(e) {
-                   console.error(e);
-                   await showAlert("Erro", "Erro ao solicitar a exclusão de dados.");
-                 }
-              }}
-            >
-              <div className="flex flex-col items-center justify-center mb-6 text-red-500">
-                 <Trash2 className="w-12 h-12 p-3 bg-red-100 dark:bg-red-900/50 rounded-full border border-red-200 dark:border-red-800" />
-              </div>
-              Você tem certeza que deseja solicitar a exclusão da sua conta? Isto enviará um pedido ao administrador e seus dados serão movidos para a lixeira após aprovação, em conformidade com a LGPD.
-            </Modal>
-
-            {activeTab === "seminary_events" && (
-              <motion.div
-                initial={{ opacity: 0, y: 10 }}
-                animate={{ opacity: 1, y: 0 }}
-                className="space-y-4"
-              >
-                <Suspense
-                  fallback={
-                    <div className="flex justify-center items-center p-12">
-                      <Loader2 className="w-8 h-8 animate-spin text-sky-500" />
-                    </div>
-                  }
-                >
-                  <EventsPage renderSeminary={true} />
-                </Suspense>
-              </motion.div>
-            )}
+            {activeTab === "seminary_events" && <StudentSeminaryTab />}
           </div>
         </div>
 
@@ -4264,4 +2099,6 @@ export default function StudentPortal({
       )}
     </div>
   );
-}
+});
+
+export default StudentPortal;

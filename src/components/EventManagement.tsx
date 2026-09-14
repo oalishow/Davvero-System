@@ -1,4 +1,4 @@
-import { useState, useEffect } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import {
   Calendar,
   Users,
@@ -27,7 +27,7 @@ import {
 } from "lucide-react";
 import ImageCropperModal from "./ImageCropperModal";
 import EventQrCodeModal from "./EventQrCodeModal";
-import StandaloneCertificateModal from "./StandaloneCertificateModal";
+
 import {
   collection,
   query,
@@ -51,6 +51,8 @@ import CertificateEditor from "./CertificateEditor";
 import Modal from "./Modal";
 import { useDialog } from "../context/DialogContext";
 import { getEventEndTime, syncAllExistingCertificates, isEventCertificateReleased } from "../lib/certificateAuth";
+
+const StandaloneCertificateModal = lazy(() => import("./StandaloneCertificateModal"));
 
 export default function EventManagement({ 
   adminAccessLevel = "ADMIN",
@@ -1596,14 +1598,18 @@ export default function EventManagement({
       </Modal>
 
       {/* Standalone Certificate Modal (Excel/Spreadsheet Upload & Direct Issuance) */}
-      <StandaloneCertificateModal
-        isOpen={isStandaloneCertModalOpen}
-        onClose={() => {
-          setIsStandaloneCertModalOpen(false);
-          setSelectedStandaloneEvent(null);
-        }}
-        existingEvent={selectedStandaloneEvent}
-      />
+      {isStandaloneCertModalOpen && (
+        <Suspense fallback={null}>
+          <StandaloneCertificateModal
+            isOpen={isStandaloneCertModalOpen}
+            onClose={() => {
+              setIsStandaloneCertModalOpen(false);
+              setSelectedStandaloneEvent(null);
+            }}
+            existingEvent={selectedStandaloneEvent}
+          />
+        </Suspense>
+      )}
     </div>
   );
 }
