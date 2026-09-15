@@ -21,11 +21,35 @@ import {
 import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import Modal from "./Modal";
 
-export default function OfflineNotice() {
+interface OfflineNoticeProps {
+  onStatusChange?: (isOnline: boolean) => void;
+  showModalExternally?: boolean;
+  onCloseExternalModal?: () => void;
+}
+
+export default function OfflineNotice({
+  onStatusChange,
+  showModalExternally,
+  onCloseExternalModal,
+}: OfflineNoticeProps = {}) {
   const { isOnline, wasOffline, isChecking, checkConnection } = useOnlineStatus();
   const [isDismissed, setIsDismissed] = useState(false);
   const [showInfoModal, setShowInfoModal] = useState(false);
   const [showReconnectedToast, setShowReconnectedToast] = useState(false);
+
+  useEffect(() => {
+    if (onStatusChange) {
+      onStatusChange(isOnline);
+    }
+  }, [isOnline, onStatusChange]);
+
+  const isModalOpen = showModalExternally || showInfoModal;
+  const handleCloseModal = () => {
+    setShowInfoModal(false);
+    if (onCloseExternalModal) {
+      onCloseExternalModal();
+    }
+  };
 
   // Reset dismissed state whenever offline status changes
   useEffect(() => {
@@ -154,8 +178,8 @@ export default function OfflineNotice() {
 
       {/* 3. MODAL DE INFORMAÇÃO DO MODO OFFLINE */}
       <Modal
-        isOpen={showInfoModal}
-        onClose={() => setShowInfoModal(false)}
+        isOpen={isModalOpen}
+        onClose={handleCloseModal}
         title="Modo Offline e Limitações"
       >
         <div className="p-4 sm:p-6 max-h-[80vh] overflow-y-auto">
@@ -237,8 +261,8 @@ export default function OfflineNotice() {
             </button>
             <button
               type="button"
-              onClick={() => setShowInfoModal(false)}
-              className="py-2.5 px-5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all"
+              onClick={handleCloseModal}
+              className="py-2.5 px-5 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-300 rounded-xl text-xs font-bold transition-all cursor-pointer"
             >
               Entendido
             </button>

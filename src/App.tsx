@@ -21,8 +21,12 @@ import {
   HeartHandshake,
   CheckCircle2,
   Landmark,
-  GraduationCap
+  GraduationCap,
+  WifiOff,
+  Info,
+  ExternalLink
 } from "lucide-react";
+import { useOnlineStatus } from "./hooks/useOnlineStatus";
 import { loginAnon, testConnection, subscribeToQuotaStatus, isFirestoreQuotaExhausted } from "./lib/firebase";
 import { recordAppAccess, startPresenceHeartbeat } from "./lib/telemetry";
 import { motion, AnimatePresence } from "motion/react";
@@ -53,6 +57,8 @@ const CoursesOffers = lazyWithRetry(() => import("./components/CoursesOffers"));
 export default function App() {
   const { settings } = useSettings();
   const { showAlert } = useDialog();
+  const { isOnline } = useOnlineStatus();
+  const [showOfflineInfoModal, setShowOfflineInfoModal] = useState(false);
   const youtubeLive = useYouTubeLive();
   const isFacultyLive = youtubeLive.isLive || Boolean(settings.liveBadgeEnabled);
   const liveTargetUrl = youtubeLive.videoId
@@ -672,7 +678,10 @@ export default function App() {
   return (
     <ErrorBoundary>
     <div className="min-h-screen relative flex flex-col items-center p-0 sm:p-4 print:block print:p-0">
-      <OfflineNotice />
+      <OfflineNotice 
+        showModalExternally={showOfflineInfoModal}
+        onCloseExternalModal={() => setShowOfflineInfoModal(false)}
+      />
       <VersionUpdateGate
         isUpdating={isUpdating}
         updateProgress={updateProgress}
@@ -878,6 +887,36 @@ export default function App() {
         <div className="relative z-10 space-y-6 sm:space-y-8 print:space-y-4">
           <Header onOpenAdmin={handleOpenAdmin} />
 
+          {/* PAINEL EXPLICATIVO MODO OFFLINE COMPLETO */}
+          {!isOnline && (
+            <div 
+              id="offline-complete-mode-panel"
+              className="px-4 py-3 bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-950/40 dark:to-orange-950/30 border border-amber-300 dark:border-amber-700/50 rounded-2xl flex flex-col sm:flex-row items-start sm:items-center justify-between gap-3 text-xs text-amber-950 dark:text-amber-100 shadow-sm print:hidden animate-fade-in"
+            >
+              <div className="flex items-start sm:items-center gap-3">
+                <div className="w-8 h-8 rounded-xl bg-amber-500 text-slate-950 flex items-center justify-center shrink-0 shadow-xs mt-0.5 sm:mt-0">
+                  <WifiOff className="w-4 h-4" />
+                </div>
+                <div>
+                  <p className="font-bold text-sm text-amber-900 dark:text-amber-200">
+                    Modo Offline Completo Ativo
+                  </p>
+                  <p className="text-[11px] sm:text-xs text-amber-800/90 dark:text-amber-300/90 leading-tight">
+                    Sua Carteirinha (Minha ID), dados salvos e verificação continuam operando normalmente em cache local. Links e ações que exigem internet foram pausados.
+                  </p>
+                </div>
+              </div>
+              <button
+                type="button"
+                onClick={() => setShowOfflineInfoModal(true)}
+                className="self-end sm:self-center shrink-0 px-3 py-1.5 bg-amber-600 hover:bg-amber-700 text-white rounded-xl text-[11px] font-bold flex items-center gap-1.5 transition-all shadow-xs active:scale-95 cursor-pointer"
+              >
+                <Info className="w-3.5 h-3.5" />
+                <span>Ver O Que Funciona</span>
+              </button>
+            </div>
+          )}
+
           {isQuotaExhausted && (
             <div className="px-3.5 py-2.5 bg-amber-500/10 border border-amber-500/20 rounded-2xl flex items-center justify-between text-xs text-amber-800 dark:text-amber-200 print:hidden transition-all">
               <div className="flex items-center gap-2">
@@ -934,27 +973,102 @@ export default function App() {
               {(settings.socialFacebookEnabled || settings.socialInstagramEnabled || settings.socialYoutubeEnabled || settings.socialWhatsappEnabled || settings.socialEmailEnabled) && (
                 <div className="flex flex-row items-center justify-center gap-3">
                   {settings.socialFacebookEnabled && (
-                    <a href={settings.socialFacebookUrl} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full bg-white dark:bg-slate-800 text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/20 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors" aria-label="Facebook">
+                    <a 
+                      href={isOnline ? settings.socialFacebookUrl : undefined} 
+                      target={isOnline ? "_blank" : undefined} 
+                      rel={isOnline ? "noopener noreferrer" : undefined} 
+                      onClick={(e) => {
+                        if (!isOnline) {
+                          e.preventDefault();
+                          setShowOfflineInfoModal(true);
+                        }
+                      }}
+                      className={`p-2 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors ${
+                        isOnline ? "text-sky-600 hover:bg-sky-50 dark:hover:bg-sky-900/20 cursor-pointer" : "text-slate-400 opacity-50 cursor-not-allowed"
+                      }`} 
+                      aria-label="Facebook"
+                      title={!isOnline ? "Requer conexão à internet" : undefined}
+                    >
                       <Facebook className="w-5 h-5" />
                     </a>
                   )}
                   {settings.socialInstagramEnabled && (
-                    <a href={settings.socialInstagramUrl} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full bg-white dark:bg-slate-800 text-pink-600 hover:bg-pink-50 dark:hover:bg-pink-900/20 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors" aria-label="Instagram">
+                    <a 
+                      href={isOnline ? settings.socialInstagramUrl : undefined} 
+                      target={isOnline ? "_blank" : undefined} 
+                      rel={isOnline ? "noopener noreferrer" : undefined} 
+                      onClick={(e) => {
+                        if (!isOnline) {
+                          e.preventDefault();
+                          setShowOfflineInfoModal(true);
+                        }
+                      }}
+                      className={`p-2 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors ${
+                        isOnline ? "text-pink-600 hover:bg-pink-50 dark:hover:bg-pink-900/20 cursor-pointer" : "text-slate-400 opacity-50 cursor-not-allowed"
+                      }`} 
+                      aria-label="Instagram"
+                      title={!isOnline ? "Requer conexão à internet" : undefined}
+                    >
                       <Instagram className="w-5 h-5" />
                     </a>
                   )}
                   {settings.socialYoutubeEnabled && (
-                    <a href={settings.socialYoutubeUrl} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full bg-white dark:bg-slate-800 text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors" aria-label="YouTube">
+                    <a 
+                      href={isOnline ? settings.socialYoutubeUrl : undefined} 
+                      target={isOnline ? "_blank" : undefined} 
+                      rel={isOnline ? "noopener noreferrer" : undefined} 
+                      onClick={(e) => {
+                        if (!isOnline) {
+                          e.preventDefault();
+                          setShowOfflineInfoModal(true);
+                        }
+                      }}
+                      className={`p-2 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors ${
+                        isOnline ? "text-red-600 hover:bg-red-50 dark:hover:bg-red-900/20 cursor-pointer" : "text-slate-400 opacity-50 cursor-not-allowed"
+                      }`} 
+                      aria-label="YouTube"
+                      title={!isOnline ? "Requer conexão à internet" : undefined}
+                    >
                       <Youtube className="w-5 h-5" />
                     </a>
                   )}
                   {settings.socialWhatsappEnabled && (
-                    <a href={settings.socialWhatsappUrl} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full bg-white dark:bg-slate-800 text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors" aria-label="WhatsApp">
+                    <a 
+                      href={isOnline ? settings.socialWhatsappUrl : undefined} 
+                      target={isOnline ? "_blank" : undefined} 
+                      rel={isOnline ? "noopener noreferrer" : undefined} 
+                      onClick={(e) => {
+                        if (!isOnline) {
+                          e.preventDefault();
+                          setShowOfflineInfoModal(true);
+                        }
+                      }}
+                      className={`p-2 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors ${
+                        isOnline ? "text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-900/20 cursor-pointer" : "text-slate-400 opacity-50 cursor-not-allowed"
+                      }`} 
+                      aria-label="WhatsApp"
+                      title={!isOnline ? "Requer conexão à internet" : undefined}
+                    >
                       <MessageCircle className="w-5 h-5" />
                     </a>
                   )}
                   {settings.socialEmailEnabled && (
-                    <a href={settings.socialEmailUrl} target="_blank" rel="noopener noreferrer" className="p-2 rounded-full bg-white dark:bg-slate-800 text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/20 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors" aria-label="Email">
+                    <a 
+                      href={isOnline ? settings.socialEmailUrl : undefined} 
+                      target={isOnline ? "_blank" : undefined} 
+                      rel={isOnline ? "noopener noreferrer" : undefined} 
+                      onClick={(e) => {
+                        if (!isOnline) {
+                          e.preventDefault();
+                          setShowOfflineInfoModal(true);
+                        }
+                      }}
+                      className={`p-2 rounded-full bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 shadow-sm transition-colors ${
+                        isOnline ? "text-slate-600 hover:bg-slate-50 dark:hover:bg-slate-700/20 cursor-pointer" : "text-slate-400 opacity-50 cursor-not-allowed"
+                      }`} 
+                      aria-label="Email"
+                      title={!isOnline ? "Requer conexão à internet" : undefined}
+                    >
                       <Mail className="w-5 h-5" />
                     </a>
                   )}
@@ -966,10 +1080,21 @@ export default function App() {
           {settings.fajopaPlusEnabled && (
             <div className="flex justify-center mb-6 mt-2 no-print print:hidden">
               <a 
-                href={settings.fajopaPlusUrl} 
-                target="_blank" 
-                rel="noopener noreferrer"
-                className="relative group flex items-center justify-center py-4 w-full max-w-sm rounded-2xl bg-white dark:bg-[#020617] text-slate-900 dark:text-white font-black uppercase tracking-widest overflow-hidden transition-all duration-500 hover:scale-[1.02] active:scale-95 shadow-[0_0_20px_rgba(56,189,248,0.15)] hover:shadow-[0_0_30px_rgba(56,189,248,0.3)] border border-slate-200 dark:border-slate-800"
+                href={isOnline ? settings.fajopaPlusUrl : undefined}
+                target={isOnline ? "_blank" : undefined}
+                rel={isOnline ? "noopener noreferrer" : undefined}
+                onClick={(e) => {
+                  if (!isOnline) {
+                    e.preventDefault();
+                    setShowOfflineInfoModal(true);
+                  }
+                }}
+                className={`relative group flex items-center justify-center py-4 w-full max-w-sm rounded-2xl bg-white dark:bg-[#020617] text-slate-900 dark:text-white font-black uppercase tracking-widest overflow-hidden transition-all duration-500 shadow-[0_0_20px_rgba(56,189,248,0.15)] border border-slate-200 dark:border-slate-800 ${
+                  isOnline 
+                    ? "hover:scale-[1.02] active:scale-95 hover:shadow-[0_0_30px_rgba(56,189,248,0.3)] cursor-pointer" 
+                    : "opacity-60 grayscale cursor-not-allowed"
+                }`}
+                title={!isOnline ? "Indisponível sem conexão à internet" : undefined}
               >
                 {/* Animated Gradient Background Glow */}
                 <div className="absolute inset-0 bg-gradient-to-r from-sky-500/10 via-blue-500/10 to-indigo-500/10 opacity-0 group-hover:opacity-100 transition-opacity duration-500"></div>
@@ -981,6 +1106,11 @@ export default function App() {
                 <div className="relative z-10 flex items-center gap-2 drop-shadow-md text-xl sm:text-2xl">
                   <span className="text-slate-900 dark:text-white drop-shadow-md glitch-text-hover-only">FAJOPA</span>
                   <span className="text-[#3b82f6] drop-shadow-md">PLUS</span>
+                  {!isOnline && (
+                    <span className="ml-1 text-[10px] font-bold text-amber-500 bg-amber-500/10 border border-amber-500/30 px-1.5 py-0.5 rounded-md normal-case tracking-normal">
+                      Requer Web
+                    </span>
+                  )}
                 </div>
               </a>
             </div>
@@ -998,46 +1128,102 @@ export default function App() {
                             
               {settings.sophiaEnabled && (
                 <a 
-                  href={settings.sophiaLink} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-1 sm:px-3 bg-white dark:bg-slate-800/50 text-sky-600 dark:text-sky-400 rounded-xl text-[9px] sm:text-xs font-black uppercase tracking-tighter transition-all duration-300 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:-translate-y-1 hover:shadow-md active:scale-95 border border-slate-200 dark:border-slate-700/50 min-w-0 text-center group"
+                  href={isOnline ? settings.sophiaLink : undefined} 
+                  target={isOnline ? "_blank" : undefined}
+                  rel={isOnline ? "noopener noreferrer" : undefined}
+                  onClick={(e) => {
+                    if (!isOnline) {
+                      e.preventDefault();
+                      setShowOfflineInfoModal(true);
+                    }
+                  }}
+                  className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-1 sm:px-3 bg-white dark:bg-slate-800/50 rounded-xl text-[9px] sm:text-xs font-black uppercase tracking-tighter transition-all duration-300 border border-slate-200 dark:border-slate-700/50 min-w-0 text-center group ${
+                    isOnline 
+                      ? "text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:-translate-y-1 hover:shadow-md active:scale-95 cursor-pointer" 
+                      : "text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed"
+                  }`}
+                  title={!isOnline ? "Disponível apenas online (Portal Externo)" : undefined}
                 >
                   <User className="w-4 h-4 shrink-0 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="w-full px-1 leading-tight whitespace-normal">Portal do Aluno</span>
+                  <span className="w-full px-1 leading-tight whitespace-normal">
+                    Portal do Aluno
+                    {!isOnline && <span className="block text-[8px] font-normal opacity-70">(Online)</span>}
+                  </span>
                 </a>
               )}
               {settings.libraryEnabled && (
                 <a 
-                  href={settings.libraryLink} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-1 sm:px-3 bg-white dark:bg-slate-800/50 text-sky-600 dark:text-sky-400 rounded-xl text-[9px] sm:text-xs font-black uppercase tracking-tighter transition-all duration-300 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:-translate-y-1 hover:shadow-md active:scale-95 border border-slate-200 dark:border-slate-700/50 min-w-0 text-center group"
+                  href={isOnline ? settings.libraryLink : undefined} 
+                  target={isOnline ? "_blank" : undefined}
+                  rel={isOnline ? "noopener noreferrer" : undefined}
+                  onClick={(e) => {
+                    if (!isOnline) {
+                      e.preventDefault();
+                      setShowOfflineInfoModal(true);
+                    }
+                  }}
+                  className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-1 sm:px-3 bg-white dark:bg-slate-800/50 rounded-xl text-[9px] sm:text-xs font-black uppercase tracking-tighter transition-all duration-300 border border-slate-200 dark:border-slate-700/50 min-w-0 text-center group ${
+                    isOnline 
+                      ? "text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:-translate-y-1 hover:shadow-md active:scale-95 cursor-pointer" 
+                      : "text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed"
+                  }`}
+                  title={!isOnline ? "Disponível apenas online (Biblioteca Externa)" : undefined}
                 >
                   <BookHeart className="w-4 h-4 shrink-0 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="w-full px-1 leading-tight whitespace-normal">Biblioteca Virtual</span>
+                  <span className="w-full px-1 leading-tight whitespace-normal">
+                    Biblioteca Virtual
+                    {!isOnline && <span className="block text-[8px] font-normal opacity-70">(Online)</span>}
+                  </span>
                 </a>
               )}
               {settings.avaEnabled && (
                 <a 
-                  href={settings.avaLink} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-1 sm:px-3 bg-white dark:bg-slate-800/50 text-sky-600 dark:text-sky-400 rounded-xl text-[9px] sm:text-xs font-black uppercase tracking-tighter transition-all duration-300 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:-translate-y-1 hover:shadow-md active:scale-95 border border-slate-200 dark:border-slate-700/50 min-w-0 text-center group"
+                  href={isOnline ? settings.avaLink : undefined} 
+                  target={isOnline ? "_blank" : undefined}
+                  rel={isOnline ? "noopener noreferrer" : undefined}
+                  onClick={(e) => {
+                    if (!isOnline) {
+                      e.preventDefault();
+                      setShowOfflineInfoModal(true);
+                    }
+                  }}
+                  className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-1 sm:px-3 bg-white dark:bg-slate-800/50 rounded-xl text-[9px] sm:text-xs font-black uppercase tracking-tighter transition-all duration-300 border border-slate-200 dark:border-slate-700/50 min-w-0 text-center group ${
+                    isOnline 
+                      ? "text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:-translate-y-1 hover:shadow-md active:scale-95 cursor-pointer" 
+                      : "text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed"
+                  }`}
+                  title={!isOnline ? "Disponível apenas online (Ambiente Moodle)" : undefined}
                 >
                   <MonitorPlay className="w-4 h-4 shrink-0 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="w-full px-1 leading-tight whitespace-normal">Ambiente Virtual</span>
+                  <span className="w-full px-1 leading-tight whitespace-normal">
+                    Ambiente Virtual
+                    {!isOnline && <span className="block text-[8px] font-normal opacity-70">(Online)</span>}
+                  </span>
                 </a>
               )}
               {settings.contemplacaoEnabled && (
                 <a 
-                  href={settings.contemplacaoLink} 
-                  target="_blank" 
-                  rel="noopener noreferrer"
-                  className="flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-1 sm:px-3 bg-white dark:bg-slate-800/50 text-sky-600 dark:text-sky-400 rounded-xl text-[9px] sm:text-xs font-black uppercase tracking-tighter transition-all duration-300 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:-translate-y-1 hover:shadow-md active:scale-95 border border-slate-200 dark:border-slate-700/50 min-w-0 text-center group"
+                  href={isOnline ? settings.contemplacaoLink : undefined} 
+                  target={isOnline ? "_blank" : undefined}
+                  rel={isOnline ? "noopener noreferrer" : undefined}
+                  onClick={(e) => {
+                    if (!isOnline) {
+                      e.preventDefault();
+                      setShowOfflineInfoModal(true);
+                    }
+                  }}
+                  className={`flex flex-col sm:flex-row items-center justify-center gap-1.5 sm:gap-2 py-2.5 px-1 sm:px-3 bg-white dark:bg-slate-800/50 rounded-xl text-[9px] sm:text-xs font-black uppercase tracking-tighter transition-all duration-300 border border-slate-200 dark:border-slate-700/50 min-w-0 text-center group ${
+                    isOnline 
+                      ? "text-sky-600 dark:text-sky-400 hover:bg-sky-50 dark:hover:bg-sky-900/20 hover:-translate-y-1 hover:shadow-md active:scale-95 cursor-pointer" 
+                      : "text-slate-400 dark:text-slate-500 opacity-60 cursor-not-allowed"
+                  }`}
+                  title={!isOnline ? "Disponível apenas online (Portal Externo)" : undefined}
                 >
                   <BookOpen className="w-4 h-4 shrink-0 group-hover:scale-110 transition-transform duration-300" />
-                  <span className="w-full px-1 leading-tight whitespace-normal">Revista Contemplação</span>
+                  <span className="w-full px-1 leading-tight whitespace-normal">
+                    Revista Contemplação
+                    {!isOnline && <span className="block text-[8px] font-normal opacity-70">(Online)</span>}
+                  </span>
                 </a>
               )}
             </div>
@@ -1048,7 +1234,10 @@ export default function App() {
               style={{ gridTemplateColumns: `repeat(${3 + (settings.eventsEnabled !== false ? 1 : 0) + (settings.appointmentsEnabled !== false ? 1 : 0) + (settings.coursesEnabled !== false ? 1 : 0)}, minmax(0, 1fr))` }}
             >
               <button
-                onClick={() => switchTab("student")}
+                onClick={() => {
+                  switchTab("student");
+                  window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: "id" } }));
+                }}
                 onMouseEnter={() => prefetchTab("student")}
                 onMouseLeave={cancelPrefetch}
                 onTouchStart={() => prefetchTab("student", 120)}

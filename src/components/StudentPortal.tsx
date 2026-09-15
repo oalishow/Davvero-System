@@ -249,9 +249,26 @@ const StudentPortal = memo(function StudentPortal({
   const cardRef = useRef<HTMLDivElement>(null);
 
   const scrollToCard = () => {
-    // Mantém a página sempre no topo para que o cabeçalho e cadeado fiquem sempre visíveis
     if (typeof window === 'undefined') return;
-    window.scrollTo({ top: 0, behavior: 'smooth' });
+    const performScroll = () => {
+      const targetElement = cardRef.current || document.getElementById('student-carteirinha-container');
+      if (targetElement) {
+        // Obter posição exata com offset confortável abaixo do menu fixo / cabeçalho
+        const rect = targetElement.getBoundingClientRect();
+        const scrollTop = window.pageYOffset || document.documentElement.scrollTop;
+        const targetY = rect.top + scrollTop - 16;
+        window.scrollTo({
+          top: Math.max(0, targetY),
+          behavior: 'smooth'
+        });
+      }
+    };
+
+    // Executa em múltiplos frames para acomodar carregamentos assíncronos e renderizações do DOM
+    performScroll();
+    setTimeout(performScroll, 50);
+    setTimeout(performScroll, 150);
+    setTimeout(performScroll, 350);
   };
 
   // Fallback PIN state
@@ -278,13 +295,10 @@ const StudentPortal = memo(function StudentPortal({
   const hasAutoScrolled = useRef(false);
 
   useEffect(() => {
-    if (isUnlocked && !isLoading && !isPrePinAnimation && bondedId && pinMode === "none") {
-      if (window.innerWidth < 768 && !hasAutoScrolled.current) {
-        scrollToCard();
-        hasAutoScrolled.current = true;
-      }
+    if (isUnlocked && !isLoading && !isPrePinAnimation && bondedId && pinMode === "none" && activeTab === "id") {
+      scrollToCard();
     }
-  }, [isUnlocked, isLoading, isPrePinAnimation, bondedId, pinMode]);
+  }, [isUnlocked, isLoading, isPrePinAnimation, bondedId, pinMode, activeTab]);
 
   const handleApprovalModalClose = () => {
     if (member?.id) {
