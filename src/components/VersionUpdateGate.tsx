@@ -23,15 +23,10 @@ export default function VersionUpdateGate({
   const handleManualCleanUpdate = async () => {
     setIsManualUpdating(true);
     try {
-      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
-        const regs = await navigator.serviceWorker.getRegistrations();
-        for (const reg of regs) {
-          await reg.unregister().catch(() => {});
-        }
-      }
       if (typeof window !== "undefined" && "caches" in window) {
         const keys = await caches.keys();
-        await Promise.all(keys.map((k) => caches.delete(k)));
+        const disposable = keys.filter((k) => !k.includes('workbox-precache') && !k.includes('app-shell'));
+        await Promise.all(disposable.map((k) => caches.delete(k)));
       }
       if (typeof sessionStorage !== "undefined") {
         sessionStorage.clear();

@@ -47,8 +47,8 @@ import HomePollsWidget from "./components/HomePollsWidget";
 import { useYouTubeLive } from "./hooks/useYouTubeLive";
 import WelcomeModal from "./components/WelcomeModal";
 
+import StudentPortal from "./components/StudentPortal";
 const Admin = lazyWithRetry(() => import("./components/Admin"));
-const StudentPortal = lazyWithRetry(() => import("./components/StudentPortal"));
 const EventsPage = lazyWithRetry(() => import("./components/EventsPage"));
 const PublicAppointmentsList = lazyWithRetry(() => import("./components/PublicAppointmentsList"));
 const DioceseHub = lazyWithRetry(() => import("./components/DioceseHub"));
@@ -142,6 +142,11 @@ export default function App() {
         return "admin";
       }
 
+      // Modo offline: inicia diretamente e exclusivamente na Carteirinha (student)
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return "student";
+      }
+
       // Restauração inteligente: se há uma carteirinha vinculada no aparelho ou última aba salva
       try {
         const hasBondedIdentity = !!(
@@ -173,6 +178,10 @@ export default function App() {
 
   const switchTab = useCallback((tab: "verifier" | "admin" | "student" | "events" | "diocese" | "appointments" | "courses") => {
     cancelPrefetch();
+    if (!isOnline && tab !== "student") {
+      setShowOfflineInfoModal(true);
+      return;
+    }
     setActiveTab(tab);
     playSound('pop');
     try {
@@ -180,7 +189,14 @@ export default function App() {
         localStorage.setItem("davvero_last_active_tab", tab);
       }
     } catch {}
-  }, [cancelPrefetch]);
+  }, [cancelPrefetch, isOnline]);
+
+  // Se a conexão for interrompida, redireciona suavemente para a Carteirinha
+  useEffect(() => {
+    if (!isOnline && activeTab !== "student") {
+      setActiveTab("student");
+    }
+  }, [isOnline, activeTab]);
 
   const handleStudentNavigate = useCallback(() => switchTab("student"), [switchTab]);
   const handleEventsNavigate = useCallback(() => switchTab("events"), [switchTab]);
@@ -1278,65 +1294,164 @@ export default function App() {
                 onMouseEnter={() => prefetchTab("student")}
                 onMouseLeave={cancelPrefetch}
                 onTouchStart={() => prefetchTab("student", 120)}
-                className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "student" ? "bg-white dark:bg-amber-500 text-amber-600 dark:text-amber-50 shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                className={`relative flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${
+                  activeTab === "student"
+                    ? "bg-white dark:bg-amber-500 text-amber-600 dark:text-amber-50 shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                }`}
               >
                 <User className="w-4 h-4 mb-0.5" />
-                Minha ID
+                <span>Minha ID</span>
+                {!isOnline && (
+                  <span className="text-[7px] font-extrabold text-emerald-600 dark:text-emerald-300 -mt-0.5">
+                    Offline OK
+                  </span>
+                )}
               </button>
               <button
-                onClick={() => switchTab("verifier")}
+                onClick={() => {
+                  if (!isOnline) {
+                    setShowOfflineInfoModal(true);
+                    return;
+                  }
+                  switchTab("verifier");
+                }}
                 onMouseEnter={cancelPrefetch}
-                className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "verifier" ? "bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${
+                  !isOnline
+                    ? "opacity-35 cursor-not-allowed text-slate-400"
+                    : activeTab === "verifier"
+                    ? "bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                }`}
+                title={!isOnline ? "Requer conexão à internet para validar" : undefined}
               >
                 <Shield className="w-4 h-4 mb-0.5" />
-                Verificar
+                <span>Verificar</span>
+                {!isOnline && (
+                  <span className="text-[7px] font-medium text-slate-400 -mt-0.5">
+                    (Online)
+                  </span>
+                )}
               </button>
               {settings.coursesEnabled !== false && (
                 <button
-                  onClick={() => switchTab("courses")}
+                  onClick={() => {
+                    if (!isOnline) {
+                      setShowOfflineInfoModal(true);
+                      return;
+                    }
+                    switchTab("courses");
+                  }}
                   onMouseEnter={() => prefetchTab("courses")}
                   onMouseLeave={cancelPrefetch}
                   onTouchStart={() => prefetchTab("courses", 120)}
-                  className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "courses" ? "bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                  className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${
+                    !isOnline
+                      ? "opacity-35 cursor-not-allowed text-slate-400"
+                      : activeTab === "courses"
+                      ? "bg-white dark:bg-indigo-600 text-indigo-600 dark:text-white shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  }`}
+                  title={!isOnline ? "Requer conexão à internet" : undefined}
                 >
                   <GraduationCap className="w-4 h-4 mb-0.5" />
                   <span className="hidden sm:inline">Cursos & Ofertas</span>
                   <span className="sm:hidden">Cursos</span>
+                  {!isOnline && (
+                    <span className="text-[7px] font-medium text-slate-400 -mt-0.5">
+                      (Online)
+                    </span>
+                  )}
                 </button>
               )}
               {settings.eventsEnabled !== false && (
                 <button
-                  onClick={() => switchTab("events")}
+                  onClick={() => {
+                    if (!isOnline) {
+                      setShowOfflineInfoModal(true);
+                      return;
+                    }
+                    switchTab("events");
+                  }}
                   onMouseEnter={() => prefetchTab("events")}
                   onMouseLeave={cancelPrefetch}
                   onTouchStart={() => prefetchTab("events", 120)}
-                  className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "events" ? "bg-white dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                  className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${
+                    !isOnline
+                      ? "opacity-35 cursor-not-allowed text-slate-400"
+                      : activeTab === "events"
+                      ? "bg-white dark:bg-emerald-600 text-emerald-600 dark:text-white shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  }`}
+                  title={!isOnline ? "Requer conexão à internet" : undefined}
                 >
                   <Calendar className="w-4 h-4 mb-0.5" />
-                  Eventos
+                  <span>Eventos</span>
+                  {!isOnline && (
+                    <span className="text-[7px] font-medium text-slate-400 -mt-0.5">
+                      (Online)
+                    </span>
+                  )}
                 </button>
               )}
               {settings.appointmentsEnabled !== false && (
                 <button
-                  onClick={() => switchTab("appointments")}
+                  onClick={() => {
+                    if (!isOnline) {
+                      setShowOfflineInfoModal(true);
+                      return;
+                    }
+                    switchTab("appointments");
+                  }}
                   onMouseEnter={() => prefetchTab("appointments")}
                   onMouseLeave={cancelPrefetch}
                   onTouchStart={() => prefetchTab("appointments", 120)}
-                  className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "appointments" ? "bg-white dark:bg-purple-600 text-purple-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                  className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${
+                    !isOnline
+                      ? "opacity-35 cursor-not-allowed text-slate-400"
+                      : activeTab === "appointments"
+                      ? "bg-white dark:bg-purple-600 text-purple-600 dark:text-white shadow-sm"
+                      : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                  }`}
+                  title={!isOnline ? "Requer conexão à internet" : undefined}
                 >
                   <HeartHandshake className="w-4 h-4 mb-0.5" />
-                  Seminário
+                  <span>Seminário</span>
+                  {!isOnline && (
+                    <span className="text-[7px] font-medium text-slate-400 -mt-0.5">
+                      (Online)
+                    </span>
+                  )}
                 </button>
               )}
               <button
-                onClick={() => switchTab("diocese")}
+                onClick={() => {
+                  if (!isOnline) {
+                    setShowOfflineInfoModal(true);
+                    return;
+                  }
+                  switchTab("diocese");
+                }}
                 onMouseEnter={() => prefetchTab("diocese")}
                 onMouseLeave={cancelPrefetch}
                 onTouchStart={() => prefetchTab("diocese", 120)}
-                className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${activeTab === "diocese" ? "bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"}`}
+                className={`flex flex-col items-center justify-center py-2 text-[10px] font-black uppercase tracking-tighter rounded-lg transition-all duration-300 ${
+                  !isOnline
+                    ? "opacity-35 cursor-not-allowed text-slate-400"
+                    : activeTab === "diocese"
+                    ? "bg-white dark:bg-sky-600 text-sky-600 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                }`}
+                title={!isOnline ? "Requer conexão à internet" : undefined}
               >
                 <Landmark className="w-4 h-4 mb-0.5" />
-                Minha Diocese
+                <span>Minha Diocese</span>
+                {!isOnline && (
+                  <span className="text-[7px] font-medium text-slate-400 -mt-0.5">
+                    (Online)
+                  </span>
+                )}
               </button>
             </div>
 

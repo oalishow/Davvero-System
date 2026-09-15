@@ -1,4 +1,4 @@
-import { precacheAndRoute, createHandlerBoundToURL, matchPrecache } from 'workbox-precaching';
+import { precacheAndRoute, cleanupOutdatedCaches, createHandlerBoundToURL, matchPrecache } from 'workbox-precaching';
 import { NavigationRoute, registerRoute, setCatchHandler } from 'workbox-routing';
 import { StaleWhileRevalidate, NetworkFirst, NetworkOnly } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
@@ -11,6 +11,21 @@ declare const self: any;
 // Ativar e registrar imediatamente o novo service worker e assumir o controle dos clientes
 self.skipWaiting();
 clientsClaim();
+cleanupOutdatedCaches();
+
+// Garantir que a casca da aplicação (App Shell) esteja permanentemente em cache dedicado
+self.addEventListener('install', (event: any) => {
+  event.waitUntil(
+    (async () => {
+      try {
+        const cache = await caches.open('app-shell-cache');
+        await cache.addAll(['/', '/index.html']);
+      } catch (e) {
+        console.warn('[SW] Pré-cache de contingência do app-shell finalizado com aviso:', e);
+      }
+    })()
+  );
+});
 
 // Limpar caches antigos ou conflitantes (como o de chamadas streaming do Firestore)
 self.addEventListener('activate', (event: any) => {
@@ -77,7 +92,9 @@ registerRoute(
           (await matchPrecache('index.html')) ||
           (await matchPrecache('/index.html')) ||
           (await caches.match('index.html')) ||
-          (await caches.match('/index.html'));
+          (await caches.match('/index.html')) ||
+          (await caches.match('/', { cacheName: 'app-shell-cache' })) ||
+          (await caches.match('/index.html', { cacheName: 'app-shell-cache' }));
         if (cached) return cached;
       }
       return await fetch(request);
@@ -86,27 +103,35 @@ registerRoute(
         (await matchPrecache('index.html')) ||
         (await matchPrecache('/index.html')) ||
         (await caches.match('index.html')) ||
-        (await caches.match('/index.html'));
+        (await caches.match('/index.html')) ||
+        (await caches.match('/', { cacheName: 'app-shell-cache' })) ||
+        (await caches.match('/index.html', { cacheName: 'app-shell-cache' }));
       if (fallback) return fallback;
       return new Response(
-        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>DAVVERO - Offline</title></head><body><h1>DAVVERO Offline</h1><p>Recarregue quando houver conexão.</p></body></html>',
-        { status: 200, headers: { 'Content-Type': 'text/html' } }
+        '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>DAVVERO - Modo Offline</title></head><body><h1>DAVVERO System Offline</h1><p>A carteirinha institucional funciona com dados salvos.</p></body></html>',
+        { status: 200, headers: { 'Content-Type': 'text/html; charset=utf-8' } }
       );
     }
   }
 );
 
-// Catch handler for any unhandled navigation failure
+// Catch handler for any unhandled navigation failure (NEVER return Response.error() to prevent net::ERR_FAILED)
 setCatchHandler(async ({ request }) => {
   if (request.mode === 'navigate' || request.destination === 'document') {
     const fallback =
       (await matchPrecache('index.html')) ||
       (await matchPrecache('/index.html')) ||
       (await caches.match('index.html')) ||
-      (await caches.match('/index.html'));
+      (await caches.match('/index.html')) ||
+      (await caches.match('/', { cacheName: 'app-shell-cache' })) ||
+      (await caches.match('/index.html', { cacheName: 'app-shell-cache' }));
     if (fallback) return fallback;
   }
-  return Response.error();
+  // Retornar status HTTP amigável ao invés de Response.error() para nunca crashar o navegador em ERR_FAILED
+  return new Response(null, {
+    status: 503,
+    statusText: 'Service Unavailable Offline',
+  });
 });
 
 // Background Sync para requisições de API (Emails, Push, Certificados)

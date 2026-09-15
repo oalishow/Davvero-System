@@ -200,9 +200,19 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
         <div className="flex items-center gap-1 sm:gap-1.5 min-w-0 shrink">
           {onOpenAdmin && (
             <button
-              onClick={onOpenAdmin}
-              className="relative p-1.5 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-slate-500 dark:text-slate-400 hover:text-sky-500 dark:hover:text-sky-400 transition-colors hover:scale-110 active:scale-95 shrink-0"
-              title="Gestão"
+              onClick={() => {
+                if (!isOnline) {
+                  showAlert("Modo Offline Ativo", "O painel administrativo requer conexão à internet. No modo offline, apenas a Carteirinha Estudantil permanece ativa.");
+                  return;
+                }
+                onOpenAdmin();
+              }}
+              className={`relative p-1.5 rounded-lg border text-slate-500 dark:text-slate-400 transition-colors hover:scale-110 active:scale-95 shrink-0 ${
+                !isOnline
+                  ? "opacity-40 bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 cursor-not-allowed"
+                  : "bg-slate-100 dark:bg-slate-800 border-slate-200 dark:border-slate-700 hover:text-sky-500 dark:hover:text-sky-400"
+              }`}
+              title={!isOnline ? "Painel Administrativo indisponível offline" : "Gestão"}
             >
               <Lock className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             </button>

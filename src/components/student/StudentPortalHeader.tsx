@@ -11,8 +11,11 @@ import {
   BellRing,
   Lock,
   LogOut,
+  WifiOff,
 } from "lucide-react";
 import { playSound } from "../../lib/sounds";
+import { useOnlineStatus } from "../../hooks/useOnlineStatus";
+import { useDialog } from "../../context/DialogContext";
 import type { Member } from "../../types";
 
 export type StudentTabType =
@@ -51,6 +54,17 @@ export const StudentPortalHeader: React.FC<StudentPortalHeaderProps> = ({
   onOpenUnlinkModal,
   onScrollToCard,
 }) => {
+  const { isOnline } = useOnlineStatus();
+  const { showAlert } = useDialog();
+
+  const handleOfflineTabClick = (tabName: string) => {
+    playSound("pop");
+    showAlert(
+      "Recurso Indisponível Offline",
+      `A seção "${tabName}" requer conexão com a internet para sincronizar dados em tempo real.\n\nSua Carteirinha Estudantil ("Minha ID") continua 100% operacional no modo offline.`
+    );
+  };
+
   const isSeminaryRole = member?.roles?.some((r) =>
     [
       "SEMINARISTA",
@@ -66,7 +80,7 @@ export const StudentPortalHeader: React.FC<StudentPortalHeaderProps> = ({
   return (
     <>
       {/* Push Notification Banner */}
-      {isPushSupported && !pushSubscription && !isOverrideMode && (
+      {isPushSupported && !pushSubscription && !isOverrideMode && isOnline && (
         <div className="w-full mb-6 no-print">
           <div className="bg-sky-50 dark:bg-sky-900/20 border border-sky-200 dark:border-sky-800 rounded-2xl p-4 flex flex-col sm:flex-row items-start sm:items-center justify-between gap-4">
             <div className="flex items-center gap-3">
@@ -98,13 +112,22 @@ export const StudentPortalHeader: React.FC<StudentPortalHeaderProps> = ({
 
       {/* Top Bar with Security Status and Actions */}
       <div className="w-full flex justify-between items-center mb-6 px-2 no-print print:hidden">
-        <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1">
-          <ShieldCheck className="w-3 h-3" /> Acesso Seguro Ativo
-        </span>
+        <div className="flex items-center gap-2">
+          {!isOnline ? (
+            <span className="text-[10px] font-black text-amber-600 dark:text-amber-400 uppercase tracking-widest flex items-center gap-1.5 bg-amber-500/10 border border-amber-500/20 px-3 py-1 rounded-full">
+              <WifiOff className="w-3 h-3 text-amber-500 animate-pulse" />
+              CARTEIRINHA OFFLINE
+            </span>
+          ) : (
+            <span className="text-[10px] font-black text-emerald-500 uppercase tracking-widest flex items-center gap-1">
+              <ShieldCheck className="w-3 h-3" /> Acesso Seguro Ativo
+            </span>
+          )}
+        </div>
         <div className="flex gap-1">
           {!isOverrideMode && (
             <>
-              {isPushSupported && !pushSubscription && (
+              {isPushSupported && !pushSubscription && isOnline && (
                 <button
                   onClick={() => {
                     playSound("click");
@@ -166,34 +189,53 @@ export const StudentPortalHeader: React.FC<StudentPortalHeaderProps> = ({
           }}
           className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
             activeTab === "id"
-              ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm"
+              ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm ring-2 ring-sky-400/40"
               : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
           }`}
         >
           <CreditCard className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span>Minha ID</span>
+          {!isOnline && (
+            <span className="ml-1 text-[8px] bg-emerald-500/20 text-emerald-700 dark:text-emerald-300 px-1.5 py-0.5 rounded-full normal-case font-extrabold tracking-normal">
+              Ativa Offline
+            </span>
+          )}
         </button>
         <button
           onClick={() => {
+            if (!isOnline) {
+              handleOfflineTabClick("Eventos");
+              return;
+            }
             playSound("click");
             setActiveTab("events");
           }}
           className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-            activeTab === "events"
+            !isOnline
+              ? "opacity-35 cursor-not-allowed bg-slate-100 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-800"
+              : activeTab === "events"
               ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm"
               : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
           }`}
+          title={!isOnline ? "Requer conexão à internet" : undefined}
         >
           <QrCode className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span>Eventos</span>
+          {!isOnline && <Lock className="w-2.5 h-2.5 opacity-60" />}
         </button>
         <button
           onClick={() => {
+            if (!isOnline) {
+              handleOfflineTabClick("Certificados");
+              return;
+            }
             playSound("click");
             setActiveTab("certificates");
           }}
           className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-            activeTab === "certificates"
+            !isOnline
+              ? "opacity-35 cursor-not-allowed bg-slate-100 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-800"
+              : activeTab === "certificates"
               ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm"
               : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
           } ${
@@ -201,17 +243,25 @@ export const StudentPortalHeader: React.FC<StudentPortalHeaderProps> = ({
               ? "opacity-30 cursor-not-allowed pointer-events-none"
               : ""
           }`}
+          title={!isOnline ? "Requer conexão à internet" : undefined}
         >
           <ShieldCheck className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span>Certificados</span>
+          {!isOnline && <Lock className="w-2.5 h-2.5 opacity-60" />}
         </button>
         <button
           onClick={() => {
+            if (!isOnline) {
+              handleOfflineTabClick("Acadêmico");
+              return;
+            }
             playSound("click");
             setActiveTab("academic");
           }}
           className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-            activeTab === "academic"
+            !isOnline
+              ? "opacity-35 cursor-not-allowed bg-slate-100 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-800"
+              : activeTab === "academic"
               ? "bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border-sky-200 dark:border-sky-500/30 shadow-sm"
               : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
           } ${
@@ -219,17 +269,27 @@ export const StudentPortalHeader: React.FC<StudentPortalHeaderProps> = ({
               ? "opacity-30 cursor-not-allowed pointer-events-none"
               : ""
           }`}
+          title={!isOnline ? "Requer conexão à internet" : undefined}
         >
           <GraduationCap className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span className="hidden sm:inline">Acadêmico</span>
           <span className="sm:hidden">Acad.</span>
+          {!isOnline && <Lock className="w-2.5 h-2.5 opacity-60" />}
         </button>
 
         {isSeminaryRole && (
           <button
-            onClick={() => setActiveTab("seminary_events")}
+            onClick={() => {
+              if (!isOnline) {
+                handleOfflineTabClick("Eventos Seminário");
+                return;
+              }
+              setActiveTab("seminary_events");
+            }}
             className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-              activeTab === "seminary_events"
+              !isOnline
+                ? "opacity-35 cursor-not-allowed bg-slate-100 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-800"
+                : activeTab === "seminary_events"
                 ? "bg-amber-50 dark:bg-amber-500/10 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-500/30 shadow-sm"
                 : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
             } ${
@@ -237,15 +297,25 @@ export const StudentPortalHeader: React.FC<StudentPortalHeaderProps> = ({
                 ? "opacity-30 cursor-not-allowed pointer-events-none"
                 : ""
             }`}
+            title={!isOnline ? "Requer conexão à internet" : undefined}
           >
             <CalendarHeart className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
             <span>Eventos Seminário</span>
+            {!isOnline && <Lock className="w-2.5 h-2.5 opacity-60" />}
           </button>
         )}
         <button
-          onClick={() => setActiveTab("biblioteca")}
+          onClick={() => {
+            if (!isOnline) {
+              handleOfflineTabClick("Biblioteca");
+              return;
+            }
+            setActiveTab("biblioteca");
+          }}
           className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-            activeTab === "biblioteca"
+            !isOnline
+              ? "opacity-35 cursor-not-allowed bg-slate-100 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-800"
+              : activeTab === "biblioteca"
               ? "bg-emerald-50 dark:bg-emerald-500/10 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-500/30 shadow-sm"
               : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
           } ${
@@ -253,14 +323,24 @@ export const StudentPortalHeader: React.FC<StudentPortalHeaderProps> = ({
               ? "opacity-30 cursor-not-allowed pointer-events-none"
               : ""
           }`}
+          title={!isOnline ? "Requer conexão à internet" : undefined}
         >
           <Library className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span>Biblioteca</span>
+          {!isOnline && <Lock className="w-2.5 h-2.5 opacity-60" />}
         </button>
         <button
-          onClick={() => setActiveTab("account")}
+          onClick={() => {
+            if (!isOnline) {
+              handleOfflineTabClick("Minha Conta");
+              return;
+            }
+            setActiveTab("account");
+          }}
           className={`flex items-center gap-1.5 px-3 py-2 sm:px-4 sm:py-2.5 rounded-full text-[10px] sm:text-xs font-bold uppercase tracking-wider transition-all border ${
-            activeTab === "account"
+            !isOnline
+              ? "opacity-35 cursor-not-allowed bg-slate-100 dark:bg-slate-800/40 text-slate-400 border-slate-200 dark:border-slate-800"
+              : activeTab === "account"
               ? "bg-rose-50 dark:bg-rose-500/10 text-rose-600 dark:text-rose-400 border-rose-200 dark:border-rose-500/30 shadow-sm"
               : "bg-white dark:bg-slate-800 text-slate-500 border-slate-200 dark:border-slate-700 hover:bg-slate-50 dark:hover:bg-slate-700"
           } ${
@@ -268,9 +348,11 @@ export const StudentPortalHeader: React.FC<StudentPortalHeaderProps> = ({
               ? "opacity-30 cursor-not-allowed pointer-events-none"
               : ""
           }`}
+          title={!isOnline ? "Requer conexão à internet" : undefined}
         >
           <User className="w-3.5 h-3.5 sm:w-4 sm:h-4" />
           <span>Conta</span>
+          {!isOnline && <Lock className="w-2.5 h-2.5 opacity-60" />}
         </button>
       </div>
     </>

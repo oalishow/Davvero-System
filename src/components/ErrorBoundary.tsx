@@ -25,7 +25,13 @@ export default class ErrorBoundary extends React.Component<Props, State> {
   public componentDidCatch(error: Error, errorInfo: ErrorInfo) {
     console.error("Uncaught error:", error, errorInfo);
     
-    // Automatically reload the page once if it's a chunk load error
+    // Automatically reload the page once if it's a chunk load error AND the device is online
+    const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
+    if (isOffline) {
+      console.warn("[ErrorBoundary] Dispositivo offline detectado. Recarga automática suprimida.");
+      return;
+    }
+
     const isChunkError =
       error.name === 'ChunkLoadError' ||
       error.message?.includes('dynamically imported module') ||
@@ -47,6 +53,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
     if (this.state.hasError) {
       if (this.props.fallback) return this.props.fallback;
 
+      const isOffline = typeof navigator !== 'undefined' && navigator.onLine === false;
       const errorMsg = this.state.error?.message || "";
       const errorName = this.state.error?.name || "";
       
@@ -57,7 +64,7 @@ export default class ErrorBoundary extends React.Component<Props, State> {
         errorMsg.toLowerCase().includes("user denied");
 
       return (
-        <div className="flex flex-col items-center justify-center p-12 text-center min-h-[400px] w-full">
+        <div className="flex flex-col items-center justify-center p-8 sm:p-12 text-center min-h-[400px] w-full">
             <div className="w-16 h-16 bg-red-100 dark:bg-red-900/30 text-red-500 rounded-2xl flex items-center justify-center mb-4">
                <ShieldAlert className="w-8 h-8" />
             </div>
@@ -70,6 +77,13 @@ export default class ErrorBoundary extends React.Component<Props, State> {
                         Para usar este recurso, por favor libere a permissão nas configurações do seu navegador ou dispositivo e tente novamente.
                     </p>
                 </>
+            ) : isOffline ? (
+                <>
+                    <h2 className="text-xl font-black text-slate-800 dark:text-white mb-2">Modo Offline Ativo</h2>
+                    <p className="text-sm text-slate-500 dark:text-slate-400 mb-6 max-w-sm leading-relaxed">
+                        Esta funcionalidade não pôde ser carregada sem internet. A sua <strong>Carteirinha Estudantil</strong> continua acessível e salva localmente.
+                    </p>
+                </>
             ) : (
                 <>
                     <h2 className="text-xl font-black text-slate-800 dark:text-white mb-2">Ops, algo deu errado.</h2>
@@ -80,30 +94,50 @@ export default class ErrorBoundary extends React.Component<Props, State> {
             )}
 
             <div className="flex flex-wrap items-center justify-center gap-3">
-              <button 
+              <button
                   onClick={() => {
-                      sessionStorage.clear();
-                      window.location.reload();
+                      this.setState({ hasError: false, error: null });
+                      try {
+                        localStorage.setItem("davvero_last_active_tab", "student");
+                        window.dispatchEvent(new CustomEvent("openStudentTab", { detail: { tab: "id" } }));
+                        if ((window as any).triggerTab) {
+                          (window as any).triggerTab("student");
+                        }
+                      } catch {}
                   }}
-                  className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
+                  className="px-5 py-2.5 bg-amber-600 hover:bg-amber-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
               >
-                  <RefreshCw className="w-3.5 h-3.5" />
-                  Recarregar Sistema
+                  Ver Minha Carteirinha Offline
               </button>
 
-              <button 
-                  onClick={() => {
-                      try {
-                        localStorage.removeItem('fajopa_settings');
-                        localStorage.removeItem('app_version_state');
+              {!isOffline && (
+                <button 
+                    onClick={() => {
                         sessionStorage.clear();
-                      } catch {}
-                      window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
-                  }}
-                  className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
-              >
-                  Limpar Cache & Reiniciar
-              </button>
+                        window.location.reload();
+                    }}
+                    className="px-5 py-2.5 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95 shadow-md"
+                >
+                    <RefreshCw className="w-3.5 h-3.5" />
+                    Recarregar Sistema
+                </button>
+              )}
+
+              {!isOffline && (
+                <button 
+                    onClick={() => {
+                        try {
+                          localStorage.removeItem('fajopa_settings');
+                          localStorage.removeItem('app_version_state');
+                          sessionStorage.clear();
+                        } catch {}
+                        window.location.href = window.location.origin + window.location.pathname + '?reset=' + Date.now();
+                    }}
+                    className="px-5 py-2.5 bg-slate-200 hover:bg-slate-300 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold flex items-center justify-center gap-2 transition-all active:scale-95"
+                >
+                    Limpar Cache & Reiniciar
+                </button>
+              )}
             </div>
         </div>
       );

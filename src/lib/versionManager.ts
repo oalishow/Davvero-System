@@ -93,15 +93,18 @@ export async function clearAppCaches(): Promise<void> {
   }
 
   try {
-    // 1. Clear CacheStorage (PWA and fetch caches)
+    // 1. Clear dynamic CacheStorage without wiping offline precaches
     if (typeof window !== "undefined" && "caches" in window) {
       const keys = await caches.keys();
+      const disposableKeys = keys.filter(
+        (key) => !key.includes('workbox-precache') && !key.includes('app-shell')
+      );
       await Promise.all(
-        keys.map((key) => {
+        disposableKeys.map((key) => {
           return caches.delete(key);
         })
       );
-      console.log("[VersionManager] Caches locais limpos com sucesso.");
+      console.log("[VersionManager] Caches dinâmicos limpos com sucesso. Precache offline mantido.");
     }
 
     // 2. Notify active service workers to update and activate immediately

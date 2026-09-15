@@ -16,7 +16,8 @@ export default defineConfig(({mode}) => {
         filename: 'service-worker.ts',
         registerType: 'autoUpdate',
         injectManifest: {
-          maximumFileSizeToCacheInBytes: 10 * 1024 * 1024, // 10MB limit for large assets
+          globPatterns: ['**/*.{js,css,html,ico,png,svg,woff,woff2,json,webmanifest}'],
+          maximumFileSizeToCacheInBytes: 15 * 1024 * 1024, // 15MB limit for large assets
         },
         manifest: {
           name: 'DAVVERO System',

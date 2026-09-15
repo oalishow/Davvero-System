@@ -30,6 +30,7 @@ import {
 } from "lucide-react";
 import { isEventCertificateReleased, getDefaultCertificateTemplate, resolveCertificateReleaseDate } from "../lib/certificateAuth";
 import { usePushNotifications } from "../hooks/usePushNotifications";
+import { useOnlineStatus } from "../hooks/useOnlineStatus";
 import { motion, AnimatePresence } from "motion/react";
 import {
   collection,
@@ -86,6 +87,7 @@ const StudentPortal = memo(function StudentPortal({
 }: StudentPortalProps) {
   const { settings } = useSettings();
   const { showAlert, showConfirm } = useDialog();
+  const { isOnline } = useOnlineStatus();
   const { isSupported, subscription, permission, isSubscribing, lastError, subscribe, unsubscribe } = usePushNotifications();
   const [bondedId, setBondedId] = useState<string | null>(() => {
     if (typeof window !== "undefined") {
@@ -197,6 +199,9 @@ const StudentPortal = memo(function StudentPortal({
 
   const [activeTab, setActiveTab] = useState<"id" | "events" | "certificates" | "academic" | "appointments" | "seminary_events" | "liturgy" | "account" | "biblioteca">(() => {
     if (typeof window !== "undefined") {
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return "id";
+      }
       const params = new URLSearchParams(window.location.search);
       if (
         params.get("tab") === "certificates" ||
@@ -219,6 +224,9 @@ const StudentPortal = memo(function StudentPortal({
   useEffect(() => {
     const handleOpenStudentTab = (e: any) => {
       if (e.detail?.tab) {
+        if (typeof navigator !== "undefined" && !navigator.onLine && e.detail.tab !== "id") {
+          return;
+        }
         setActiveTab(e.detail.tab);
         if (e.detail.tab === "id") {
           scrollToCard();
@@ -228,6 +236,13 @@ const StudentPortal = memo(function StudentPortal({
     window.addEventListener("openStudentTab", handleOpenStudentTab);
     return () => window.removeEventListener("openStudentTab", handleOpenStudentTab);
   }, []);
+
+  // Força a aba exclusivamente em "id" quando offline
+  useEffect(() => {
+    if (!isOnline && activeTab !== "id") {
+      setActiveTab("id");
+    }
+  }, [isOnline, activeTab]);
   const [eventsSubTab, setEventsSubTab] = useState<"upcoming" | "past">(
     "upcoming",
   );
@@ -350,18 +365,19 @@ const StudentPortal = memo(function StudentPortal({
   const [downloadingCertKey, setDownloadingCertKey] = useState<string | null>(null);
   const isDownloading = Boolean(downloadingCertKey);
 
-  // Garantir sessão anônima ativa do Firebase para leitura contínua de presenças e eventos
+  // Garantir sessão anônima ativa do Firebase para leitura contínua de presenças e eventos (apenas online)
   useEffect(() => {
+    if (!isOnline) return;
     if (!auth.currentUser) {
       loginAnon().catch((e) => console.warn("Notice loginAnon:", e));
     }
-  }, []);
+  }, [isOnline]);
 
   useEffect(() => {
     let unsubEvents: any;
     let unsubAttendances: any;
     let unsubCerts: any;
-    if (member) {
+    if (member && isOnline) {
       const qEvents = query(collection(db, `artifacts/${appId}/public/data/events`));
       unsubEvents = onSnapshot(qEvents, (snap) => {
         let evts = snap.docs.map((d) => {
@@ -496,7 +512,7 @@ const StudentPortal = memo(function StudentPortal({
         if (unsubCerts) unsubCerts();
       };
     }
-  }, [member?.id]);
+  }, [member?.id, isOnline]);
 
   useEffect(() => {
     if (member && pendingCertTarget) {
