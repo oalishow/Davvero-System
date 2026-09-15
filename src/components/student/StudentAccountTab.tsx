@@ -62,6 +62,7 @@ export const StudentAccountTab: React.FC<StudentAccountTabProps> = ({
       setMember(updatedMember);
       try {
         localStorage.setItem("davvero_cached_member", JSON.stringify(updatedMember));
+        localStorage.setItem("davveroId_cached_member", JSON.stringify(updatedMember));
       } catch {}
       playSound("success");
       showAlert(

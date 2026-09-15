@@ -87,13 +87,16 @@ const StudentPortal = memo(function StudentPortal({
   const { settings } = useSettings();
   const { showAlert, showConfirm } = useDialog();
   const { isSupported, subscription, permission, isSubscribing, lastError, subscribe, unsubscribe } = usePushNotifications();
-  const [bondedId, setBondedId] = useState<string | null>(
-    localStorage.getItem(STUDENT_BOND_KEY),
-  );
+  const [bondedId, setBondedId] = useState<string | null>(() => {
+    if (typeof window !== "undefined") {
+      return localStorage.getItem(STUDENT_BOND_KEY) || localStorage.getItem("davveroId_student_identity");
+    }
+    return null;
+  });
   const [member, setMember] = useState<Member | null>(() => {
     if (typeof window !== "undefined") {
       try {
-        const cached = localStorage.getItem("davveroId_cached_member");
+        const cached = localStorage.getItem("davveroId_cached_member") || localStorage.getItem("davvero_cached_member");
         if (cached) return JSON.parse(cached) as Member;
       } catch {}
     }
@@ -101,7 +104,15 @@ const StudentPortal = memo(function StudentPortal({
   });
   const [expandedPortalEvents, setExpandedPortalEvents] = useState<Record<string, boolean>>({});
   const [isUnlocked, setIsUnlocked] = useState(() => {
-    return sessionStorage.getItem("davveroId_unlocked") === "true";
+    if (typeof window !== "undefined") {
+      const hasSecurity = !!(
+        localStorage.getItem(STUDENT_FALLBACK_PIN) ||
+        localStorage.getItem("student_biometric_credential_id")
+      );
+      if (!hasSecurity) return true;
+      return sessionStorage.getItem("davveroId_unlocked") === "true";
+    }
+    return false;
   });
 
   const handleTogglePush = async () => {
@@ -904,6 +915,19 @@ const StudentPortal = memo(function StudentPortal({
 
 
   const loadBondedMember = async (id: string, isOverride = false) => {
+    const isOffline = typeof navigator !== "undefined" && !navigator.onLine;
+    if (isOffline) {
+      if (!member) {
+        try {
+          const cached = localStorage.getItem("davveroId_cached_member") || localStorage.getItem("davvero_cached_member");
+          if (cached) {
+            setMember(JSON.parse(cached));
+          }
+        } catch {}
+      }
+      return;
+    }
+
     // Apenas ativa a tela de carregamento bloqueante se NÃO tivermos os dados do membro em cache
     if (!member && !isOverride) {
       setIsLoading(true);
@@ -942,6 +966,7 @@ const StudentPortal = memo(function StudentPortal({
         setMember(fullMember);
         try {
           localStorage.setItem("davveroId_cached_member", JSON.stringify(fullMember));
+          localStorage.setItem("davvero_cached_member", JSON.stringify(fullMember));
         } catch {}
         if (isOverride) {
           setIsOverrideMode(true);
@@ -958,15 +983,20 @@ const StudentPortal = memo(function StudentPortal({
           }
         }
       } else {
-        setError("Identidade vinculada não encontrada.");
-        if (!isOverride) {
-          localStorage.removeItem(STUDENT_BOND_KEY);
-          setBondedId(null);
+        // Só desvincula se houver conexão ativa confirmando que a identidade não existe
+        if (typeof navigator !== "undefined" && navigator.onLine) {
+          setError("Identidade vinculada não encontrada.");
+          if (!isOverride) {
+            localStorage.removeItem(STUDENT_BOND_KEY);
+            setBondedId(null);
+          }
         }
       }
     } catch (err) {
       console.error(err);
-      setError("Erro ao carregar sua identidade.");
+      if (!member) {
+        setError("Erro ao carregar sua identidade.");
+      }
     } finally {
       setIsLoading(false);
     }
@@ -979,6 +1009,7 @@ const StudentPortal = memo(function StudentPortal({
     
     // First figure out if bondedId is a doc id or alphaCode
     const listenToMember = async () => {
+       if (typeof navigator !== "undefined" && !navigator.onLine) return;
        let realDocId = member?.id || bondedId;
        if (!member?.id) {
          try {
@@ -1002,6 +1033,7 @@ const StudentPortal = memo(function StudentPortal({
              const m = { ...prev, ...docSnap.data(), id: docSnap.id } as Member;
              try {
                localStorage.setItem("davveroId_cached_member", JSON.stringify(m));
+               localStorage.setItem("davvero_cached_member", JSON.stringify(m));
              } catch {}
              return m;
            });
@@ -1098,6 +1130,8 @@ const StudentPortal = memo(function StudentPortal({
         setIsPrePinAnimation(false);
 
         localStorage.setItem(STUDENT_BOND_KEY, idToStore);
+        localStorage.setItem("davveroId_cached_member", JSON.stringify(foundMember));
+        localStorage.setItem("davvero_cached_member", JSON.stringify(foundMember));
         if (foundMember.id) localStorage.setItem("davveroId_student_doc_id", foundMember.id);
         if (foundMember.ra) localStorage.setItem(STUDENT_TRACK_KEY, foundMember.ra);
       } else {
@@ -1327,6 +1361,7 @@ const StudentPortal = memo(function StudentPortal({
       localStorage.removeItem("student_biometric_credential_id");
       localStorage.removeItem("davveroId_student_identity");
       localStorage.removeItem("davveroId_cached_member");
+      localStorage.removeItem("davvero_cached_member");
       localStorage.removeItem("davveroId_guest_name");
       localStorage.removeItem("davveroId_guest_email");
       localStorage.removeItem("davveroId_guest_phone");

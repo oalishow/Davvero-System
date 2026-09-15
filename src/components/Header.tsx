@@ -590,10 +590,17 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
             INSTALAR DAVVERO System
           </button>
         )}
-        <div className="flex items-center gap-1.5 text-emerald-500 dark:text-emerald-400 bg-emerald-500/5 px-3 py-1 rounded-full border border-emerald-500/20">
-          <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
-          MODO: NUVEM (ONLINE)
-        </div>
+        {isOnline ? (
+          <div className="flex items-center gap-1.5 text-emerald-500 dark:text-emerald-400 bg-emerald-500/5 px-3 py-1 rounded-full border border-emerald-500/20">
+            <div className="w-1.5 h-1.5 rounded-full bg-emerald-500 shadow-[0_0_8px_rgba(16,185,129,0.5)] animate-pulse" />
+            MODO: NUVEM (ONLINE)
+          </div>
+        ) : (
+          <div className="flex items-center gap-1.5 text-amber-500 dark:text-amber-400 bg-amber-500/10 px-3 py-1 rounded-full border border-amber-500/20">
+            <div className="w-1.5 h-1.5 rounded-full bg-amber-500" />
+            MODO: OFFLINE (LOCAL)
+          </div>
+        )}
         <div className="text-slate-400 dark:text-slate-500 flex items-center gap-1.5 bg-slate-400/5 px-3 py-1 rounded-full border border-slate-400/10">
           BANCO DE DADOS: {settings.databaseName || instName}
         </div>

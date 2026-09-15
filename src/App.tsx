@@ -141,6 +141,22 @@ export default function App() {
       if (tabParam === "admin") {
         return "admin";
       }
+
+      // Restauração inteligente: se há uma carteirinha vinculada no aparelho ou última aba salva
+      try {
+        const hasBondedIdentity = !!(
+          localStorage.getItem("davveroId_student_identity") ||
+          localStorage.getItem("davveroId_cached_member") ||
+          localStorage.getItem("davvero_cached_member")
+        );
+        const savedTab = localStorage.getItem("davvero_last_active_tab");
+        if (savedTab && ["student", "verifier", "events", "diocese", "appointments", "courses"].includes(savedTab)) {
+          return savedTab as any;
+        }
+        if (hasBondedIdentity) {
+          return "student";
+        }
+      } catch {}
     }
     return "verifier";
   });
@@ -159,6 +175,11 @@ export default function App() {
     cancelPrefetch();
     setActiveTab(tab);
     playSound('pop');
+    try {
+      if (tab !== "admin") {
+        localStorage.setItem("davvero_last_active_tab", tab);
+      }
+    } catch {}
   }, [cancelPrefetch]);
 
   const handleStudentNavigate = useCallback(() => switchTab("student"), [switchTab]);
@@ -650,8 +671,15 @@ export default function App() {
 
     // Liberações Iniciais (Firebase login anonimo necessário para acessar dados base)
     const initFirebase = async (retries = 3) => {
+      // Se offline, não bloqueia e nem dispara retentativas desnecessárias de rede
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        (window as any).db_connected = false;
+        return;
+      }
+
       const success = await loginAnon();
       if (!success && retries > 0) {
+        if (typeof navigator !== "undefined" && !navigator.onLine) return;
         console.warn(
           `Firebase login failed. Retrying in 3s... (${retries} left)`,
         );
@@ -664,6 +692,7 @@ export default function App() {
       (window as any).db_connected = connected;
 
       if (!connected && retries > 0) {
+        if (typeof navigator !== "undefined" && !navigator.onLine) return;
         console.warn(
           `Firestore server test failed. Retrying in 5s... (${retries} left)`,
         );
@@ -672,7 +701,15 @@ export default function App() {
     };
     initFirebase();
 
-    return () => systemPrefersDark.removeEventListener("change", themeListener);
+    const handleOnlineReconnect = () => {
+      initFirebase(2);
+    };
+    window.addEventListener("online", handleOnlineReconnect);
+
+    return () => {
+      systemPrefersDark.removeEventListener("change", themeListener);
+      window.removeEventListener("online", handleOnlineReconnect);
+    };
   }, []);
 
   return (

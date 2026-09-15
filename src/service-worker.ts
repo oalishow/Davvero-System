@@ -1,5 +1,5 @@
-import { precacheAndRoute, createHandlerBoundToURL } from 'workbox-precaching';
-import { NavigationRoute, registerRoute } from 'workbox-routing';
+import { precacheAndRoute, createHandlerBoundToURL, matchPrecache } from 'workbox-precaching';
+import { NavigationRoute, registerRoute, setCatchHandler } from 'workbox-routing';
 import { StaleWhileRevalidate, NetworkFirst, NetworkOnly } from 'workbox-strategies';
 import { ExpirationPlugin } from 'workbox-expiration';
 import { CacheableResponsePlugin } from 'workbox-cacheable-response';
@@ -36,18 +36,78 @@ precacheAndRoute(self.__WB_MANIFEST);
 
 // Set up App Shell / Navigation Fallback
 // This allows the app to work offline for all navigation requests (SPA)
-try {
-  const handler = createHandlerBoundToURL('/index.html');
-  const navigationRoute = new NavigationRoute(handler, {
-    denylist: [
-      new RegExp('/__/'), // Exclude Firebase reserved URLs
-      new RegExp('/api/'), // Exclude API routes
-    ],
-  });
-  registerRoute(navigationRoute);
-} catch (e) {
-  console.log("Could not set up navigation fallback", e);
+const getIndexHtmlHandler = () => {
+  try {
+    return createHandlerBoundToURL('index.html');
+  } catch (_) {
+    try {
+      return createHandlerBoundToURL('/index.html');
+    } catch (e) {
+      console.warn("Could not createHandlerBoundToURL for index.html:", e);
+      return null;
+    }
+  }
+};
+
+const navigationHandler = getIndexHtmlHandler();
+if (navigationHandler) {
+  try {
+    const navigationRoute = new NavigationRoute(navigationHandler, {
+      denylist: [
+        new RegExp('/__/'), // Exclude Firebase reserved URLs
+        new RegExp('/api/'), // Exclude API routes
+      ],
+    });
+    registerRoute(navigationRoute);
+  } catch (e) {
+    console.warn("Could not register NavigationRoute:", e);
+  }
 }
+
+// Fallback robust navigation handler for offline mode
+registerRoute(
+  ({ request, url }) =>
+    (request.mode === 'navigate' || request.destination === 'document') &&
+    !url.pathname.startsWith('/api/') &&
+    !url.pathname.startsWith('/__/'),
+  async ({ request }) => {
+    try {
+      if (typeof navigator !== 'undefined' && !navigator.onLine) {
+        const cached =
+          (await matchPrecache('index.html')) ||
+          (await matchPrecache('/index.html')) ||
+          (await caches.match('index.html')) ||
+          (await caches.match('/index.html'));
+        if (cached) return cached;
+      }
+      return await fetch(request);
+    } catch {
+      const fallback =
+        (await matchPrecache('index.html')) ||
+        (await matchPrecache('/index.html')) ||
+        (await caches.match('index.html')) ||
+        (await caches.match('/index.html'));
+      if (fallback) return fallback;
+      return new Response(
+        '<!DOCTYPE html><html><head><meta charset="utf-8"><title>DAVVERO - Offline</title></head><body><h1>DAVVERO Offline</h1><p>Recarregue quando houver conexão.</p></body></html>',
+        { status: 200, headers: { 'Content-Type': 'text/html' } }
+      );
+    }
+  }
+);
+
+// Catch handler for any unhandled navigation failure
+setCatchHandler(async ({ request }) => {
+  if (request.mode === 'navigate' || request.destination === 'document') {
+    const fallback =
+      (await matchPrecache('index.html')) ||
+      (await matchPrecache('/index.html')) ||
+      (await caches.match('index.html')) ||
+      (await caches.match('/index.html'));
+    if (fallback) return fallback;
+  }
+  return Response.error();
+});
 
 // Background Sync para requisições de API (Emails, Push, Certificados)
 const apiBgSyncPlugin = new BackgroundSyncPlugin('davvero-api-queue', {

@@ -191,12 +191,18 @@ const removeUndefined = (obj: any): any => {
  * Ensures a reliable anonymous login, checking if already authenticated
  */
 export const loginAnon = async () => {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return !!auth.currentUser;
+  }
+  if (auth.currentUser) {
+    return true;
+  }
   return new Promise((resolve) => {
-    // Use a timeout to avoid hanging forever if Firebase is stuck
+    // Use a short timeout to avoid hanging if offline or slow network
     const timeout = setTimeout(() => {
-      console.warn("Firebase Auth timeout");
-      resolve(false);
-    }, 8000);
+      console.warn("Firebase Auth timeout (offline or slow link)");
+      resolve(!!auth.currentUser);
+    }, 3000);
 
     const unsubscribe = onAuthStateChanged(auth, async (user) => {
       clearTimeout(timeout);
@@ -220,6 +226,9 @@ export const loginAnon = async () => {
  * Tests the connection strictly with the server to ensure we are online
  */
 export const testConnection = async () => {
+  if (typeof navigator !== "undefined" && !navigator.onLine) {
+    return false;
+  }
   try {
     // Se a cota já foi identificada como esgotada, não disparar chamada ao servidor
     if (isFirestoreQuotaExhausted) {
