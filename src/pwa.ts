@@ -10,6 +10,11 @@ export const triggerSWCheck = async (): Promise<boolean> => {
     if (typeof window === 'undefined' || !('serviceWorker' in navigator)) {
         return false;
     }
+    // CRÍTICO: Nunca verificar atualização se o dispositivo estiver offline.
+    // Chamar swRegistration.update() offline faz o navegador disparar requisição à rede que falha com ERR_FAILED ou derruba a página instalada.
+    if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        return false;
+    }
     try {
         if (swRegistration) {
             await swRegistration.update();
@@ -22,7 +27,8 @@ export const triggerSWCheck = async (): Promise<boolean> => {
             return true;
         }
     } catch (err) {
-        console.warn("[PWA] Verificação sob demanda:", err);
+        // Silenciosamente suprime erros de rede decorrentes de queda momentânea de conexão
+        console.warn("[PWA] Verificação sob demanda suspensa:", err);
     }
     return false;
 };
@@ -43,6 +49,12 @@ export const setupPWA = () => {
         let refreshing = false;
         navigator.serviceWorker.addEventListener('controllerchange', () => {
             if (refreshing) return;
+            // CRÍTICO: Se a troca de controller acontecer enquanto o dispositivo está offline,
+            // NÃO disparar recarga/atualização automática, pois isso exibe o erro ERR_FAILED na tela.
+            if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                console.log("[PWA] Controller mudou, mas dispositivo está offline. Atualização automática adiada.");
+                return;
+            }
             const now = Date.now();
             let lastReload = 0;
             try {
@@ -63,6 +75,11 @@ export const setupPWA = () => {
         const updateSW = registerSW({
             immediate: true,
             onNeedRefresh() {
+                // Não disparar refresh se estiver offline
+                if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+                    console.log("[PWA] Novo SW disponível, mas ignorando refresh automático em modo offline.");
+                    return;
+                }
                 console.log("[PWA] Novo conteúdo detectado no Service Worker. Ativando novo SW...");
                 window.dispatchEvent(new CustomEvent('swNeedRefresh'));
                 updateSW(true);
@@ -73,9 +90,10 @@ export const setupPWA = () => {
             onRegistered(r) {
                 if (r) {
                     swRegistration = r;
-                    // Verificação periódica a cada 40 segundos em segundo plano
+                    // Verificação periódica a cada 40 segundos em segundo plano (apenas se online)
                     setInterval(() => {
-                        r.update().catch(err => console.warn("[PWA] Verificação periódica do SW:", err));
+                        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
+                        r.update().catch(err => console.warn("[PWA] Verificação periódica do SW suspensa:", err));
                     }, 40 * 1000);
                 }
             }
@@ -83,7 +101,9 @@ export const setupPWA = () => {
 
         navigator.serviceWorker.ready.then((registration) => {
             swRegistration = registration;
-            registration.update().catch(err => console.warn("[PWA] Verificação inicial:", err));
+            if (typeof navigator === 'undefined' || navigator.onLine !== false) {
+                registration.update().catch(err => console.warn("[PWA] Verificação inicial suspensa:", err));
+            }
         });
 
         // Verificação imediata ao retomar o foco da aba ou reconectar à internet

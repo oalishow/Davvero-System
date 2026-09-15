@@ -430,20 +430,27 @@ export default function App() {
     recordAppAccess();
     const stopPresence = startPresenceHeartbeat();
 
-    // Verificação periódica ativa a cada 40 segundos para detectar novas publicações imediatamente
+    // Verificação periódica ativa a cada 40 segundos para detectar novas publicações imediatamente (somente se online)
     const versionInterval = setInterval(() => {
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
       performSafeVersionCheck(false, settings?.version);
       triggerSWCheck().catch(() => {});
     }, 40 * 1000);
 
     const onVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
+        if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
         performSafeVersionCheck(false, settings?.version);
         triggerSWCheck().catch(() => {});
       }
     };
 
     const onServiceWorkerUpdated = async () => {
+      // Se estiver sem internet, NUNCA disparar atualização nem recarga da página, pois isso causa ERR_FAILED no navegador
+      if (typeof navigator !== 'undefined' && navigator.onLine === false) {
+        console.log("[App] Atualização de SW detectada, mas rede offline. Atualização cancelada para evitar ERR_FAILED.");
+        return;
+      }
       console.log("[App] Evento de Service Worker atualizado recebido. Executando atualização automática segura...");
       const now = Date.now();
       let lastReload = 0;
