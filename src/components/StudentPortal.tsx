@@ -108,15 +108,49 @@ const StudentPortal = memo(function StudentPortal({
   const [expandedPortalEvents, setExpandedPortalEvents] = useState<Record<string, boolean>>({});
   const [isUnlocked, setIsUnlocked] = useState(() => {
     if (typeof window !== "undefined") {
-      const hasSecurity = !!(
-        localStorage.getItem(STUDENT_FALLBACK_PIN) ||
-        localStorage.getItem("student_biometric_credential_id")
-      );
-      if (!hasSecurity) return true;
+      // Exige autenticação a cada abertura do aplicativo (somente desbloqueado se autenticado na sessão ativa)
       return sessionStorage.getItem("davveroId_unlocked") === "true";
     }
     return false;
   });
+
+  // Garante que o fechamento da janela/app ou inatividade em segundo plano no celular bloqueie a MINHA ID
+  useEffect(() => {
+    let backgroundedAt = 0;
+
+    const handleWindowUnload = () => {
+      try {
+        sessionStorage.removeItem("davveroId_unlocked");
+      } catch (_) {}
+    };
+
+    const handleVisibilityChange = () => {
+      if (document.visibilityState === "hidden") {
+        backgroundedAt = Date.now();
+      } else if (document.visibilityState === "visible") {
+        // Se ficou em segundo plano / celular bloqueado por mais de 2 minutos, tranca novamente por segurança
+        if (backgroundedAt > 0 && Date.now() - backgroundedAt > 2 * 60 * 1000) {
+          try {
+            sessionStorage.removeItem("davveroId_unlocked");
+          } catch (_) {}
+          setIsUnlocked(false);
+          const hasPin = typeof localStorage !== "undefined" && !!localStorage.getItem(STUDENT_FALLBACK_PIN);
+          setPinMode(hasPin ? "verify" : "none");
+        }
+        backgroundedAt = 0;
+      }
+    };
+
+    window.addEventListener("pagehide", handleWindowUnload);
+    window.addEventListener("beforeunload", handleWindowUnload);
+    document.addEventListener("visibilitychange", handleVisibilityChange);
+
+    return () => {
+      window.removeEventListener("pagehide", handleWindowUnload);
+      window.removeEventListener("beforeunload", handleWindowUnload);
+      document.removeEventListener("visibilitychange", handleVisibilityChange);
+    };
+  }, []);
 
   const handleTogglePush = async () => {
     if (subscription) {
@@ -309,7 +343,15 @@ const StudentPortal = memo(function StudentPortal({
   };
 
   // Fallback PIN state
-  const [pinMode, setPinMode] = useState<"create" | "verify" | "none">("none");
+  const [pinMode, setPinMode] = useState<"create" | "verify" | "none">(() => {
+    if (typeof window !== "undefined") {
+      const isAlreadyUnlocked = sessionStorage.getItem("davveroId_unlocked") === "true";
+      if (isAlreadyUnlocked) return "none";
+      const hasPin = !!localStorage.getItem(STUDENT_FALLBACK_PIN);
+      return hasPin ? "verify" : "none";
+    }
+    return "none";
+  });
   const [pinInput, setPinInput] = useState("");
   const [pinConfirm, setPinConfirm] = useState("");
   const [resetCodeStr, setResetCodeStr] = useState("");
@@ -1006,10 +1048,12 @@ const StudentPortal = memo(function StudentPortal({
           setIsUnlocked(true);
           onOverrideConsumed?.();
         } else {
-          // If the user has a PIN, require them to unlock, ONLY if they are not already unlocked in this session
+          // Exige autenticação por sessão: só desbloqueia se já tiver sido autenticado nesta sessão ativa
           const isAlreadyUnlockedInSession = sessionStorage.getItem("davveroId_unlocked") === "true";
-          if ((localStorage.getItem(STUDENT_FALLBACK_PIN) || localStorage.getItem("student_biometric_credential_id")) && !isAlreadyUnlockedInSession) {
+          if (!isAlreadyUnlockedInSession) {
             setIsUnlocked(false);
+            const hasPin = typeof localStorage !== "undefined" && !!localStorage.getItem(STUDENT_FALLBACK_PIN);
+            setPinMode(hasPin ? "verify" : "none");
           } else {
             setIsUnlocked(true);
           }
@@ -1166,6 +1210,20 @@ const StudentPortal = memo(function StudentPortal({
         localStorage.setItem("davvero_cached_member", JSON.stringify(foundMember));
         if (foundMember.id) localStorage.setItem("davveroId_student_doc_id", foundMember.id);
         if (foundMember.ra) localStorage.setItem(STUDENT_TRACK_KEY, foundMember.ra);
+
+        const hasSavedPin = typeof localStorage !== "undefined" && !!localStorage.getItem(STUDENT_FALLBACK_PIN);
+        if (hasSavedPin) {
+          sessionStorage.setItem("davveroId_unlocked", "true");
+          setIsUnlocked(true);
+          setPinMode("none");
+        } else {
+          // Solicita imediatamente a criação do PIN de 4 dígitos para proteger a carteirinha
+          setIsUnlocked(false);
+          setPinMode("create");
+          setPinInput("");
+          setPinConfirm("");
+          setError("Crie uma senha de 4 dígitos para proteger sua carteirinha.");
+        }
       } else {
         setError("Identificação não encontrada. Verifique se o Código de Segurança, CPF ou RA estão corretos.");
       }
@@ -1299,7 +1357,8 @@ const StudentPortal = memo(function StudentPortal({
           localStorage.setItem(STUDENT_FALLBACK_PIN, pinInput);
           setIsGenerating(true);
           playSound('generating');
-          await new Promise((resolve) => setTimeout(resolve, 3000));
+          await new Promise((resolve) => setTimeout(resolve, 1000));
+          sessionStorage.setItem("davveroId_unlocked", "true");
           setIsUnlocked(true);
           setIsGenerating(false);
           setPinMode("none");
@@ -1321,7 +1380,8 @@ const StudentPortal = memo(function StudentPortal({
       if (pinInput === savedPin) {
         setIsGenerating(true);
         playSound('generating');
-        await new Promise((resolve) => setTimeout(resolve, 3000));
+        await new Promise((resolve) => setTimeout(resolve, 800));
+        sessionStorage.setItem("davveroId_unlocked", "true");
         setIsUnlocked(true);
         setIsGenerating(false);
         setPinMode("none");
@@ -1369,8 +1429,14 @@ const StudentPortal = memo(function StudentPortal({
   };
 
   const handlePinResetAttempt = () => {
-    if (!member || !member.alphaCode) return;
-    if (resetCodeStr.toUpperCase() === member.alphaCode.toUpperCase()) {
+    if (!member) return;
+    const inputClean = resetCodeStr.trim().replace(/\D/g, "");
+    const memberCpfClean = (member.cpf || "").replace(/\D/g, "");
+    const isCodeMatch = Boolean(member.alphaCode && resetCodeStr.trim().toUpperCase() === member.alphaCode.trim().toUpperCase());
+    const isCpfMatch = Boolean(memberCpfClean && inputClean.length >= 11 && inputClean === memberCpfClean);
+    const isRaMatch = Boolean(member.ra && resetCodeStr.trim().toUpperCase() === member.ra.trim().toUpperCase());
+
+    if (isCodeMatch || isCpfMatch || isRaMatch) {
       // Reset pin
       localStorage.removeItem(STUDENT_FALLBACK_PIN);
       setPinMode("create");
@@ -1378,9 +1444,33 @@ const StudentPortal = memo(function StudentPortal({
       setPinConfirm("");
       setModalPinReset(false);
       setResetCodeStr("");
-      setError("Crie uma nova senha de 4 dígitos.");
+      setError("Identidade confirmada! Crie uma nova senha de 4 dígitos.");
     } else {
-      setError("Código incorreto.");
+      setError("Código ou CPF não corresponde a esta carteirinha.");
+      playSound('error');
+    }
+  };
+
+  const handleDirectCpfUnlock = () => {
+    if (!member) return;
+    const inputClean = resetCodeStr.trim().replace(/\D/g, "");
+    const memberCpfClean = (member.cpf || "").replace(/\D/g, "");
+    const isCodeMatch = Boolean(member.alphaCode && resetCodeStr.trim().toUpperCase() === member.alphaCode.trim().toUpperCase());
+    const isCpfMatch = Boolean(memberCpfClean && inputClean.length >= 11 && inputClean === memberCpfClean);
+    const isRaMatch = Boolean(member.ra && resetCodeStr.trim().toUpperCase() === member.ra.trim().toUpperCase());
+
+    if (isCodeMatch || isCpfMatch || isRaMatch) {
+      sessionStorage.setItem("davveroId_unlocked", "true");
+      setIsUnlocked(true);
+      setPinMode("none");
+      setModalPinReset(false);
+      setResetCodeStr("");
+      setError(null);
+      playSound('login');
+      scrollToCard();
+    } else {
+      setError("Código ou CPF não corresponde a esta carteirinha.");
+      playSound('error');
     }
   };
 
@@ -1576,6 +1666,7 @@ const StudentPortal = memo(function StudentPortal({
           modalIframeBiometric={modalIframeBiometric}
           setModalIframeBiometric={setModalIframeBiometric}
           handleUnlockScreen={handleUnlockScreen}
+          onDirectCpfUnlock={handleDirectCpfUnlock}
         />
       );
     }
@@ -1622,7 +1713,12 @@ const StudentPortal = memo(function StudentPortal({
             isPushSupported={isSupported}
             pushSubscription={subscription}
             onSubscribePush={subscribe}
-            onLockSecurity={() => setIsUnlocked(false)}
+            onLockSecurity={() => {
+              sessionStorage.removeItem("davveroId_unlocked");
+              setIsUnlocked(false);
+              const hasPin = typeof localStorage !== "undefined" && !!localStorage.getItem(STUDENT_FALLBACK_PIN);
+              setPinMode(hasPin ? "verify" : "none");
+            }}
             onOpenUnlinkModal={() => setModalUnlinkOpen(true)}
             onScrollToCard={scrollToCard}
           />
