@@ -48,6 +48,149 @@ import { useYouTubeLive } from "./hooks/useYouTubeLive";
 import WelcomeModal from "./components/WelcomeModal";
 
 import StudentPortal from "./components/StudentPortal";
+
+/**
+ * Força o cache de todos os recursos necessários para a StudentPortal
+ * durante o primeiro carregamento com sucesso utilizando a API de Cache.
+ * Garante que a carteirinha e todos os seus recursos visuais funcionem instantaneamente offline.
+ */
+export async function forceCacheStudentPortalResources(appSettings?: any): Promise<void> {
+  if (typeof window === "undefined" || !("caches" in window)) {
+    return;
+  }
+  // Só executa quando a conexão estiver ativa
+  if (typeof navigator !== "undefined" && navigator.onLine === false) {
+    return;
+  }
+
+  try {
+    const [shellCache, staticCache, imagesCache] = await Promise.all([
+      caches.open("app-shell-cache"),
+      caches.open("static-assets-cache"),
+      caches.open("images-cache"),
+    ]);
+
+    // 1. App Shell e arquivos fundamentais da aplicação
+    const shellUrls = [
+      "/",
+      "/index.html",
+      "/manifest.json",
+      "/version.json",
+    ];
+
+    // 2. Ícones institucionais, PWA e recursos gráficos
+    const iconUrls = [
+      "/icon.svg",
+      "/icon.png",
+      "/icon-192.png",
+      "/icon-512.png",
+      "/icon-maskable.svg",
+      "/icon-maskable-192.png",
+      "/icon-maskable-512.png",
+      "/apple-touch-icon.png",
+      "/apple-touch-icon-180x180.png",
+      "/apple-touch-icon-152x152.png",
+      "/apple-touch-icon-167x167.png",
+      "/apple-touch-icon-precomposed.png",
+      "/favicon.ico",
+      "/favicon-32x32.png",
+      "/favicon-16x16.png",
+      "/logo.png",
+      "/logo192.png",
+      "/logo512.png",
+    ];
+
+    // 3. Captura dinâmica de scripts e estilos carregados no DOM
+    const activeScripts = Array.from(
+      document.querySelectorAll<HTMLScriptElement>("script[src]")
+    )
+      .map((s) => s.src)
+      .filter((src) => src && !src.includes("firebase-messaging") && !src.includes("chrome-extension"));
+
+    const activeStylesheets = Array.from(
+      document.querySelectorAll<HTMLLinkElement>(
+        'link[rel="stylesheet"], link[rel="modulepreload"]'
+      )
+    )
+      .map((l) => l.href)
+      .filter((href) => href && !href.includes("chrome-extension"));
+
+    // 4. Recursos da Carteirinha Estudantil vinculada / salva localmente
+    const studentCardMediaUrls: string[] = [];
+    try {
+      const cachedMemberRaw =
+        localStorage.getItem("davveroId_cached_member") ||
+        localStorage.getItem("davvero_cached_member");
+      if (cachedMemberRaw) {
+        const cachedMember = JSON.parse(cachedMemberRaw);
+        if (
+          cachedMember?.photoUrl &&
+          typeof cachedMember.photoUrl === "string" &&
+          (cachedMember.photoUrl.startsWith("http://") ||
+            cachedMember.photoUrl.startsWith("https://"))
+        ) {
+          studentCardMediaUrls.push(cachedMember.photoUrl);
+        }
+      }
+    } catch {}
+
+    // Imagens e assinaturas institucionais das configurações da carteirinha
+    if (appSettings) {
+      const configImages = [
+        appSettings.instLogo,
+        appSettings.cardLogo,
+        appSettings.cardBackLogo,
+        appSettings.cardSecondaryBackLogo,
+        appSettings.cardBackImage,
+        appSettings.instSignature,
+        appSettings.rectorSignature,
+      ].filter(
+        (url): url is string =>
+          typeof url === "string" &&
+          (url.startsWith("http://") || url.startsWith("https://") || url.startsWith("/"))
+      );
+      studentCardMediaUrls.push(...configImages);
+    }
+
+    // Gravação segura no Cache API
+    const cacheUrlSafely = async (cache: Cache, url: string, isImage = false) => {
+      try {
+        const existing = await cache.match(url);
+        if (existing && (existing.ok || existing.type === "opaque")) {
+          return;
+        }
+
+        const isSameOrigin = url.startsWith(window.location.origin) || url.startsWith("/");
+        const fetchOptions: RequestInit = isImage
+          ? { mode: isSameOrigin ? "cors" : "no-cors" }
+          : { cache: "no-cache" };
+
+        const response = await fetch(url, fetchOptions);
+        if (response && (response.ok || response.type === "opaque")) {
+          await cache.put(url, response.clone());
+        }
+      } catch {
+        // Ignora erros pontuais de URLs externas ou CORS sem interromper as demais
+      }
+    };
+
+    await Promise.allSettled([
+      ...shellUrls.map((u) => cacheUrlSafely(shellCache, u)),
+      ...activeScripts.map((u) => cacheUrlSafely(staticCache, u)),
+      ...activeStylesheets.map((u) => cacheUrlSafely(staticCache, u)),
+      ...iconUrls.map((u) => cacheUrlSafely(imagesCache, u, true)),
+      ...studentCardMediaUrls.map((u) => cacheUrlSafely(imagesCache, u, true)),
+    ]);
+
+    try {
+      sessionStorage.setItem("davvero_student_portal_precached", "true");
+    } catch {}
+
+    console.log("[App] Recursos vitais da Carteirinha (StudentPortal) armazenados em Cache API com sucesso.");
+  } catch (err) {
+    console.warn("[App] Aviso ao forçar cache dos recursos da StudentPortal:", err);
+  }
+}
 const Admin = lazyWithRetry(() => import("./components/Admin"));
 const EventsPage = lazyWithRetry(() => import("./components/EventsPage"));
 const PublicAppointmentsList = lazyWithRetry(() => import("./components/PublicAppointmentsList"));
@@ -574,6 +717,7 @@ export default function App() {
     };
     (window as any).triggerWelcomeModal = () => setShowWelcomeModal(true);
     (window as any).triggerCheckUpdates = handleInteractiveUpdateCheck;
+    (window as any).forceCacheStudentPortalResources = () => forceCacheStudentPortalResources(settings);
 
     // Listener para redirecionamento imediato disparado por cliques em notificações (SW e links)
     const handleUrlNavigation = (rawUrl?: string) => {
@@ -719,6 +863,7 @@ export default function App() {
 
     const handleOnlineReconnect = () => {
       initFirebase(2);
+      forceCacheStudentPortalResources(settings);
     };
     window.addEventListener("online", handleOnlineReconnect);
 
@@ -726,7 +871,33 @@ export default function App() {
       systemPrefersDark.removeEventListener("change", themeListener);
       window.removeEventListener("online", handleOnlineReconnect);
     };
-  }, []);
+  }, [settings]);
+
+  const hasPrecachedStudentPortalRef = useRef(false);
+
+  // Forçar o cache de todos os recursos necessários para a StudentPortal durante o primeiro carregamento com sucesso
+  useEffect(() => {
+    if (!isOnline) return;
+    if (hasPrecachedStudentPortalRef.current) return;
+    hasPrecachedStudentPortalRef.current = true;
+
+    let timer: any = null;
+    const executePrecache = () => {
+      forceCacheStudentPortalResources(settings);
+    };
+
+    if (typeof window !== "undefined") {
+      if ("requestIdleCallback" in window) {
+        (window as any).requestIdleCallback(executePrecache, { timeout: 2500 });
+      } else {
+        timer = setTimeout(executePrecache, 1200);
+      }
+    }
+
+    return () => {
+      if (timer) clearTimeout(timer);
+    };
+  }, [isOnline, settings]);
 
   return (
     <ErrorBoundary>

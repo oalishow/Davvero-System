@@ -11,7 +11,9 @@ import {
   Eye,
   Trash2,
   Loader2,
+  WifiOff,
 } from "lucide-react";
+import { useOnlineStatus } from "../../hooks/useOnlineStatus";
 import type { Event, Member, Attendance } from "../../types";
 import {
   isEventCertificateReleased,
@@ -75,6 +77,8 @@ export const StudentCertificatesTab: React.FC<StudentCertificatesTabProps> = ({
   isUploadingCert,
   formatDateTime,
 }) => {
+  const { isOnline } = useOnlineStatus();
+
   const eligibleEvents = allEvents.filter((e) => {
     const attendance = myAttendances.find((a) => a.eventId === e.id);
     if (!attendance) return false;
@@ -205,6 +209,22 @@ export const StudentCertificatesTab: React.FC<StudentCertificatesTabProps> = ({
       animate={{ opacity: 1, y: 0 }}
       className="space-y-6"
     >
+      {!isOnline && (
+        <div className="bg-gradient-to-r from-amber-500/15 via-amber-500/10 to-amber-500/5 border border-amber-500/30 rounded-2xl p-4 flex items-center gap-3.5 text-amber-900 dark:text-amber-200 shadow-sm">
+          <div className="p-2.5 rounded-xl bg-amber-500/20 text-amber-600 dark:text-amber-400 shrink-0">
+            <WifiOff className="w-5 h-5 animate-pulse" />
+          </div>
+          <div className="text-xs">
+            <p className="font-black uppercase tracking-wider text-[11px] text-amber-700 dark:text-amber-300 flex items-center gap-1.5">
+              Certificados no Modo Offline
+            </p>
+            <p className="opacity-90 leading-snug mt-0.5">
+              Seus certificados conquistados continuam salvos no dispositivo e disponíveis para visualização completa e download em PDF (A4 Paisagem) mesmo sem conexão com a internet.
+            </p>
+          </div>
+        </div>
+      )}
+
       {/* FAJOPA Plus & Davvero Cards */}
       <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
         <div className="bg-gradient-to-br from-emerald-600 to-teal-700 p-6 rounded-3xl shadow-lg flex flex-col justify-between items-start text-white relative overflow-hidden">
@@ -700,16 +720,28 @@ export const StudentCertificatesTab: React.FC<StudentCertificatesTabProps> = ({
                 </p>
               </div>
             )}
-            <div className="bg-white dark:bg-slate-800 p-4 rounded-2xl border border-dashed border-sky-300 dark:border-sky-700 text-center">
-              <label className="cursor-pointer text-xs font-bold text-sky-600 dark:text-sky-400 flex flex-col items-center justify-center gap-2 hover:text-sky-500 transition-colors py-2">
+            <div className={`p-4 rounded-2xl border border-dashed text-center transition-all ${
+              !isOnline
+                ? "bg-slate-50 dark:bg-slate-800/40 border-slate-200 dark:border-slate-700 opacity-75"
+                : "bg-white dark:bg-slate-800 border-sky-300 dark:border-sky-700"
+            }`}>
+              <label className={`text-xs font-bold flex flex-col items-center justify-center gap-2 py-2 ${
+                !isOnline
+                  ? "cursor-not-allowed text-slate-400 dark:text-slate-500"
+                  : "cursor-pointer text-sky-600 dark:text-sky-400 hover:text-sky-500 transition-colors"
+              }`}>
                 {isUploadingCert ? (
                   <Loader2 className="w-6 h-6 animate-spin" />
+                ) : !isOnline ? (
+                  <WifiOff className="w-6 h-6 text-slate-400" />
                 ) : (
                   <ShieldCheck className="w-6 h-6" />
                 )}
                 <span>
                   {isUploadingCert
                     ? "Anexando..."
+                    : !isOnline
+                    ? "Anexo de certificados indisponível offline (requer internet)"
                     : "Anexar Novo Certificado (PDF ou Imagem)"}
                 </span>
                 <input
@@ -717,7 +749,7 @@ export const StudentCertificatesTab: React.FC<StudentCertificatesTabProps> = ({
                   className="hidden"
                   accept="image/*,application/pdf"
                   onChange={handleUploadExternalCertificate}
-                  disabled={isUploadingCert}
+                  disabled={isUploadingCert || !isOnline}
                 />
               </label>
             </div>

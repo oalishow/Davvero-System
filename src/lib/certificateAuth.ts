@@ -698,7 +698,7 @@ export async function resolveCertificate(
     // Helper to enrich a CertificateRecord into a ResolvedCertificateItem
     const enrichRecord = async (data: CertificateRecord): Promise<ResolvedCertificateItem> => {
       let foundEvent = eventsCache.find((e) => e.id === data.eventId);
-      if (!foundEvent && data.eventId) {
+      if ((!foundEvent || (!foundEvent.certificateTemplate && !foundEvent.organizationCertificateTemplate)) && data.eventId) {
         try {
           const eSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/events`, data.eventId));
           if (eSnap.exists()) {

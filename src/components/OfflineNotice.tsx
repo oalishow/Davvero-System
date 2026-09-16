@@ -140,7 +140,7 @@ export default function OfflineNotice({
                         <h4 className="text-xs font-black tracking-tight uppercase">Modo Offline Ativado</h4>
                       </div>
                       <p className="text-[11px] font-medium text-slate-900 leading-snug truncate sm:whitespace-normal">
-                        Você está sem internet. O aplicativo continua disponível com os dados em cache, mas alguns recursos estão limitados.
+                        Você está sem internet. Sua Carteirinha, Certificados Conquistados e Histórico continuam 100% disponíveis offline para consulta e download em PDF.
                       </p>
                     </div>
                   </div>
@@ -202,24 +202,24 @@ export default function OfflineNotice({
             <div className="border border-emerald-200 dark:border-emerald-500/20 rounded-2xl p-4 bg-emerald-50/50 dark:bg-emerald-500/5">
               <h5 className="text-xs font-black uppercase text-emerald-800 dark:text-emerald-300 flex items-center gap-1.5 mb-2.5">
                 <CheckCircle2 className="w-4 h-4 text-emerald-600 dark:text-emerald-400" />
-                Disponível Offline (Em Cache Local)
+                Disponível no Modo Offline (100% Funcional)
               </h5>
-              <ul className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+              <ul className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
                 <li className="flex items-start gap-2">
                   <IdCard className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span><strong>Carteirinha & Minha ID:</strong> Seus dados, foto e QR Code autenticado ficam salvos e continuam acessíveis para apresentação.</span>
+                  <span><strong>Carteirinha Estudantil ("Minha ID"):</strong> Seu documento estudantil com foto, dados de curso e seminário, QR Code de segurança e validação presencial para meia-entrada e identificação oficial.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Award className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span><strong>Certificados Salvos:</strong> Certificados previamente carregados podem ser visualizados normalmente.</span>
+                  <span><strong>Certificados Conquistados:</strong> Acesso completo à aba de Certificados, visualização dos diplomas oficiais com temas e assinaturas cacheados e geração/download de PDF no formato A4 Paisagem sem internet.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CalendarCheck className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span><strong>Eventos e Presenças:</strong> Consulta a eventos já abertos e registro de check-in pelo Verificador (as presenças ficam salvas localmente e são enviadas ao reconectar).</span>
+                  <span><strong>Histórico de Eventos e Presenças:</strong> Consulta de presenças e eventos já cursados registrados no seu histórico acadêmico local.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <Database className="w-4 h-4 text-emerald-600 shrink-0 mt-0.5" />
-                  <span><strong>Navegação Fluida:</strong> Toda a estrutura do sistema continua abrindo rapidamente sem travamentos.</span>
+                  <span><strong>Acesso Instantâneo via PWA e Cache API:</strong> Carregamento imediato do aplicativo sem conexão à internet e sem telas de erro.</span>
                 </li>
               </ul>
             </div>
@@ -228,20 +228,24 @@ export default function OfflineNotice({
             <div className="border border-rose-200 dark:border-rose-500/20 rounded-2xl p-4 bg-rose-50/50 dark:bg-rose-500/5">
               <h5 className="text-xs font-black uppercase text-rose-800 dark:text-rose-300 flex items-center gap-1.5 mb-2.5">
                 <AlertTriangle className="w-4 h-4 text-rose-600 dark:text-rose-400" />
-                Recursos Limitados sem Conexão
+                Pausado no Modo Offline (Requer Internet)
               </h5>
-              <ul className="space-y-2 text-xs text-slate-700 dark:text-slate-300">
+              <ul className="space-y-2.5 text-xs text-slate-700 dark:text-slate-300">
                 <li className="flex items-start gap-2">
-                  <Mail className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span><strong>Envio de E-mails & Notificações:</strong> Disparos automáticos aguardarão a restauração da rede.</span>
+                  <CalendarCheck className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span><strong>Novas Inscrições em Eventos:</strong> A busca de novos eventos em tempo real e a confirmação de novas inscrições requerem conexão com o servidor.</span>
                 </li>
                 <li className="flex items-start gap-2">
-                  <UploadCloud className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span><strong>Uploads de Arquivos:</strong> Envio de novas fotos para o servidor ou modelos pesados de certificados requerem internet.</span>
+                  <Award className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span><strong>Novos Certificados Não Liberados:</strong> Certificados de eventos recentes que ainda não foram liberados ou sincronizados previamente no seu dispositivo.</span>
                 </li>
                 <li className="flex items-start gap-2">
                   <CloudOff className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
-                  <span><strong>Sincronização em Tempo Real:</strong> Alterações feitas por outros usuários no banco de dados só serão refletidas quando você se reconectar.</span>
+                  <span><strong>Verificador Público e Painel de Gestão:</strong> O scanner público em tempo real e a área administrativa de gestão de eventos ficam bloqueados offline.</span>
+                </li>
+                <li className="flex items-start gap-2">
+                  <UploadCloud className="w-4 h-4 text-rose-600 shrink-0 mt-0.5" />
+                  <span><strong>Envio de Comprovantes Externos:</strong> O upload de certificados de outras instituições será sincronizado assim que a conexão for restabelecida.</span>
                 </li>
               </ul>
             </div>

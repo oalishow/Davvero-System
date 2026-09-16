@@ -43,8 +43,8 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "8.7b";
-export const APP_BUILD = "14.09.2026";
+export const APP_VERSION = "8.8";
+export const APP_BUILD = "15.09.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
@@ -199,6 +199,8 @@ export function safeSessionStorageSet(key: string, value: string): boolean {
 }
 
 export const CHANGELOG = [
+  "Versão 8.8 - Paridade Visual dos Certificados, Impressão Fiel A4, Modal de Abertura Direta no Celular & Modo Offline",
+  "Garantia de paridade visual estrita entre a Verificação de Autenticidade e o Portal do Aluno com hidratação integral de modelos, temas, fontes, fundos e assinaturas; nova engine de impressão A4 paisagem (297mm x 210mm) em altíssima definição sem quebras de layout ou cortes de borda; novo modal pós-download com abertura instantânea do PDF no leitor nativo do celular, compartilhamento rápido e guia de localização de downloads; suporte completo ao funcionamento offline de certificados e histórico acadêmico com transparência no painel offline.",
   "Versão 8.7b - Fix de Rolagem na Verificação, Proteção do Cabeçalho e Acesso à Gestão",
   "Correção do comportamento de rolagem automática na verificação de certificados e estudantes: eliminação das chamadas agressivas de scrollIntoView que forçavam a página para baixo e empurravam o cabeçalho e o ícone de cadeado (Gestão) para fora da tela; garantia de que os controles superiores e o menu de configurações permaneçam sempre visíveis e imediatamente acessíveis durante a validação; e refinamento contínuo de responsividade e transições.",
   "Versão 8.6b - Otimização de Responsividade, Atualização Automática Contínua & Bloqueio Seguro de Versões Antigas",

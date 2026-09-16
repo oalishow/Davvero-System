@@ -621,8 +621,12 @@ export default function Verifier({
 
         const eList = eventSnap.docs.map(d => {
           const e = d.data() as Event;
-          const { imageUrl, certificateTemplate, ...safeEvent } = e;
-          const eProcessed = safeEvent as Event;
+          const { imageUrl, ...safeEvent } = e;
+          const eProcessed = {
+            ...safeEvent,
+            certificateTemplate: e.certificateTemplate,
+            organizationCertificateTemplate: e.organizationCertificateTemplate,
+          } as Event;
           
           const now = new Date().getTime();
           if (eProcessed.status === "aberto") {

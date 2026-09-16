@@ -39,6 +39,7 @@ export function CertificatePreviewModal({
   const [containerWidth, setContainerWidth] = useState<number>(360);
   const [mode, setMode] = useState<"fit" | "zoom" | "rotate">("fit");
   const [zoomLevel, setZoomLevel] = useState<number>(1);
+  const [isPrinting, setIsPrinting] = useState<boolean>(false);
 
   // Drag touch state for smartphone panning
   const touchStartRef = useRef<{
@@ -395,16 +396,26 @@ export function CertificatePreviewModal({
               Fechar
             </button>
             <button
-              onClick={() =>
-                printCertificateNode(
-                  document.getElementById("preview-cert-modal-node")
-                )
-              }
-              className="py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer"
+              onClick={async () => {
+                try {
+                  setIsPrinting(true);
+                  await printCertificateNode(
+                    document.getElementById("preview-cert-modal-node")
+                  );
+                } finally {
+                  setIsPrinting(false);
+                }
+              }}
+              disabled={isPrinting}
+              className="py-2.5 px-4 rounded-xl border border-slate-200 dark:border-slate-700 text-slate-700 dark:text-slate-200 font-bold text-xs hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors flex items-center gap-1.5 cursor-pointer disabled:opacity-50"
               title="Imprimir Certificado isolado"
             >
-              <Printer className="w-4 h-4 text-slate-600 dark:text-slate-300" />
-              Imprimir
+              {isPrinting ? (
+                <Loader2 className="w-4 h-4 animate-spin text-sky-500" />
+              ) : (
+                <Printer className="w-4 h-4 text-slate-600 dark:text-slate-300" />
+              )}
+              <span>{isPrinting ? "Preparando..." : "Imprimir"}</span>
             </button>
             <button
               onClick={onDownload}

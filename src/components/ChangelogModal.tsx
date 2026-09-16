@@ -8,6 +8,18 @@ interface ChangelogModalProps {
 export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
+      version: 'v8.8',
+      title: 'Paridade de Certificados, Impressão Fiel A4, Modal de Abertura Direta no Celular & Modo Offline',
+      changes: [
+        'Paridade Visual dos Certificados: sincronização e hidratação fiel de modelos, temas, bordas, fontes, fundos customizados e assinaturas na Verificação de Autenticidade, garantindo visual idêntico ao Portal do Aluno.',
+        'Impressão em Alta Definição A4 (297mm x 210mm): reestruturação da impressão com captura em alta resolução, eliminando quebras de layout, cortes de borda e bugs visuais no painel de autenticação.',
+        'Modal de Download Direto para Celulares: novo modal após o download com botão "Abrir Certificado Agora" direto no visualizador nativo, suporte a compartilhamento via Web Share e guia prático para localizar os downloads no Android, iOS e Computador.',
+        'Certificados 100% no Modo Offline: cache persistente de certificados, eventos e históricos na Minha ID, permitindo visualização e download de PDFs mesmo sem conexão à internet.',
+        'Painel Offline Atualizado: clareza e transparência no banner e modal com a discriminação exata dos recursos disponíveis localmente.',
+      ],
+      current: true,
+    },
+    {
       version: 'v8.7b',
       title: 'Modo Offline PWA Resiliente, Estabilização do Cabeçalho & Otimização de Pré-carregamento',
       changes: [
@@ -17,7 +29,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Otimização de Pré-carregamento (prefetchTab): refinamento da função de pré-carregamento e delay de repouso (hover) nas abas para carregar módulos sob demanda apenas com intenção clara do usuário, economizando memória e dados móveis.',
         'Suavização do Efeito Scanner: pipeline do feixe óptico do ícone animado com aceleração gráfica pura via transform GPU, sem engasgos ou quedas de quadros.'
       ],
-      current: true,
+      current: false,
     },
     {
       version: 'v8.3b',

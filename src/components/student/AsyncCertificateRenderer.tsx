@@ -63,9 +63,13 @@ export const AsyncCertificateRenderer = memo(
 
     useEffect(() => {
       let isMounted = true;
+      const localKey = `davveroId_cert_assets_${event.id}_${isOrganizer ? "org" : "part"}`;
 
       const applyAssets = (assets: any) => {
         if (!assets || !isMounted) return;
+        try {
+          localStorage.setItem(localKey, JSON.stringify(assets));
+        } catch {}
         setTemplate((prev) =>
           prev
             ? {
@@ -100,6 +104,20 @@ export const AsyncCertificateRenderer = memo(
             : prev,
         );
       };
+
+      // Tentar restaurar imediatamente do cache local para renderização offline instantânea
+      try {
+        const cached = localStorage.getItem(localKey);
+        if (cached) {
+          applyAssets(JSON.parse(cached));
+        }
+      } catch {}
+
+      if (typeof navigator !== "undefined" && !navigator.onLine) {
+        return () => {
+          isMounted = false;
+        };
+      }
 
       // 1. Immediate direct fetch for instantaneous rendering with fallback for organizer
       const fetchAssets = async () => {
@@ -145,7 +163,7 @@ export const AsyncCertificateRenderer = memo(
 
       return () => {
         isMounted = false;
-        unsub();
+        if (unsub) unsub();
       };
     }, [event.id, isOrganizer, event.organizationCertificateTemplate, event.certificateTemplate]);
 

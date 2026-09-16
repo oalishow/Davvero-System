@@ -62,6 +62,7 @@ import Modal from "./Modal";
 import PublicRequestModal from "./PublicRequestModal";
 import RegistrationSuccessModal from "./RegistrationSuccessModal";
 import ApprovalSuccessModal from "./ApprovalSuccessModal";
+import DownloadSuccessModal from "./student/DownloadSuccessModal";
 import SuggestEditModal from "./SuggestEditModal";
 import { ASSETS_DOC_PATH } from "../lib/constants";
 import { useDialog } from "../context/DialogContext";
@@ -224,7 +225,7 @@ const StudentPortal = memo(function StudentPortal({
   useEffect(() => {
     const handleOpenStudentTab = (e: any) => {
       if (e.detail?.tab) {
-        if (typeof navigator !== "undefined" && !navigator.onLine && e.detail.tab !== "id") {
+        if (typeof navigator !== "undefined" && !navigator.onLine && e.detail.tab !== "id" && e.detail.tab !== "certificates") {
           return;
         }
         setActiveTab(e.detail.tab);
@@ -237,9 +238,9 @@ const StudentPortal = memo(function StudentPortal({
     return () => window.removeEventListener("openStudentTab", handleOpenStudentTab);
   }, []);
 
-  // Força a aba exclusivamente em "id" quando offline
+  // Força a aba em "id" ou "certificates" quando offline (demais abas necessitam de sincronização em tempo real)
   useEffect(() => {
-    if (!isOnline && activeTab !== "id") {
+    if (!isOnline && activeTab !== "id" && activeTab !== "certificates") {
       setActiveTab("id");
     }
   }, [isOnline, activeTab]);
@@ -270,6 +271,16 @@ const StudentPortal = memo(function StudentPortal({
   const [certSearchTerm, setCertSearchTerm] = useState("");
   const [certSemesterFilter, setCertSemesterFilter] = useState<string>("all");
   const [certTypeFilter, setCertTypeFilter] = useState<"all" | "participant" | "organizer">("all");
+
+  // Estado para Modal de Sucesso de Download com abertura direta para celular
+  const [isDownloadSuccessOpen, setIsDownloadSuccessOpen] = useState(false);
+  const [downloadedCertInfo, setDownloadedCertInfo] = useState<{
+    fileName: string;
+    pdfBlob: Blob | null;
+    eventTitle?: string;
+    studentName?: string;
+    certCode?: string;
+  } | null>(null);
 
   const portalContainerRef = useRef<HTMLDivElement>(null);
   const cardRef = useRef<HTMLDivElement>(null);
@@ -341,7 +352,15 @@ const StudentPortal = memo(function StudentPortal({
     name?: string;
   } | null>(null);
 
-  const [allEvents, setAllEvents] = useState<Event[]>([]);
+  const [allEvents, setAllEvents] = useState<Event[]>(() => {
+    if (typeof window !== "undefined") {
+      try {
+        const cached = localStorage.getItem("davveroId_cached_events");
+        if (cached) return JSON.parse(cached) as Event[];
+      } catch {}
+    }
+    return [];
+  });
   const [availableEvents, setAvailableEvents] = useState<Event[]>([]);
   const [pastEvents, setPastEvents] = useState<Event[]>([]);
   const [seminaryAvailableEvents, setSeminaryAvailableEvents] = useState<Event[]>([]);
@@ -404,6 +423,9 @@ const StudentPortal = memo(function StudentPortal({
           return aIsFuture ? -1 : 1;
         });
         setAllEvents(evts);
+        try {
+          localStorage.setItem("davveroId_cached_events", JSON.stringify(evts));
+        } catch {}
         const hasPrivilegedRole = member.roles?.some(r => ["ADMIN", "COORDENADOR", "GERENTE", "REITOR", "VICE-REITOR", "DIRETOR ESPIRITUAL", "PADRE"].includes(r.toUpperCase()));
 
         const isCopa = (e: Event) => {
@@ -746,25 +768,19 @@ const StudentPortal = memo(function StudentPortal({
       pdf.save(fileName);
       playSound('success');
 
-      // On mobile devices, offer to open the certificate as well
-      const isMobile =
-        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(
-          navigator.userAgent,
-        );
-
-      if (isMobile) {
-        setTimeout(async () => {
-          if (
-            await showConfirm(
-              "Certificado descarregado com sucesso! Deseja abrir o arquivo agora?",
-              { type: 'success' }
-            )
-          ) {
-            const blob = pdf.output("blob");
-            const blobUrl = URL.createObjectURL(blob);
-            window.open(blobUrl, "_blank");
-          }
-        }, 1000);
+      // Generate blob for direct viewing or sharing via DownloadSuccessModal
+      try {
+        const blob = pdf.output("blob");
+        setDownloadedCertInfo({
+          fileName,
+          pdfBlob: blob,
+          eventTitle: event.title,
+          studentName: member.name,
+          certCode: (event as any).certificateAuthCode || member.alphaCode,
+        });
+        setIsDownloadSuccessOpen(true);
+      } catch (blobErr) {
+        console.warn("Could not create blob for download modal:", blobErr);
       }
     } catch (e: any) {
       console.error("Download Error:", e);
@@ -2149,6 +2165,30 @@ const StudentPortal = memo(function StudentPortal({
           isOpen={showApprovalModal}
           onClose={handleApprovalModalClose}
           memberName={member.name}
+        />
+      )}
+
+      {isDownloadSuccessOpen && downloadedCertInfo && (
+        <DownloadSuccessModal
+          isOpen={isDownloadSuccessOpen}
+          onClose={() => setIsDownloadSuccessOpen(false)}
+          fileName={downloadedCertInfo.fileName}
+          pdfBlob={downloadedCertInfo.pdfBlob}
+          eventTitle={downloadedCertInfo.eventTitle}
+          studentName={downloadedCertInfo.studentName}
+          certCode={downloadedCertInfo.certCode}
+          onReDownload={() => {
+            if (downloadedCertInfo.pdfBlob) {
+              const url = URL.createObjectURL(downloadedCertInfo.pdfBlob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = downloadedCertInfo.fileName;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              URL.revokeObjectURL(url);
+            }
+          }}
         />
       )}
     </div>
