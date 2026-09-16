@@ -14,6 +14,7 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
         'Paridade Visual dos Certificados: sincronização e hidratação fiel de modelos, temas, bordas, fontes, fundos customizados e assinaturas na Verificação de Autenticidade, garantindo visual idêntico ao Portal do Aluno.',
         'Impressão em Alta Definição A4 (297mm x 210mm): reestruturação da impressão com captura em alta resolução, eliminando quebras de layout, cortes de borda e bugs visuais no painel de autenticação.',
         'Modal de Download Direto para Celulares: novo modal após o download com botão "Abrir Certificado Agora" direto no visualizador nativo, suporte a compartilhamento via Web Share e guia prático para localizar os downloads no Android, iOS e Computador.',
+        'Consulta de Autenticidade Instantânea & Foco no Resultado: resolução de códigos de certificado acelerada com verificação em cache em milissegundos e enquadramento visual suave diretamente no painel do certificado verificado, sem deslocamentos indevidos ao topo da página.',
         'Certificados 100% no Modo Offline: cache persistente de certificados, eventos e históricos na Minha ID, permitindo visualização e download de PDFs mesmo sem conexão à internet.',
         'Painel Offline Atualizado: clareza e transparência no banner e modal com a discriminação exata dos recursos disponíveis localmente.',
       ],

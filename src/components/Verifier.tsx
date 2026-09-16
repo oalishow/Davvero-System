@@ -117,6 +117,24 @@ export default function Verifier({
     showAlert("Se o aplicativo DAVVERO estiver instalado no seu celular, você também pode abri-lo pela tela inicial ou pelo menu do navegador (⋮ > 'Abrir no app').", { type: "info" });
   };
 
+  const scrollToVerificationResult = () => {
+    if (typeof window === "undefined") return;
+    setTimeout(() => {
+      const panel =
+        document.getElementById("verification-result-panel") ||
+        document.getElementById("certificate-verifier-root");
+      if (panel) {
+        const rect = panel.getBoundingClientRect();
+        const currentScrollY = window.scrollY || window.pageYOffset;
+        const targetY = Math.max(0, currentScrollY + rect.top - 20);
+        window.scrollTo({
+          top: targetY,
+          behavior: "smooth",
+        });
+      }
+    }, 70);
+  };
+
   const renderOpenInAppBanner = () => {
     if (isStandalone) return null;
     return (
@@ -158,11 +176,6 @@ export default function Verifier({
     }
 
     setIsProcessing(true);
-    if (typeof window !== "undefined") {
-      setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }, 50);
-    }
 
     let code = rawCode.trim();
 
@@ -201,7 +214,7 @@ export default function Verifier({
     // Centralized Certificate Authentication Resolution with Race / Timeout
     try {
       const timeoutPromise = new Promise<null>((_, reject) =>
-          setTimeout(() => reject(new Error("Timeout de consulta")), 15000)
+          setTimeout(() => reject(new Error("Timeout de consulta")), 8000)
         );
 
         const resolved = await Promise.race([
@@ -227,10 +240,7 @@ export default function Verifier({
           });
           playSound("success");
           setIsProcessing(false);
-
-          setTimeout(() => {
-            window.scrollTo({ top: 0, behavior: "smooth" });
-          }, 50);
+          scrollToVerificationResult();
           return;
         }
       } catch (e) {
@@ -444,11 +454,7 @@ export default function Verifier({
           certCode: certDisplayCode,
         });
         playSound("success");
-
-        // Keep page header with settings padlock visible at top
-        setTimeout(() => {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }, 50);
+        scrollToVerificationResult();
       } else {
         recordQRScan("certificate", rawCode, "Não Encontrado");
         showAlert(
@@ -460,10 +466,7 @@ export default function Verifier({
           status: "NOT_FOUND",
         });
         playSound("error");
-
-        setTimeout(() => {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }, 50);
+        scrollToVerificationResult();
       }
     } catch (err: any) {
       console.error("Error verifying certificate:", err);
@@ -481,10 +484,10 @@ export default function Verifier({
         playSound('error');
       }
 
-      // Keep page header with settings padlock visible at top upon verification
+      // Smoothly place the field of view directly onto the verification result panel
       const scrollTimer = setTimeout(() => {
-        window.scrollTo({ top: 0, behavior: "smooth" });
-      }, 50);
+        scrollToVerificationResult();
+      }, 70);
 
       return () => clearTimeout(scrollTimer);
     }
@@ -702,9 +705,6 @@ export default function Verifier({
 
       if (isCert) {
         setVerifyMode("CERTIFICATE");
-        setTimeout(() => {
-          window.scrollTo({ top: 0, behavior: "smooth" });
-        }, 50);
         handleVerifyCertificate(codeToVerify);
         if (onExternalVerified) onExternalVerified();
       } else if (verifyParam) {

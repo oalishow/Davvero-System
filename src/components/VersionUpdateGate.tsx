@@ -25,14 +25,29 @@ export default function VersionUpdateGate({
     try {
       if (typeof window !== "undefined" && "caches" in window) {
         const keys = await caches.keys();
-        const disposable = keys.filter((k) => !k.includes('workbox-precache') && !k.includes('app-shell'));
-        await Promise.all(disposable.map((k) => caches.delete(k)));
+        await Promise.all(keys.map((k) => caches.delete(k)));
+      }
+      if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
+        const registrations = await navigator.serviceWorker.getRegistrations();
+        for (const reg of registrations) {
+          try {
+            reg.waiting?.postMessage({ type: "SKIP_WAITING" });
+            reg.active?.postMessage({ type: "PURGE_ALL_CACHES" });
+            await reg.unregister();
+          } catch (_) {}
+        }
       }
       if (typeof sessionStorage !== "undefined") {
         sessionStorage.clear();
+        sessionStorage.setItem("davvero_gate_dismissed", "true");
+      }
+      if (typeof localStorage !== "undefined") {
+        localStorage.removeItem("davvero_version_reload_count");
+        localStorage.removeItem("davvero_version_last_attempt_ts");
+        localStorage.removeItem("davvero_version_target");
       }
     } catch {}
-    await safeReloadApp(targetVersion);
+    await safeReloadApp(targetVersion, true);
   };
 
   return (
@@ -127,14 +142,22 @@ export default function VersionUpdateGate({
                 {isManualUpdating ? "Limpando e Atualizando..." : "Limpar Cache & Atualizar Agora"}
               </button>
 
-              {onDismissBlocked && (
-                <button
-                  onClick={onDismissBlocked}
-                  className="w-full py-2 text-xs font-semibold text-slate-500 hover:text-slate-700 dark:text-slate-400 dark:hover:text-slate-200 transition-colors"
-                >
-                  Continuar em modo de visualização
-                </button>
-              )}
+              <button
+                onClick={() => {
+                  try {
+                    sessionStorage.setItem("davvero_gate_dismissed", "true");
+                  } catch (_) {}
+                  if (onDismissBlocked) {
+                    onDismissBlocked();
+                  } else {
+                    window.location.reload();
+                  }
+                }}
+                type="button"
+                className="w-full py-2.5 px-4 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 text-xs sm:text-sm font-semibold rounded-xl border border-slate-200 dark:border-slate-700 transition-colors"
+              >
+                Continuar para o Aplicativo
+              </button>
             </div>
           </div>
         </motion.div>

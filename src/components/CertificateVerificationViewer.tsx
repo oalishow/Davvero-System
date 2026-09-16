@@ -1011,7 +1011,7 @@ export default function CertificateVerificationViewer({
                   <QRCodeSVG value={authUrl} size={64} level="M" />
                 </div>
                 <p className="text-[11px] text-slate-500 dark:text-slate-400 leading-relaxed">
-                  Este certificado possui fé pública acadêmica garantida pela Faculdade João Paulo II e Seminário Provincial São José, sob os termos das Diretrizes Curriculares Nacionais do Ministério da Educação (MEC).
+                  Este certificado possui fé pública acadêmica garantida pela Faculdade João Paulo II e Seminário Provincial Sagrado Coração de Jesus, sob os termos das Diretrizes Curriculares Nacionais do Ministério da Educação (MEC).
                 </p>
               </div>
             </div>

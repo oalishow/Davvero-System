@@ -549,6 +549,127 @@ export async function resolveCertificate(
   code = code.replace(/["']/g, "").trim().toUpperCase();
   if (!code) return null;
 
+  // -------------------------------------------------------------
+  // STRATEGY 0: Instant In-Memory Cache Matching (0ms resolution)
+  // If caches are available in memory, evaluate code decomposition immediately!
+  // -------------------------------------------------------------
+  if (eventsCache.length > 0 && membersCache.length > 0) {
+    const isExplicitOrg = code.includes("-ORG") || code.endsWith("ORG");
+    const isExplicitPar = code.includes("-PAR") || code.endsWith("PAR");
+    const cleanCode = code.replace(/^FAJ-|^CERT-/, "");
+
+    let eventPart = "";
+    let memberPart = "";
+
+    if (cleanCode.includes("-")) {
+      const parts = cleanCode.split("-");
+      eventPart = parts[0].trim();
+      if (parts.length >= 3 && (parts[parts.length - 1] === "ORG" || parts[parts.length - 1] === "PAR")) {
+        memberPart = parts.slice(1, parts.length - 1).join("-").trim();
+      } else {
+        memberPart = parts.slice(1).join("-").trim();
+      }
+    } else if (cleanCode.includes("/")) {
+      const parts = cleanCode.split("/");
+      eventPart = parts[0].trim();
+      memberPart = parts.slice(1).join("/").trim();
+    } else if (cleanCode.length >= 12 && cleanCode.length <= 20) {
+      eventPart = cleanCode.slice(0, 8);
+      memberPart = cleanCode.slice(8);
+    }
+
+    if (eventPart && memberPart) {
+      const cleanEventSearch = cleanAlphaNum(eventPart);
+      const cleanMemberSearch = cleanAlphaNum(memberPart);
+
+      const isMemMatch = (m: Member): boolean => {
+        if (!m) return false;
+        const mId = cleanAlphaNum(m.id || "");
+        const mIdTail8 = mId.length >= 8 ? mId.slice(-8) : mId;
+        const mIdWithoutPrefix = mId.replace(/^STD|^MEM/, "");
+        const mIdWithoutPrefixTail8 = mIdWithoutPrefix.length >= 4 ? mIdWithoutPrefix.slice(-8) : mIdWithoutPrefix;
+        const mRa = cleanAlphaNum(m.ra || "");
+        const mRaTail8 = mRa.length >= 8 ? mRa.slice(-8) : mRa;
+        const mAlpha = cleanAlphaNum(m.alphaCode || "");
+        const mCpf = cleanAlphaNum(m.cpf || "");
+        const mCpfTail8 = mCpf.length >= 6 ? mCpf.slice(-8) : mCpf;
+
+        return (
+          mId === cleanMemberSearch ||
+          mId.endsWith(cleanMemberSearch) ||
+          mId.slice(0, 8) === cleanMemberSearch ||
+          mIdTail8 === cleanMemberSearch ||
+          mIdWithoutPrefixTail8 === cleanMemberSearch ||
+          mRa === cleanMemberSearch ||
+          mRa.endsWith(cleanMemberSearch) ||
+          mRa.slice(0, 8) === cleanMemberSearch ||
+          mRaTail8 === cleanMemberSearch ||
+          (cleanMemberSearch.length >= 4 && mRa.includes(cleanMemberSearch)) ||
+          mAlpha === cleanMemberSearch ||
+          (cleanMemberSearch.length >= 6 && (mCpf.endsWith(cleanMemberSearch) || mCpfTail8 === cleanMemberSearch))
+        );
+      };
+
+      const isEvMatch = (ev: Event): boolean => {
+        if (!ev) return false;
+        const evClean = cleanAlphaNum(ev.id || "");
+        const evTail8 = evClean.length >= 8 ? evClean.slice(-8) : evClean;
+        const evWithoutEvt = evClean.replace(/^EVT/, "");
+        const evWithoutEvtTail8 = evWithoutEvt.length >= 6 ? evWithoutEvt.slice(-8) : evWithoutEvt;
+
+        return (
+          evClean === cleanEventSearch ||
+          evClean.endsWith(cleanEventSearch) ||
+          evWithoutEvt === cleanEventSearch ||
+          evWithoutEvt.endsWith(cleanEventSearch) ||
+          evTail8 === cleanEventSearch ||
+          evWithoutEvtTail8 === cleanEventSearch ||
+          (cleanEventSearch.length >= 6 && evWithoutEvt.startsWith(cleanEventSearch)) ||
+          (cleanEventSearch.length >= 8 && evClean.startsWith(cleanEventSearch))
+        );
+      };
+
+      const candEvents = eventsCache.filter(isEvMatch);
+      const candMembers = membersCache.filter(isMemMatch);
+
+      if (candEvents.length > 0 && candMembers.length > 0) {
+        for (const ev of candEvents) {
+          for (const mem of candMembers) {
+            const att = attendancesCache.find(
+              (a) => a.eventId === ev.id && a.studentId === mem.id && a.status !== "cancelado"
+            );
+            if (att || candEvents.length === 1) {
+              const isOrganizer = isExplicitOrg ? true : isExplicitPar ? false : Boolean(att?.isOrganizer);
+              const template =
+                (isOrganizer ? ev.organizationCertificateTemplate : ev.certificateTemplate) ||
+                getDefaultCertificateTemplate(ev, isOrganizer);
+
+              let hours = Number(isOrganizer && ev.organizationHours ? ev.organizationHours : ev.hours) || 0;
+              if (hours <= 0) hours = 4;
+
+              // Asynchronously register in background to keep future direct lookups hot
+              registerCertificateRecord({
+                code,
+                event: ev,
+                member: mem,
+                isOrganizer,
+              }).catch(() => null);
+
+              return {
+                event: ev,
+                member: mem,
+                isOrganizer,
+                certCode: code,
+                template,
+                hours,
+              };
+            }
+          }
+        }
+      }
+    }
+  }
+
   const certificatesCol = collection(db, `artifacts/${appId}/public/data/certificates`);
   const matchedRecords: CertificateRecord[] = [];
 
@@ -561,7 +682,7 @@ export async function resolveCertificate(
   };
 
   // -------------------------------------------------------------
-  // STRATEGY 1: Direct key lookup in Firestore `certificates` collection
+  // STRATEGY 1: Direct key lookup in Firestore `certificates` collection (Parallel)
   // -------------------------------------------------------------
   const directCandidateKeys: string[] = [];
   const cleanUpper = code;
@@ -582,14 +703,18 @@ export async function resolveCertificate(
     directCandidateKeys.push(`FAJ-${cleanAlpha}`);
   }
 
-  for (const key of Array.from(new Set(directCandidateKeys))) {
-    if (key.includes("/") || key.includes("?") || key.includes("&")) continue;
-    try {
-      const certSnap = await getDoc(doc(certificatesCol, key));
-      if (certSnap.exists()) {
-        addRecord(certSnap.data() as CertificateRecord);
-      }
-    } catch (_) {}
+  const validKeys = Array.from(new Set(directCandidateKeys)).filter(
+    (key) => !key.includes("/") && !key.includes("?") && !key.includes("&")
+  );
+
+  const directSnaps = await Promise.all(
+    validKeys.map((key) => getDoc(doc(certificatesCol, key)).catch(() => null))
+  );
+
+  for (const certSnap of directSnaps) {
+    if (certSnap && certSnap.exists()) {
+      addRecord(certSnap.data() as CertificateRecord);
+    }
   }
 
   // -------------------------------------------------------------
@@ -698,7 +823,7 @@ export async function resolveCertificate(
     // Helper to enrich a CertificateRecord into a ResolvedCertificateItem
     const enrichRecord = async (data: CertificateRecord): Promise<ResolvedCertificateItem> => {
       let foundEvent = eventsCache.find((e) => e.id === data.eventId);
-      if ((!foundEvent || (!foundEvent.certificateTemplate && !foundEvent.organizationCertificateTemplate)) && data.eventId) {
+      if (!foundEvent && data.eventId) {
         try {
           const eSnap = await getDoc(doc(db, `artifacts/${appId}/public/data/events`, data.eventId));
           if (eSnap.exists()) {

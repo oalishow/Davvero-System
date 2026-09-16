@@ -45,39 +45,36 @@ self.addEventListener('message', (event: any) => {
   if (event.data && (event.data.type === 'SKIP_WAITING' || event.data === 'SKIP_WAITING' || event.data?.type === 'CHECK_UPDATE')) {
     self.skipWaiting();
   }
+  if (event.data && (event.data.type === 'PURGE_ALL_CACHES' || event.data === 'PURGE_ALL_CACHES')) {
+    if ('caches' in self) {
+      caches.keys().then((keys: string[]) => Promise.all(keys.map((k) => caches.delete(k))));
+    }
+    self.skipWaiting();
+  }
 });
 
 precacheAndRoute(self.__WB_MANIFEST);
 
 // Set up App Shell / Navigation Fallback
-// This allows the app to work offline for all navigation requests (SPA)
-const getIndexHtmlHandler = () => {
-  try {
-    return createHandlerBoundToURL('index.html');
-  } catch (_) {
-    try {
-      return createHandlerBoundToURL('/index.html');
-    } catch (e) {
-      console.warn("Could not createHandlerBoundToURL for index.html:", e);
-      return null;
-    }
-  }
-};
+// Uses NetworkFirst online so user gets newest bundles immediately,
+// and gracefully falls back to precached index.html when offline
+const navigationStrategy = new NetworkFirst({
+  cacheName: 'app-shell-cache',
+  networkTimeoutSeconds: 3,
+  plugins: [
+    new CacheableResponsePlugin({
+      statuses: [0, 200],
+    }),
+  ],
+});
 
-const navigationHandler = getIndexHtmlHandler();
-if (navigationHandler) {
-  try {
-    const navigationRoute = new NavigationRoute(navigationHandler, {
-      denylist: [
-        new RegExp('/__/'), // Exclude Firebase reserved URLs
-        new RegExp('/api/'), // Exclude API routes
-      ],
-    });
-    registerRoute(navigationRoute);
-  } catch (e) {
-    console.warn("Could not register NavigationRoute:", e);
-  }
-}
+const navigationRoute = new NavigationRoute(navigationStrategy, {
+  denylist: [
+    new RegExp('/__/'), // Exclude Firebase reserved URLs
+    new RegExp('/api/'), // Exclude API routes
+  ],
+});
+registerRoute(navigationRoute);
 
 // Fallback robust navigation handler for offline mode
 registerRoute(

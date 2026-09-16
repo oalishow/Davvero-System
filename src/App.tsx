@@ -548,8 +548,19 @@ export default function App() {
     return () => document.removeEventListener('click', handleClick);
   }, []);
 
+  // Ref para memorizar se o usuário dispensou o portão nesta sessão
+  const userDismissedGateRef = useRef(false);
+
   // Verificação de versão unificada, estável e reativa
   const performSafeVersionCheck = useCallback(async (force = false, knownVer?: string) => {
+    if (
+      userDismissedGateRef.current ||
+      (typeof sessionStorage !== "undefined" && sessionStorage.getItem("davvero_gate_dismissed") === "true")
+    ) {
+      setIsLoopBlocked(false);
+      return;
+    }
+
     const candidate = knownVer || settings?.version;
     const res = await checkServerVersionWithAntiLoop(force, candidate);
     if (res.isObsolete) {
@@ -911,6 +922,13 @@ export default function App() {
         updateProgress={updateProgress}
         targetVersion={targetVersionText}
         isLoopBlocked={isLoopBlocked}
+        onDismissBlocked={() => {
+          setIsLoopBlocked(false);
+          userDismissedGateRef.current = true;
+          try {
+            sessionStorage.setItem("davvero_gate_dismissed", "true");
+          } catch (_) {}
+        }}
       />
       <DynamicPWA />
       <NotificationObserver />

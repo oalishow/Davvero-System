@@ -85,7 +85,7 @@ export function isVersionOutdated(local: string, server: string): boolean {
  * Deeply purges browser cache storage safely without breaking in-flight modules
  * or corrupting user application state.
  */
-export async function clearAppCaches(): Promise<void> {
+export async function clearAppCaches(forcePurgeAll = false): Promise<void> {
   // Se estiver offline, NUNCA limpar caches do PWA para preservar o funcionamento offline
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     console.log("[VersionManager] Offline detectado; limpeza de caches suprimida para preservar modo offline.");
@@ -93,28 +93,39 @@ export async function clearAppCaches(): Promise<void> {
   }
 
   try {
-    // 1. Clear dynamic CacheStorage without wiping offline precaches
+    // 1. Clear dynamic CacheStorage (purges all caches when forcePurgeAll is true)
     if (typeof window !== "undefined" && "caches" in window) {
       const keys = await caches.keys();
-      const disposableKeys = keys.filter(
-        (key) => !key.includes('workbox-precache') && !key.includes('app-shell')
-      );
       await Promise.all(
-        disposableKeys.map((key) => {
-          return caches.delete(key);
+        keys.map((key) => {
+          if (forcePurgeAll) {
+            return caches.delete(key);
+          }
+          if (!key.includes('workbox-precache') && !key.includes('app-shell')) {
+            return caches.delete(key);
+          }
+          return Promise.resolve(true);
         })
       );
-      console.log("[VersionManager] Caches dinâmicos limpos com sucesso. Precache offline mantido.");
+      console.log("[VersionManager] Caches limpos com sucesso. forcePurgeAll =", forcePurgeAll);
     }
 
     // 2. Notify active service workers to update and activate immediately
     if (typeof navigator !== "undefined" && "serviceWorker" in navigator) {
       const registrations = await navigator.serviceWorker.getRegistrations();
       for (const reg of registrations) {
-        if (reg.waiting) {
-          reg.waiting.postMessage({ type: "SKIP_WAITING" });
-        }
-        await reg.update().catch(() => {});
+        try {
+          if (forcePurgeAll) {
+            reg.waiting?.postMessage({ type: "SKIP_WAITING" });
+            reg.active?.postMessage({ type: "PURGE_ALL_CACHES" });
+            await reg.unregister();
+          } else {
+            if (reg.waiting) {
+              reg.waiting.postMessage({ type: "SKIP_WAITING" });
+            }
+            await reg.update().catch(() => {});
+          }
+        } catch (_) {}
       }
     }
   } catch (err) {
@@ -125,7 +136,7 @@ export async function clearAppCaches(): Promise<void> {
 /**
  * Safely reloads the application with clean URL params and cache-busting timestamp
  */
-export async function safeReloadApp(targetVersion?: string): Promise<void> {
+export async function safeReloadApp(targetVersion?: string, forcePurgeAll = false): Promise<void> {
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     console.warn("[VersionManager] Tentativa de reload com rede offline cancelada.");
     return;
@@ -137,8 +148,17 @@ export async function safeReloadApp(targetVersion?: string): Promise<void> {
     localStorage.setItem("last_seen_app_version", finalVersion);
   } catch {}
 
-  await clearAppCaches();
+  await clearAppCaches(forcePurgeAll);
   
+  try {
+    sessionStorage.removeItem(STORAGE_KEYS.ATTEMPT_COUNT);
+    sessionStorage.removeItem(STORAGE_KEYS.LAST_TIMESTAMP);
+    sessionStorage.removeItem(STORAGE_KEYS.TARGET_VERSION);
+    if (forcePurgeAll) {
+      sessionStorage.setItem("davvero_gate_dismissed", "true");
+    }
+  } catch {}
+
   // Use timestamp query param to force browser HTTP disk cache bypass
   const baseCleanUrl = window.location.origin + window.location.pathname;
   const reloadUrl = `${baseCleanUrl}?_upd=${Date.now()}`;
@@ -238,14 +258,25 @@ export async function checkServerVersionWithAntiLoop(
     candidateVersion = knownServerVersion;
   }
 
+  // Verificar se o usuário já dispensou a mensagem nesta sessão ou solicitou bypass
+  if (
+    typeof sessionStorage !== "undefined" &&
+    (sessionStorage.getItem("davvero_gate_dismissed") === "true" ||
+      sessionStorage.getItem("davvero_bypass_update") === "true")
+  ) {
+    return {
+      isObsolete: false,
+      serverVersion: APP_VERSION,
+      localVersion: APP_VERSION,
+      isLoopBlocked: false,
+      status: "up_to_date",
+    };
+  }
+
   const serverVersion = candidateVersion || APP_VERSION;
-  const isVersionNewer = isVersionOutdated(APP_VERSION, serverVersion);
-  const isBuildDifferent = Boolean(
-    candidateBuild &&
-      candidateBuild !== APP_BUILD &&
-      compareVersions(serverVersion, APP_VERSION) >= 0
-  );
-  const isObsolete = isVersionNewer || isBuildDifferent;
+  // A versão só é considerada obsoleta se a versão remota for estritamente mais recente (ex: 8.9 > 8.8)
+  // Diferenças de data de build NUNCA causam obsolescência ou bloqueio de tela
+  const isObsolete = isVersionOutdated(APP_VERSION, serverVersion);
 
   if (!isObsolete) {
     // Running latest version! Clean any previous session loop flags
@@ -278,18 +309,19 @@ export async function checkServerVersionWithAntiLoop(
   const timeSinceLastAttempt = now - lastAttemptTs;
   const isSameTarget = storedTarget === serverVersion;
 
-  // Circuit Breaker Rule: If an auto-reload already ran in the last 45 seconds for this target, STOP looping.
-  if (isSameTarget && attemptCount >= 1 && timeSinceLastAttempt < 45000) {
+  // Circuit Breaker Rule: Se já foi tentada uma recarga automática nos últimos 60 segundos para este alvo,
+  // NÃO entrar em loop infinito e NÃO bloquear o usuário de utilizar a aplicação.
+  if (isSameTarget && attemptCount >= 1 && timeSinceLastAttempt < 60000) {
     console.warn(
       `[VersionManager] Loop evitado: Versão ${serverVersion} detectada mas auto-reload já tentado há ${Math.round(
         timeSinceLastAttempt / 1000
-      )}s. Bloqueando uso da versão obsoleta com o portão de atualização.`
+      )}s. Permitindo uso contínuo sem looping.`
     );
     return {
-      isObsolete: true,
+      isObsolete: false,
       serverVersion,
       localVersion: APP_VERSION,
-      isLoopBlocked: true,
+      isLoopBlocked: false,
       status: "loop_prevented",
     };
   }
