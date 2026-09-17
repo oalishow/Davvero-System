@@ -209,6 +209,20 @@ export default function App() {
     : (youtubeLive.liveUrl || settings.liveBadgeUrl || "https://www.youtube.com/@fajopademarilia/live");
   const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
     if (typeof window !== "undefined") {
+      const isAlreadyInstalled =
+        window.matchMedia("(display-mode: standalone)").matches ||
+        (navigator as any).standalone === true ||
+        document.referrer.includes("android-app://") ||
+        localStorage.getItem("pwa_installed") === "true";
+
+      if (isAlreadyInstalled) {
+        try {
+          localStorage.setItem("has_seen_welcome", "true");
+          localStorage.setItem("pwa_installed", "true");
+        } catch {}
+        return false;
+      }
+
       const params = new URLSearchParams(window.location.search);
       const isDirectDeepLink =
         params.has("event") || 
@@ -788,16 +802,26 @@ export default function App() {
       handleUrlNavigation();
     };
 
+    const handleAppInstalled = () => {
+      try {
+        localStorage.setItem("has_seen_welcome", "true");
+        localStorage.setItem("pwa_installed", "true");
+      } catch {}
+      setShowWelcomeModal(false);
+    };
+
     if (typeof navigator !== "undefined" && navigator.serviceWorker) {
       navigator.serviceWorker.addEventListener("message", handleSWMessage);
     }
     window.addEventListener("popstate", handlePopState);
+    window.addEventListener("appinstalled", handleAppInstalled);
 
     return () => {
       if (typeof navigator !== "undefined" && navigator.serviceWorker) {
         navigator.serviceWorker.removeEventListener("message", handleSWMessage);
       }
       window.removeEventListener("popstate", handlePopState);
+      window.removeEventListener("appinstalled", handleAppInstalled);
     };
   }, []);
 
