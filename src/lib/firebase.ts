@@ -44,40 +44,25 @@ const firebaseConfig = {
 export const app = initializeApp(firebaseConfig);
 
 // Inicialização segura do Firestore com cache local persistente (IndexedDB)
-// No Samsung Browser e WebViews móveis, navigator.locks pode travar ou congelar guias em segundo plano;
-// portanto, persistentSingleTabManager previne deadlocks garantindo carregamento instantâneo.
+// persistentSingleTabManager com forceOwnership evita completamente o uso frágil de WebStorage (localStorage)
+// para sincronismo entre abas, prevenindo QuotaExceededError (ID: b815) e deadlocks em navegadores e WebViews.
 let dbInstance;
 try {
-  const isSamsungBrowser =
-    typeof navigator !== "undefined" &&
-    (/SamsungBrowser/i.test(navigator.userAgent) || /samsung/i.test(navigator.userAgent));
-
   dbInstance = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
     localCache: persistentLocalCache({
-      tabManager: isSamsungBrowser
-        ? persistentSingleTabManager({})
-        : persistentMultipleTabManager(),
+      tabManager: persistentSingleTabManager({ forceOwnership: true }),
     }),
   });
 } catch (e: any) {
   try {
     dbInstance = initializeFirestore(app, {
       ignoreUndefinedProperties: true,
-      localCache: persistentLocalCache({
-        tabManager: persistentSingleTabManager({}),
-      }),
+      localCache: memoryLocalCache(),
     });
-  } catch (fallbackErr) {
-    try {
-      dbInstance = initializeFirestore(app, {
-        ignoreUndefinedProperties: true,
-        localCache: memoryLocalCache(),
-      });
-    } catch (memErr) {
-      console.warn("Fallback to basic getFirestore:", memErr);
-      dbInstance = getFirestore(app);
-    }
+  } catch (memErr) {
+    console.warn("Fallback to basic getFirestore:", memErr);
+    dbInstance = getFirestore(app);
   }
 }
 export const db = dbInstance;

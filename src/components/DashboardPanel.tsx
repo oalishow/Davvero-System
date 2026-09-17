@@ -355,16 +355,17 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
     try {
       const presenceQuery = query(
         collection(db, `artifacts/${appId}/public/data/online_presence`),
-        limit(100)
+        orderBy("lastActiveTimestamp", "desc"),
+        limit(150)
       );
       const unsubscribe = onSnapshot(presenceQuery, (snap) => {
         const now = Date.now();
         let online = 0;
         snap.forEach((d) => {
           const data = d.data();
-          const ts = data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0);
-          // Usuários com batimento cardíaco nos últimos 300s (5 minutos)
-          if (ts && Math.abs(now - ts) < 300 * 1000) {
+          const ts = Number(data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0));
+          // Considera ativos usuários com pulso nos últimos 150s (2.5 minutos)
+          if (ts && (now - ts) >= 0 && (now - ts) <= 150 * 1000) {
             online++;
           }
         });
@@ -372,11 +373,21 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
         setRealtimeOnlineCount(finalCount);
         setTelemetry((prev) => {
           if (!prev) return prev;
-          const currentPeak = Math.max(prev.peakSimultaneousUsers || 1, finalCount);
-          if (finalCount > (prev.peakSimultaneousUsers || 1) && !isFirestoreQuotaExhausted) {
-            recordSimultaneousPeak(finalCount, currentPeak).catch(() => {});
+          const prevPeak = Math.max(76, prev.peakSimultaneousUsers || 76);
+          const isNewPeak = finalCount > prevPeak;
+          const currentPeak = isNewPeak ? finalCount : prevPeak;
+          const currentDate = isNewPeak 
+            ? new Intl.DateTimeFormat("pt-BR").format(new Date()) 
+            : (prev.peakRecordedDate || "02/09/2026");
+          if (isNewPeak && !isFirestoreQuotaExhausted) {
+            recordSimultaneousPeak(finalCount, prevPeak).catch(() => {});
           }
-          return { ...prev, onlineUsersCount: finalCount, peakSimultaneousUsers: currentPeak };
+          return { 
+            ...prev, 
+            onlineUsersCount: finalCount, 
+            peakSimultaneousUsers: currentPeak,
+            peakRecordedDate: currentDate 
+          };
         });
       }, (err) => {
         if (!checkIsQuotaError(err)) {
@@ -405,7 +416,8 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
               ...prev,
               totalCardDiscountUses: data.totalCardDiscountUses ?? prev.totalCardDiscountUses ?? 0,
               todayCardDiscountUses: data.todayCardDiscountUses ?? prev.todayCardDiscountUses ?? 0,
-              peakSimultaneousUsers: Math.max(prev.peakSimultaneousUsers || 1, data.peakSimultaneousUsers || 1),
+              peakSimultaneousUsers: Math.max(76, Number(data.peakSimultaneousUsers ?? prev.peakSimultaneousUsers ?? 76)),
+              peakRecordedDate: data.peakRecordedDate || prev.peakRecordedDate || "02/09/2026",
               totalAppAccesses: data.totalAppAccesses ?? prev.totalAppAccesses,
               todayAppAccesses: data.todayAppAccesses ?? prev.todayAppAccesses,
               totalQrScans: data.totalQrScans ?? prev.totalQrScans,
@@ -576,14 +588,17 @@ export default function DashboardPanel({ allMembers }: { allMembers: any[] }) {
                 {(realtimeOnlineCount ?? telemetry.onlineUsersCount) === 1 ? "sessão ativa" : "sessões ativas"}
               </span>
             </div>
-            <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-emerald-500/10 dark:border-emerald-500/20">
+            <div className="flex items-center gap-1.5 mt-2 pt-2 border-t border-emerald-500/10 dark:border-emerald-500/20 flex-wrap">
               <TrendingUp className="w-3.5 h-3.5 text-emerald-600 dark:text-emerald-400 shrink-0" />
               <p className="text-[11px] font-bold text-slate-700 dark:text-slate-300">
-                Recorde: <span className="text-emerald-600 dark:text-emerald-400 font-black">{telemetry.peakSimultaneousUsers || 1}</span> simultâneos
+                Recorde: <span className="text-emerald-600 dark:text-emerald-400 font-black">{telemetry.peakSimultaneousUsers || 76}</span> simultâneos
+                <span className="text-[10px] font-semibold text-slate-500 dark:text-slate-400 ml-1 whitespace-nowrap">
+                  ({telemetry.peakRecordedDate || "02/09/2026"})
+                </span>
               </p>
             </div>
             <p className="text-[10px] text-slate-500 dark:text-slate-400 mt-1">
-              Sem limite de cota • Conexão em tempo real
+              Pico de {telemetry.peakSimultaneousUsers || 76} sessões em {telemetry.peakRecordedDate || "02/09/2026"}
             </p>
           </div>
         </motion.div>

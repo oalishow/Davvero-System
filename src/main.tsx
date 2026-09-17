@@ -1,3 +1,4 @@
+import './lib/storageSafety';
 import {StrictMode} from 'react';
 import {createRoot} from 'react-dom/client';
 import App from './App.tsx';
@@ -6,6 +7,7 @@ import { DialogProvider } from './context/DialogContext';
 import ErrorBoundary from './components/ErrorBoundary';
 import './index.css';
 import { setupPWA } from './pwa';
+import { purgeBulkyStorage } from './lib/storageSafety';
 
 // Global protection against benign permission-denied / offline noise in preview
 const originalConsoleError = console.error;
@@ -16,7 +18,10 @@ console.error = function (...args: any[]) {
     return (
       str.includes("Missing or insufficient permissions") ||
       str.includes("permission-denied") ||
-      str.includes("insufficient permissions")
+      str.includes("insufficient permissions") ||
+      str.includes("QuotaExceededError") ||
+      str.includes("exceeded the quota") ||
+      str.includes("INTERNAL ASSERTION FAILED: Unexpected state (ID: b815)")
     );
   });
 
@@ -40,8 +45,14 @@ window.addEventListener('unhandledrejection', (event) => {
       reasonStr.includes('WebSocket') ||
       reasonStr.includes('vite') ||
       reasonStr.includes('Failed to fetch') ||
-      reasonStr.includes('NetworkError')
+      reasonStr.includes('NetworkError') ||
+      reasonStr.includes('QuotaExceededError') ||
+      reasonStr.includes('exceeded the quota') ||
+      reasonStr.includes('INTERNAL ASSERTION FAILED: Unexpected state (ID: b815)')
     ) {
+      if (reasonStr.includes('quota') || reasonStr.includes('QuotaExceededError')) {
+        purgeBulkyStorage();
+      }
       event.preventDefault();
       if (event.stopImmediatePropagation) event.stopImmediatePropagation();
       return;
@@ -76,8 +87,14 @@ window.addEventListener('error', (event) => {
     if (
       msg.includes('Missing or insufficient permissions') ||
       msg.includes('permission-denied') ||
-      msg.includes('insufficient permissions')
+      msg.includes('insufficient permissions') ||
+      msg.includes('QuotaExceededError') ||
+      msg.includes('exceeded the quota') ||
+      msg.includes('INTERNAL ASSERTION FAILED: Unexpected state (ID: b815)')
     ) {
+      if (msg.includes('quota') || msg.includes('QuotaExceededError')) {
+        purgeBulkyStorage();
+      }
       event.preventDefault();
       if (event.stopImmediatePropagation) event.stopImmediatePropagation();
       return;

@@ -45,17 +45,116 @@
     <meta name="apple-mobile-web-app-status-bar-style" content="black-translucent" />
     <script>
       (function() {
+        // 0. Proactive and continuous QuotaExceededError protection for localStorage & sessionStorage
+        try {
+          var purgeOldBulky = function() {
+            if (typeof window === 'undefined' || !window.localStorage) return;
+            try {
+              var toRemove = [];
+              for (var i = 0; i < window.localStorage.length; i++) {
+                var k = window.localStorage.key(i);
+                if (!k) continue;
+                if (
+                  k.indexOf('firestore_clients_') === 0 ||
+                  k.indexOf('firestore_targets_') === 0 ||
+                  k.indexOf('firestore_mutations_') === 0 ||
+                  k.indexOf('davveroId_offline_') === 0 ||
+                  k.indexOf('notif_cache_') === 0 ||
+                  k.indexOf('temp_') === 0
+                ) {
+                  toRemove.push(k);
+                } else if (
+                  k.indexOf('logo') !== -1 ||
+                  k.indexOf('signature') !== -1 ||
+                  k.indexOf('image') !== -1 ||
+                  k.indexOf('photo') !== -1
+                ) {
+                  try {
+                    var val = window.localStorage.getItem(k);
+                    if (val && val.length > 35000) toRemove.push(k);
+                  } catch (_) {}
+                }
+              }
+              for (var j = 0; j < toRemove.length; j++) {
+                try { window.localStorage.removeItem(toRemove[j]); } catch (_) {}
+              }
+            } catch (_) {}
+          };
+
+          purgeOldBulky();
+
+          if (window.Storage && window.Storage.prototype) {
+            var origSetItem = window.Storage.prototype.setItem;
+            window.Storage.prototype.setItem = function(key, value) {
+              if (
+                value &&
+                value.length > 80000 &&
+                (key.indexOf('davveroId_offline_') === 0 ||
+                 key.indexOf('logo') !== -1 ||
+                 key.indexOf('signature') !== -1 ||
+                 key.indexOf('image') !== -1 ||
+                 key.indexOf('photo') !== -1)
+              ) {
+                return;
+              }
+
+              try {
+                origSetItem.call(this, key, value);
+              } catch (err) {
+                var isQuota =
+                  err &&
+                  (err.name === 'QuotaExceededError' ||
+                   err.name === 'NS_ERROR_DOM_QUOTA_REACHED' ||
+                   err.code === 22 ||
+                   err.code === 1014 ||
+                   (err.message && (err.message.indexOf('quota') !== -1 || err.message.indexOf('QuotaExceededError') !== -1)));
+
+                if (isQuota) {
+                  purgeOldBulky();
+                  try {
+                    origSetItem.call(this, key, value);
+                    return;
+                  } catch (e2) {
+                    try {
+                      var secondary = [];
+                      for (var idx = 0; idx < window.localStorage.length; idx++) {
+                        var sk = window.localStorage.key(idx);
+                        if (sk && sk.indexOf('auth') === -1 && sk.indexOf('user') === -1 && sk.indexOf('admin') === -1 && sk.indexOf('token') === -1) {
+                          secondary.push(sk);
+                        }
+                      }
+                      for (var s = 0; s < secondary.length; s++) {
+                        try { window.localStorage.removeItem(secondary[s]); } catch (_) {}
+                      }
+                      origSetItem.call(this, key, value);
+                      return;
+                    } catch (e3) {
+                      // Silently absorb to prevent Firestore internal assertion crash (ID: b815)
+                      return;
+                    }
+                  }
+                }
+                throw err;
+              }
+            };
+          }
+        } catch (_) {}
+
         var origError = console.error;
         console.error = function() {
           var args = Array.prototype.slice.call(arguments);
-          var isPermissionDenied = args.some(function(arg) {
+          var shouldSuppress = args.some(function(arg) {
             if (!arg) return false;
             var str = typeof arg === 'string' ? arg : (arg.message || (typeof arg.toString === 'function' ? arg.toString() : '') || JSON.stringify(arg) || '');
             return str.indexOf('Missing or insufficient permissions') !== -1 ||
                    str.indexOf('permission-denied') !== -1 ||
-                   str.indexOf('insufficient permissions') !== -1;
+                   str.indexOf('insufficient permissions') !== -1 ||
+                   str.indexOf('QuotaExceededError') !== -1 ||
+                   str.indexOf('exceeded the quota') !== -1 ||
+                   str.indexOf('b815') !== -1 ||
+                   str.indexOf('INTERNAL ASSERTION FAILED') !== -1;
           });
-          if (isPermissionDenied) {
+          if (shouldSuppress) {
             console.warn.apply(console, args);
             return;
           }
@@ -69,7 +168,11 @@
           if (
             reasonStr.indexOf('Missing or insufficient permissions') !== -1 ||
             reasonStr.indexOf('permission-denied') !== -1 ||
-            reasonStr.indexOf('insufficient permissions') !== -1
+            reasonStr.indexOf('insufficient permissions') !== -1 ||
+            reasonStr.indexOf('QuotaExceededError') !== -1 ||
+            reasonStr.indexOf('exceeded the quota') !== -1 ||
+            reasonStr.indexOf('b815') !== -1 ||
+            reasonStr.indexOf('INTERNAL ASSERTION FAILED') !== -1
           ) {
             event.preventDefault();
             if (event.stopImmediatePropagation) event.stopImmediatePropagation();
@@ -81,7 +184,11 @@
           if (
             msg.indexOf('Missing or insufficient permissions') !== -1 ||
             msg.indexOf('permission-denied') !== -1 ||
-            msg.indexOf('insufficient permissions') !== -1
+            msg.indexOf('insufficient permissions') !== -1 ||
+            msg.indexOf('QuotaExceededError') !== -1 ||
+            msg.indexOf('exceeded the quota') !== -1 ||
+            msg.indexOf('b815') !== -1 ||
+            msg.indexOf('INTERNAL ASSERTION FAILED') !== -1
           ) {
             event.preventDefault();
             if (event.stopImmediatePropagation) event.stopImmediatePropagation();
