@@ -1,6 +1,6 @@
 import { useEffect, useState, useMemo } from 'react';
-import { collection, query, onSnapshot } from 'firebase/firestore';
-import { Search, Filter, ChevronLeft, ChevronRight, ArrowDownAZ, ArrowUpAZ, Calendar, RotateCcw, Building2, UserCheck, Layers, Award } from 'lucide-react';
+import { collection, query, onSnapshot, updateDoc, doc } from 'firebase/firestore';
+import { Search, Filter, ChevronLeft, ChevronRight, ArrowDownAZ, ArrowUpAZ, Calendar, RotateCcw, Building2, UserCheck, Layers, Award, Eye } from 'lucide-react';
 import { db, appId } from '../lib/firebase';
 import type { Member } from '../types';
 import { CUSTOM_ROLES_KEY, deduplicateList } from '../lib/constants';
@@ -52,7 +52,18 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
     const unsub = onSnapshot(q, (snapshot) => {
       const loaded = snapshot.docs
         .filter((d) => !d.id.startsWith('_') && Boolean(d.data()?.name))
-        .map((doc) => ({ id: doc.id, ...doc.data() }) as Member);
+        .map((docSnap) => {
+          const data = docSnap.data();
+          const rawName = (data.name || '').trim();
+          const upperName = rawName.toUpperCase();
+          
+          // Auto-migração transparente para garantir nomes sempre em MAIÚSCULO no Firestore
+          if (rawName && rawName !== upperName) {
+            updateDoc(docSnap.ref, { name: upperName }).catch(() => {});
+          }
+
+          return { id: docSnap.id, ...data, name: upperName } as Member;
+        });
       loaded.sort((a, b) => (a.name || '').localeCompare(b.name || ''));
       // Apenas exibe membros aprovados e não excluídos (pula docs de config)
       setMembers(loaded.filter(m => m.alphaCode && !m.deletedAt && m.isApproved !== false));
@@ -423,14 +434,21 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
                     </div>
                   )}
 
-                  <div className="flex items-center justify-between bg-white dark:bg-slate-800/60 p-2.5 sm:p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/80 transition-all border border-slate-200 dark:border-slate-700/50 shadow-xs">
+                  <div 
+                    onClick={() => {
+                      setEditingInitialTab('cadastral');
+                      setEditingMember(member);
+                    }}
+                    className="flex items-center justify-between bg-white dark:bg-slate-800/60 p-2.5 sm:p-3 rounded-xl hover:bg-slate-50 dark:hover:bg-slate-700/80 hover:border-sky-300 dark:hover:border-sky-500/40 transition-all border border-slate-200 dark:border-slate-700/50 shadow-xs cursor-pointer group"
+                    title="Clique para visualizar os detalhes deste membro"
+                  >
                     <div className={`flex items-center gap-3 overflow-hidden pr-2 w-full ${isInactive ? 'opacity-60' : ''}`}>
-                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex-shrink-0 border border-slate-300 dark:border-slate-600 overflow-hidden bg-slate-100 dark:bg-slate-700/50">
+                      <div className="w-8 h-8 sm:w-10 sm:h-10 rounded-full flex-shrink-0 border border-slate-300 dark:border-slate-600 overflow-hidden bg-slate-100 dark:bg-slate-700/50 group-hover:ring-2 group-hover:ring-sky-500/30 transition-all">
                         <img src={avatarUrl} className={`w-full h-full object-cover ${isInactive ? 'grayscale' : ''}`} alt="Avatar" />
                       </div>
                       <div className="overflow-hidden flex-grow">
                         <p className={`font-semibold text-sm sm:text-base flex items-center flex-wrap gap-2 ${isInactive ? "line-through text-slate-500" : "text-slate-800 dark:text-slate-200"}`}>
-                          <span className="break-words max-w-full uppercase font-bold">{(member.name || '').toUpperCase()}</span> 
+                          <span className="break-words max-w-full uppercase font-bold group-hover:text-sky-600 dark:group-hover:text-sky-400 transition-colors">{(member.name || '').toUpperCase()}</span> 
                           {member.ra && <span className="bg-slate-100 dark:bg-slate-700/50 text-slate-500 dark:text-slate-300 border border-slate-300 dark:border-slate-600 px-1.5 py-0.5 rounded text-[9px] font-normal whitespace-nowrap">RA: {member.ra}</span>}
                           {member.registrationType === 'quick' && (
                             <span className="bg-emerald-50 dark:bg-emerald-950/40 text-emerald-700 dark:text-emerald-300 border border-emerald-200 dark:border-emerald-800 px-1.5 py-0.5 rounded text-[9px] font-bold">
@@ -451,30 +469,46 @@ export default function MemberList({ initialFilterStatus = 'all', adminAccessLev
                         </p>
                       </div>
                     </div>
-                    {adminAccessLevel !== "LEITOR" && (
-                      <div className="flex items-center gap-1.5 flex-shrink-0 no-print">
-                        <button
-                          onClick={() => {
-                            setEditingInitialTab('certificates');
-                            setEditingMember(member);
-                          }}
-                          className="py-1.5 sm:py-2 px-2 sm:px-2.5 rounded-lg text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 hover:bg-amber-500 hover:text-white dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 transition-all cursor-pointer flex items-center gap-1"
-                          title="Ver e Baixar Certificados do Aluno (um por um ou em ZIP)"
-                        >
-                          <Award className="w-3.5 h-3.5" />
-                          <span className="hidden md:inline">Certificados</span>
-                        </button>
-                        <button
-                          onClick={() => {
-                            setEditingInitialTab('cadastral');
-                            setEditingMember(member);
-                          }}
-                          className="py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg text-xs font-bold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-600/20 hover:bg-sky-500 hover:text-white border border-sky-300 dark:border-sky-500/30 transition-all cursor-pointer"
-                        >
-                          Gerir
-                        </button>
-                      </div>
-                    )}
+
+                    <div className="flex items-center gap-1.5 flex-shrink-0 no-print" onClick={(e) => e.stopPropagation()}>
+                      <button
+                        onClick={() => {
+                          setEditingInitialTab('cadastral');
+                          setEditingMember(member);
+                        }}
+                        className="py-1.5 sm:py-2 px-2 sm:px-2.5 rounded-lg text-xs font-bold text-slate-700 dark:text-slate-200 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700/60 dark:hover:bg-slate-700 border border-slate-200 dark:border-slate-600 transition-all cursor-pointer flex items-center gap-1"
+                        title="Visualizar Detalhes e Documentos do Membro"
+                      >
+                        <Eye className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                        <span>Visualizar</span>
+                      </button>
+
+                      {adminAccessLevel !== "LEITOR" && (
+                        <>
+                          <button
+                            onClick={() => {
+                              setEditingInitialTab('certificates');
+                              setEditingMember(member);
+                            }}
+                            className="py-1.5 sm:py-2 px-2 sm:px-2.5 rounded-lg text-xs font-bold text-amber-700 dark:text-amber-300 bg-amber-50 hover:bg-amber-500 hover:text-white dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800/60 transition-all cursor-pointer flex items-center gap-1"
+                            title="Ver e Baixar Certificados do Aluno (um por um ou em ZIP)"
+                          >
+                            <Award className="w-3.5 h-3.5" />
+                            <span className="hidden md:inline">Certificados</span>
+                          </button>
+                          <button
+                            onClick={() => {
+                              setEditingInitialTab('cadastral');
+                              setEditingMember(member);
+                            }}
+                            className="py-1.5 sm:py-2 px-2 sm:px-3 rounded-lg text-xs font-bold text-sky-700 dark:text-sky-300 bg-sky-100 dark:bg-sky-600/20 hover:bg-sky-500 hover:text-white border border-sky-300 dark:border-sky-500/30 transition-all cursor-pointer"
+                            title="Gerir e Editar Membro"
+                          >
+                            Gerir
+                          </button>
+                        </>
+                      )}
+                    </div>
                   </div>
                 </div>
               );

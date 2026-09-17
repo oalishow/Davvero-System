@@ -1,4 +1,5 @@
 import React, { useState, useEffect, useRef, useMemo, useCallback } from "react";
+import { createPortal } from "react-dom";
 import { collection, query, getDocs, where, doc, getDoc, updateDoc, deleteDoc, arrayUnion, arrayRemove } from "firebase/firestore";
 import {
   Award,
@@ -37,6 +38,7 @@ import {
   type CertificateRecord,
 } from "../lib/certificateAuth";
 import type { Member, Event, Attendance, CertificateTemplate } from "../types";
+import DownloadSuccessModal from "./student/DownloadSuccessModal";
 
 // Componente para carregar e hidratar templates e assinaturas do Firestore
 const AsyncAdminCertificateRenderer = React.memo(
@@ -233,6 +235,16 @@ export default function StudentCertificatesManager({
     null
   );
   const [copiedCodeKey, setCopiedCodeKey] = useState<string | null>(null);
+
+  // Estado de notificação e redirecionamento de download concluído
+  const [downloadSuccessInfo, setDownloadSuccessInfo] = useState<{
+    isOpen: boolean;
+    fileName: string;
+    pdfBlob?: Blob | null;
+    eventTitle?: string;
+    studentName?: string;
+    certCode?: string;
+  } | null>(null);
 
   // Estado de remoção/revogação de certificados pelo Administrador
   const [certToDelete, setCertToDelete] = useState<StudentCertificateItem | null>(null);
@@ -794,25 +806,61 @@ export default function StudentCertificatesManager({
         if (!fileUrl) throw new Error("Link do certificado não disponível.");
 
         const cleanTitle = sanitizeFilename(cert.title);
+        let blob: Blob | null = null;
+
         if (fileUrl.startsWith("data:")) {
-          const a = document.createElement("a");
-          a.href = fileUrl;
-          a.download = `${cleanTitle}.pdf`;
-          a.click();
+          const parts = fileUrl.split(";base64,");
+          const contentType = parts[0].replace("data:", "");
+          const raw = window.atob(parts[1]);
+          const uInt8Array = new Uint8Array(raw.length);
+          for (let i = 0; i < raw.length; ++i) {
+            uInt8Array[i] = raw.charCodeAt(i);
+          }
+          blob = new Blob([uInt8Array], { type: contentType });
         } else {
-          // Busca o blob ou abre link direto
           try {
             const resp = await fetch(fileUrl);
-            const blob = await resp.blob();
-            const url = URL.createObjectURL(blob);
-            const a = document.createElement("a");
-            a.href = url;
-            a.download = `${cleanTitle}.pdf`;
-            a.click();
-            setTimeout(() => URL.revokeObjectURL(url), 10000);
+            blob = await resp.blob();
           } catch {
-            window.open(fileUrl, "_blank");
+            // fallback
           }
+        }
+
+        const ext = blob?.type?.includes("pdf") ? ".pdf" : blob?.type?.includes("png") ? ".png" : ".jpg";
+        const downloadFileName = cleanTitle.toLowerCase().endsWith(ext) ? cleanTitle : `${cleanTitle}${ext}`;
+
+        if (blob) {
+          const url = URL.createObjectURL(blob);
+          const a = document.createElement("a");
+          a.href = url;
+          a.download = downloadFileName;
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+
+          // Tentar abrir diretamente em nova aba para redirecionar ao arquivo
+          try {
+            window.open(url, "_blank");
+          } catch (_) {}
+
+          setDownloadSuccessInfo({
+            isOpen: true,
+            fileName: downloadFileName,
+            pdfBlob: blob,
+            eventTitle: cert.title,
+            studentName: (member.name || '').toUpperCase(),
+          });
+        } else {
+          const a = document.createElement("a");
+          a.href = fileUrl;
+          a.download = downloadFileName;
+          a.target = "_blank";
+          document.body.appendChild(a);
+          a.click();
+          document.body.removeChild(a);
+          try {
+            window.open(fileUrl, "_blank");
+          } catch (_) {}
         }
         return;
       }
@@ -823,11 +871,31 @@ export default function StudentCertificatesManager({
       const pdf = await generatePdfFromCanvas(canvas);
 
       const typeStr = cert.type === "organizer" ? "Organizacao" : "Participacao";
-      const studentStr = sanitizeFilename(member.name || "Aluno");
+      const studentStr = sanitizeFilename((member.name || "Aluno").toUpperCase());
       const eventStr = sanitizeFilename(cert.title || "Evento");
       const fileName = `Certificado_${typeStr}_${studentStr}_${eventStr}.pdf`;
 
       pdf.save(fileName);
+
+      // Gerar blob para redirecionar/abrir imediatamente e exibir o modal de sucesso
+      try {
+        const pdfBlob = pdf.output("blob");
+        const blobUrl = URL.createObjectURL(pdfBlob);
+        try {
+          window.open(blobUrl, "_blank");
+        } catch (_) {}
+
+        setDownloadSuccessInfo({
+          isOpen: true,
+          fileName,
+          pdfBlob,
+          eventTitle: cert.title,
+          studentName: (member.name || '').toUpperCase(),
+          certCode: cert.certCode || member.alphaCode,
+        });
+      } catch (blobErr) {
+        console.warn("Notice in PDF blob generation:", blobErr);
+      }
     } catch (err: any) {
       console.error("Erro ao descarregar certificado:", err);
       alert(`Falha ao gerar o certificado: ${err?.message || "Tente novamente."}`);
@@ -951,7 +1019,19 @@ export default function StudentCertificatesManager({
       a.click();
       document.body.removeChild(a);
 
-      setTimeout(() => URL.revokeObjectURL(downloadUrl), 15000);
+      try {
+        window.open(downloadUrl, "_blank");
+      } catch (_) {}
+
+      setDownloadSuccessInfo({
+        isOpen: true,
+        fileName: zipFileName,
+        pdfBlob: zipBlob,
+        eventTitle: `Pacote ZIP com ${allCertificates.length} Certificados`,
+        studentName: (member.name || '').toUpperCase(),
+      });
+
+      setTimeout(() => URL.revokeObjectURL(downloadUrl), 30000);
     } catch (err: any) {
       console.error("Erro ao gerar arquivo ZIP de certificados:", err);
       alert(
@@ -1295,16 +1375,14 @@ export default function StudentCertificatesManager({
 
                 {/* Ações do Certificado */}
                 <div className="flex items-center gap-2 w-full sm:w-auto shrink-0 pt-2 sm:pt-0 border-t sm:border-t-0 border-slate-100 dark:border-slate-700/60">
-                  {cert.event && (
-                    <button
-                      onClick={() => setPreviewCert(cert)}
-                      className="btn-modern flex-1 sm:flex-none py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
-                      title="Visualizar documento"
-                    >
-                      <Eye className="w-3.5 h-3.5" />
-                      <span>Visualizar</span>
-                    </button>
-                  )}
+                  <button
+                    onClick={() => setPreviewCert(cert)}
+                    className="btn-modern flex-1 sm:flex-none py-2 px-3 bg-slate-100 hover:bg-slate-200 dark:bg-slate-700 dark:hover:bg-slate-600 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold transition-all flex items-center justify-center gap-1.5 cursor-pointer"
+                    title="Visualizar documento"
+                  >
+                    <Eye className="w-3.5 h-3.5 text-sky-600 dark:text-sky-400" />
+                    <span>Visualizar</span>
+                  </button>
 
                   <button
                     onClick={() => handleDownloadSingle(cert)}
@@ -1521,13 +1599,38 @@ export default function StudentCertificatesManager({
       {/* ------------------------------------------------------------- */}
       {/* MODAL DE PRÉ-VISUALIZAÇÃO COMPLETA DO CERTIFICADO */}
       {/* ------------------------------------------------------------- */}
-      {previewCert && previewCert.event && (
+      {previewCert && (
         <CertificateAdminPreviewModal
           cert={previewCert}
           member={member}
           onClose={() => setPreviewCert(null)}
           onDownload={() => handleDownloadSingle(previewCert)}
           isDownloading={downloadingKey === previewCert.key}
+        />
+      )}
+
+      {/* MODAL DE NOTIFICAÇÃO E REDIRECIONAMENTO DE DOWNLOAD */}
+      {downloadSuccessInfo?.isOpen && (
+        <DownloadSuccessModal
+          isOpen={downloadSuccessInfo.isOpen}
+          onClose={() => setDownloadSuccessInfo(null)}
+          fileName={downloadSuccessInfo.fileName}
+          pdfBlob={downloadSuccessInfo.pdfBlob}
+          eventTitle={downloadSuccessInfo.eventTitle}
+          studentName={downloadSuccessInfo.studentName}
+          certCode={downloadSuccessInfo.certCode}
+          onReDownload={() => {
+            if (downloadSuccessInfo.pdfBlob) {
+              const url = URL.createObjectURL(downloadSuccessInfo.pdfBlob);
+              const a = document.createElement("a");
+              a.href = url;
+              a.download = downloadSuccessInfo.fileName;
+              document.body.appendChild(a);
+              a.click();
+              document.body.removeChild(a);
+              setTimeout(() => URL.revokeObjectURL(url), 10000);
+            }
+          }}
         />
       )}
     </div>
@@ -1592,8 +1695,8 @@ function CertificateAdminPreviewModal({
     return Math.min(1.3, Math.max(0.55, fitScale * 2.2 * zoomLevel));
   }, [mode, fitScale, rotateScale, zoomLevel]);
 
-  return (
-    <div className="fixed inset-0 z-[150] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
+  return createPortal(
+    <div className="fixed inset-0 z-[200] flex items-center justify-center p-2 sm:p-4 bg-slate-950/85 backdrop-blur-md overflow-y-auto">
       <div className="bg-white dark:bg-slate-900 rounded-3xl max-w-5xl w-full p-4 sm:p-6 shadow-2xl border border-slate-200 dark:border-slate-800 flex flex-col my-auto max-h-[96vh]">
         {/* Header */}
         <div className="flex items-center justify-between w-full mb-3 pb-3 border-b border-slate-100 dark:border-slate-800">
@@ -1603,11 +1706,10 @@ function CertificateAdminPreviewModal({
             </div>
             <div>
               <h3 className="text-sm sm:text-base font-bold text-slate-800 dark:text-white leading-tight">
-                Prévia do Certificado (
-                {cert.type === "organizer" ? "Organização" : "Participação"})
+                Prévia do Certificado ({cert.type === "organizer" ? "Organização" : cert.type === "external" ? "Anexo Externo" : "Participação"})
               </h3>
               <p className="text-[11px] text-slate-500 dark:text-slate-400 truncate max-w-[260px] sm:max-w-md">
-                {cert.title} • {member.name}
+                {cert.title} • {(member.name || '').toUpperCase()}
               </p>
             </div>
           </div>
@@ -1620,81 +1722,83 @@ function CertificateAdminPreviewModal({
           </button>
         </div>
 
-        {/* Barra de Ferramentas de Visualização */}
-        <div className="flex flex-wrap items-center justify-between gap-2 mb-3 bg-slate-50 dark:bg-slate-950/60 p-2 rounded-2xl border border-slate-200/80 dark:border-slate-800">
-          <div className="flex items-center gap-1">
-            <button
-              onClick={() => {
-                setMode("fit");
-                setZoomLevel(1);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                mode === "fit"
-                  ? "bg-sky-600 text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800"
-              }`}
-            >
-              <Maximize2 className="w-3.5 h-3.5" />
-              Ajustar à Tela
-            </button>
-
-            <button
-              onClick={() => {
-                setMode("rotate");
-                setZoomLevel(1);
-              }}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                mode === "rotate"
-                  ? "bg-sky-600 text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800"
-              }`}
-            >
-              <RotateCw className="w-3.5 h-3.5" />
-              Girar Vertical
-            </button>
-
-            <button
-              onClick={() => setMode("zoom")}
-              className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
-                mode === "zoom"
-                  ? "bg-sky-600 text-white shadow-xs"
-                  : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800"
-              }`}
-            >
-              <ZoomIn className="w-3.5 h-3.5" />
-              Zoom
-            </button>
-          </div>
-
-          {mode === "zoom" && (
+        {/* Barra de Ferramentas de Visualização (somente quando evento renderizável) */}
+        {cert.event && (
+          <div className="flex flex-wrap items-center justify-between gap-2 mb-3 bg-slate-50 dark:bg-slate-950/60 p-2 rounded-2xl border border-slate-200/80 dark:border-slate-800">
             <div className="flex items-center gap-1">
               <button
-                onClick={() => setZoomLevel((z) => Math.max(0.6, z - 0.2))}
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                title="Diminuir Zoom"
+                onClick={() => {
+                  setMode("fit");
+                  setZoomLevel(1);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  mode === "fit"
+                    ? "bg-sky-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800"
+                }`}
               >
-                <ZoomOut className="w-3.5 h-3.5" />
+                <Maximize2 className="w-3.5 h-3.5" />
+                Ajustar à Tela
               </button>
-              <span className="text-[11px] font-mono px-1 text-slate-500">
-                {Math.round(zoomLevel * 100)}%
-              </span>
+
               <button
-                onClick={() => setZoomLevel((z) => Math.min(2.5, z + 0.2))}
-                className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
-                title="Aumentar Zoom"
+                onClick={() => {
+                  setMode("rotate");
+                  setZoomLevel(1);
+                }}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  mode === "rotate"
+                    ? "bg-sky-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800"
+                }`}
+              >
+                <RotateCw className="w-3.5 h-3.5" />
+                Girar Vertical
+              </button>
+
+              <button
+                onClick={() => setMode("zoom")}
+                className={`px-3 py-1.5 rounded-xl text-xs font-bold transition-all flex items-center gap-1.5 cursor-pointer ${
+                  mode === "zoom"
+                    ? "bg-sky-600 text-white shadow-xs"
+                    : "text-slate-600 dark:text-slate-300 hover:bg-slate-200/60 dark:hover:bg-slate-800"
+                }`}
               >
                 <ZoomIn className="w-3.5 h-3.5" />
+                Zoom
               </button>
             </div>
-          )}
-        </div>
+
+            {mode === "zoom" && (
+              <div className="flex items-center gap-1">
+                <button
+                  onClick={() => setZoomLevel((z) => Math.max(0.6, z - 0.2))}
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                  title="Diminuir Zoom"
+                >
+                  <ZoomOut className="w-3.5 h-3.5" />
+                </button>
+                <span className="text-[11px] font-mono px-1 text-slate-500">
+                  {Math.round(zoomLevel * 100)}%
+                </span>
+                <button
+                  onClick={() => setZoomLevel((z) => Math.min(2.5, z + 0.2))}
+                  className="p-1.5 rounded-lg border border-slate-200 dark:border-slate-700 hover:bg-slate-100 dark:hover:bg-slate-800 text-slate-600 dark:text-slate-300 cursor-pointer"
+                  title="Aumentar Zoom"
+                >
+                  <ZoomIn className="w-3.5 h-3.5" />
+                </button>
+              </div>
+            )}
+          </div>
+        )}
 
         {/* Viewport do Certificado */}
         <div
           ref={containerRef}
           className="flex-1 w-full bg-slate-100 dark:bg-slate-950/80 rounded-2xl p-2 sm:p-4 overflow-auto flex items-center justify-center min-h-[300px] sm:min-h-[420px] max-h-[65vh] border border-slate-200/60 dark:border-slate-800"
         >
-          {cert.event && (
+          {cert.event ? (
             <div
               style={{
                 width: mode === "rotate" ? `${CERT_H * activeScale}px` : `${CERT_W * activeScale}px`,
@@ -1721,25 +1825,47 @@ function CertificateAdminPreviewModal({
                 />
               </div>
             </div>
-          )}
+          ) : cert.externalCert?.fileUrl ? (
+            <div className="w-full h-full flex flex-col items-center justify-center p-4">
+              {cert.externalCert.fileUrl.startsWith("data:image/") || cert.externalCert.fileUrl.match(/\.(jpg|jpeg|png|webp)/i) ? (
+                <img 
+                  src={cert.externalCert.fileUrl} 
+                  alt={cert.title} 
+                  className="max-h-[55vh] max-w-full object-contain rounded-lg shadow-lg" 
+                />
+              ) : (
+                <div className="text-center p-6 bg-white dark:bg-slate-900 rounded-2xl border border-slate-200 dark:border-slate-800 shadow-md">
+                  <FileText className="w-16 h-16 text-sky-500 mx-auto mb-3" />
+                  <p className="font-bold text-slate-800 dark:text-white mb-2">{cert.title}</p>
+                  <p className="text-xs text-slate-500 dark:text-slate-400 mb-4">Documento anexo externo</p>
+                  <button
+                    onClick={onDownload}
+                    className="px-4 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold transition-all inline-flex items-center gap-2 cursor-pointer shadow-md"
+                  >
+                    <Download className="w-4 h-4" /> Baixar e Abrir Arquivo
+                  </button>
+                </div>
+              )}
+            </div>
+          ) : null}
         </div>
 
         {/* Rodapé da Prévia */}
         <div className="flex items-center justify-between mt-3 pt-3 border-t border-slate-100 dark:border-slate-800">
           <div className="text-[11px] font-mono text-slate-500 dark:text-slate-400">
-            Código: {cert.certCode}
+            {cert.certCode ? `Código: ${cert.certCode}` : "Certificado Digital"}
           </div>
           <div className="flex gap-2">
             <button
               onClick={onClose}
-              className="btn-modern px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold"
+              className="btn-modern px-4 py-2 bg-slate-100 hover:bg-slate-200 dark:bg-slate-800 dark:hover:bg-slate-700 text-slate-700 dark:text-slate-200 rounded-xl text-xs font-bold cursor-pointer"
             >
               Fechar
             </button>
             <button
               onClick={onDownload}
               disabled={isDownloading}
-              className="btn-modern px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold shadow-md shadow-sky-600/30 flex items-center gap-1.5"
+              className="btn-modern px-5 py-2 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-xs font-bold shadow-md shadow-sky-600/30 flex items-center gap-1.5 cursor-pointer"
             >
               {isDownloading ? (
                 <>
@@ -1749,13 +1875,14 @@ function CertificateAdminPreviewModal({
               ) : (
                 <>
                   <Download className="w-3.5 h-3.5" />
-                  <span>Baixar este Certificado (PDF)</span>
+                  <span>Baixar Arquivo</span>
                 </>
               )}
             </button>
           </div>
         </div>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
