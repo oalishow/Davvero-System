@@ -79,6 +79,9 @@ export default function CreateDioceseEventModal({
   const [price, setPrice] = useState(eventToEdit?.price ? String(eventToEdit.price) : "");
   const [hotmartLink, setHotmartLink] = useState(eventToEdit?.hotmartLink || "");
   const [googleFormsLink, setGoogleFormsLink] = useState(eventToEdit?.googleFormsLink || "");
+  const [statusChoice, setStatusChoice] = useState<"aberto" | "encerrado">(
+    eventToEdit?.status === "encerrado" ? "encerrado" : "aberto"
+  );
 
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -171,6 +174,12 @@ export default function CreateDioceseEventModal({
         return isNaN(num) || num < 0 ? undefined : num;
       };
 
+      const isPast = Boolean(
+        (endDate && new Date(endDate).getTime() < Date.now()) ||
+        (startDate && new Date(startDate).getTime() < Date.now())
+      );
+      const targetStatus = statusChoice || (eventToEdit?.status ? eventToEdit.status : (isPast ? "encerrado" : "aberto"));
+
       const payload: Omit<Event, "id"> = {
         title: title.trim(),
         startDate,
@@ -184,7 +193,7 @@ export default function CreateDioceseEventModal({
         maxParticipants: parseNumeric(maxParticipants) ?? 0,
         speaker: speaker.trim() || undefined,
         registrationDeadline: registrationDeadline || undefined,
-        status: eventToEdit?.status || "aberto",
+        status: targetStatus,
         isDiocese: true,
         dioceseId: selectedDiocese.trim().toUpperCase(),
         isPublic: Boolean(isPublic),
@@ -199,6 +208,14 @@ export default function CreateDioceseEventModal({
         creatorRa: eventToEdit?.creatorRa || member?.ra || "",
       };
 
+      if (targetStatus === "encerrado") {
+        (payload as any).isCertificateReleased = true;
+        (payload as any).certificateReleasedAt = new Date().toISOString();
+        (payload as any).closedAt = new Date().toISOString();
+      } else if (isPast) {
+        (payload as any).manuallyReopened = true;
+      }
+
       let resultId = "";
       if (eventToEdit) {
         await updateEvent(eventToEdit.id, payload);
@@ -206,13 +223,15 @@ export default function CreateDioceseEventModal({
       } else {
         resultId = await createEvent(payload);
 
-        // Trigger notification asynchronously (non-blocking)
-        createNotification({
-          recipientId: "todos",
-          title: `Novo Evento: Diocese de ${selectedDiocese}`,
-          message: `${title} foi publicado na aba Dioceses${isPublic ? " e no catálogo público" : ""}. Participe e confira os detalhes!`,
-          type: "evento"
-        }).catch(console.error);
+        // Trigger notification asynchronously (non-blocking) only if open
+        if (targetStatus === "aberto") {
+          createNotification({
+            recipientId: "todos",
+            title: `Novo Evento: Diocese de ${selectedDiocese}`,
+            message: `${title} foi publicado na aba Dioceses${isPublic ? " e no catálogo público" : ""}. Participe e confira os detalhes!`,
+            type: "evento"
+          }).catch(console.error);
+        }
       }
 
       onSuccess(resultId);
@@ -406,6 +425,41 @@ export default function CreateDioceseEventModal({
               </div>
             </div>
           </div>
+
+          {Boolean((startDate && new Date(startDate).getTime() < Date.now()) || (endDate && new Date(endDate).getTime() < Date.now())) && (
+            <div className="p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="font-semibold text-amber-900 dark:text-amber-200">
+                  Data passada detectada (Evento Retroativo). Definir status inicial:
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setStatusChoice("encerrado")}
+                  className={`px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] transition-all cursor-pointer ${
+                    statusChoice === "encerrado"
+                      ? "bg-amber-600 text-white shadow-sm"
+                      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                  }`}
+                >
+                  Encerrado (Histórico / Certificados)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusChoice("aberto")}
+                  className={`px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] transition-all cursor-pointer ${
+                    statusChoice === "aberto"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                  }`}
+                >
+                  Aberto (Inscrições Ativas)
+                </button>
+              </div>
+            </div>
+          )}
 
           {/* Format */}
           <div className="space-y-3">

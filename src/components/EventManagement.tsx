@@ -123,6 +123,7 @@ export default function EventManagement({
   const [presenceCustomOpenTime, setPresenceCustomOpenTime] = useState("");
   const [presenceCloseMode, setPresenceCloseMode] = useState<"24h_after" | "1h_after" | "custom" | "manual">("24h_after");
   const [presenceCustomCloseTime, setPresenceCustomCloseTime] = useState("");
+  const [statusChoice, setStatusChoice] = useState<"aberto" | "encerrado">("aberto");
   const [cropImageSrc, setCropImageSrc] = useState<string | null>(null);
   const [selectedQrEvent, setSelectedQrEvent] = useState<Event | null>(null);
   const [closingEventModal, setClosingEventModal] = useState<{
@@ -285,6 +286,7 @@ export default function EventManagement({
       setPresenceCloseMode("24h_after");
       setPresenceCustomCloseTime("");
     }
+    setStatusChoice(event.status === "encerrado" ? "encerrado" : "aberto");
     window.scrollTo({ top: 0, behavior: "smooth" });
   };
 
@@ -322,6 +324,7 @@ export default function EventManagement({
     setPresenceCustomOpenTime("");
     setPresenceCloseMode("24h_after");
     setPresenceCustomCloseTime("");
+    setStatusChoice("aberto");
   };
 
   const handleSaveEvent = async () => {
@@ -343,6 +346,12 @@ export default function EventManagement({
     });
 
     try {
+      const isPast = Boolean(
+        (endDate && new Date(endDate).getTime() < Date.now()) ||
+        (startDate && new Date(startDate).getTime() < Date.now())
+      );
+      const targetStatus = statusChoice || (isPast ? "encerrado" : "aberto");
+
       const payload: any = {
         title,
         startDate,
@@ -369,6 +378,7 @@ export default function EventManagement({
         autoSendCertificatesOnClose: Boolean(autoSendCertificatesOnClose),
         autoReleaseCertificatesOnEnd: Boolean(autoReleaseCertificatesOnEnd),
         certificateReleaseMode: allowAllRegisteredCertificates ? "all_registered" : "attended_only",
+        status: targetStatus,
         presenceConfig: {
           enabled: presenceConfigEnabled,
           openMode: presenceOpenMode,
@@ -377,6 +387,14 @@ export default function EventManagement({
           customCloseTime: presenceCustomCloseTime || null,
         }
       };
+
+      if (targetStatus === "encerrado") {
+        payload.isCertificateReleased = true;
+        payload.certificateReleasedAt = new Date().toISOString();
+        payload.closedAt = new Date().toISOString();
+      } else if (isPast) {
+        payload.manuallyReopened = true;
+      }
 
       if (!editingEventId) {
         payload.createdBy = member?.id || member?.ra || member?.email || "admin";
@@ -395,19 +413,23 @@ export default function EventManagement({
           type: "success",
         });
       } else {
-        const newEventId = await createEvent({ ...payload, status: "aberto" });
+        const newEventId = await createEvent(payload);
         
-        // Notify all users about the new event
-        await createNotification({
-          recipientId: "todos",
-          title: "Novo Evento Disponível",
-          message: `Um novo evento foi criado: ${title}. Confira as inscrições!`,
-          type: "evento"
-        }).catch(console.error);
+        // Notify all users about the new event only if it is open
+        if (targetStatus === "aberto") {
+          await createNotification({
+            recipientId: "todos",
+            title: "Novo Evento Disponível",
+            message: `Um novo evento foi criado: ${title}. Confira as inscrições!`,
+            type: "evento"
+          }).catch(console.error);
+        }
 
         setFeedbackModal({ 
-          title: "Evento Criado!",
-          msg: "Seu evento foi criado com sucesso e já está disponível para inscrições.", 
+          title: targetStatus === "encerrado" ? "Evento Retroativo Cadastrado!" : "Evento Criado!",
+          msg: targetStatus === "encerrado"
+            ? "O evento já ocorrido foi registrado no histórico com certificados liberados para os participantes."
+            : "Seu evento foi criado com sucesso e já está disponível para inscrições.", 
           type: "success" 
         });
       }
@@ -583,6 +605,40 @@ export default function EventManagement({
               className="w-full bg-slate-50 dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-xl px-3 sm:px-4 py-2 sm:py-2.5 text-sm outline-none focus:border-sky-500 dark:focus:border-sky-500 text-slate-700 dark:text-slate-200"
             />
           </div>
+          {Boolean((startDate && new Date(startDate).getTime() < Date.now()) || (endDate && new Date(endDate).getTime() < Date.now())) && (
+            <div className="md:col-span-2 p-3.5 bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800/50 rounded-xl flex flex-col sm:flex-row sm:items-center justify-between gap-3 text-xs">
+              <div className="flex items-center gap-2">
+                <Clock className="w-4 h-4 text-amber-600 dark:text-amber-400 shrink-0" />
+                <span className="font-semibold text-amber-900 dark:text-amber-200">
+                  Data passada detectada (Evento Retroativo). Definir status inicial:
+                </span>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  onClick={() => setStatusChoice("encerrado")}
+                  className={`px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] transition-all cursor-pointer ${
+                    statusChoice === "encerrado"
+                      ? "bg-amber-600 text-white shadow-sm"
+                      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                  }`}
+                >
+                  Encerrado (Histórico / Certificados)
+                </button>
+                <button
+                  type="button"
+                  onClick={() => setStatusChoice("aberto")}
+                  className={`px-3 py-1.5 rounded-lg font-bold uppercase text-[11px] transition-all cursor-pointer ${
+                    statusChoice === "aberto"
+                      ? "bg-emerald-600 text-white shadow-sm"
+                      : "bg-white dark:bg-slate-800 text-slate-600 dark:text-slate-300 border border-slate-200 dark:border-slate-700"
+                  }`}
+                >
+                  Aberto (Inscrições Ativas)
+                </button>
+              </div>
+            </div>
+          )}
           <div className="space-y-1">
             <label className="text-xs font-bold text-slate-500 uppercase tracking-widest pl-1">
               Formato <span className="text-red-500">*</span>

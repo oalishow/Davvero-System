@@ -27,6 +27,7 @@ import {
   Trash2,
   PauseCircle,
   PlayCircle,
+  RefreshCw,
 } from "lucide-react";
 import {
   collection,
@@ -111,6 +112,8 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     }
     return [];
   });
+  const [isLoadingEvents, setIsLoadingEvents] = useState<boolean>(true);
+  const [isRefreshingEvents, setIsRefreshingEvents] = useState<boolean>(false);
   const [eventTypeTab, setEventTypeTab] = useState<"general" | "seminary" | "diocese" | "appointments">(renderSeminary ? "seminary" : "general");
   const [subTab, setSubTab] = useState<"upcoming" | "past">("upcoming");
   const [myAttendances, setMyAttendances] = useState<Attendance[]>([]);
@@ -206,55 +209,100 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
     };
   }, []);
 
-  useEffect(() => {
-    const qEvents = query(collection(db, `artifacts/${appId}/public/data/events`));
-    const unsubEvents = onSnapshot(qEvents, (snap) => {
-      let evts = snap.docs.map((d) => {
-        const e = d.data() as Event;
-        const now = Date.now();
-        const endTime = getEventEndTime(e);
-        const hasPassedEnd = endTime > 0 && now >= endTime;
-        if (e.status === "aberto" && hasPassedEnd) {
-           return { ...e, status: "encerrado" as any, isCertificateReleased: true };
-        }
-        return e;
-      });
-      evts = evts.filter(e => e.status !== "deleted");
-      const now = new Date().getTime();
-      evts.sort((a, b) => {
-        // Compute states
-        const timeA = new Date(a.startDate).getTime();
-        const endA = a.endDate ? new Date(a.endDate).getTime() : timeA + (2 * 60 * 60 * 1000); 
-        const timeB = new Date(b.startDate).getTime();
-        const endB = b.endDate ? new Date(b.endDate).getTime() : timeB + (2 * 60 * 60 * 1000);
-        
-        const isAInProgress = timeA <= now && endA >= now;
-        const isBInProgress = timeB <= now && endB >= now;
-        
-        // 1. Pinned Events at very top
-        if (a.isPinned && !b.isPinned) return -1;
-        if (!a.isPinned && b.isPinned) return 1;
+  const processEventsList = (rawEvents: Event[]) => {
+    let evts = rawEvents.map((e) => {
+      const now = Date.now();
+      const endTime = getEventEndTime(e);
+      const hasPassedEnd = endTime > 0 && now >= endTime;
+      if (e.status === "aberto" && hasPassedEnd && !e.manuallyReopened) {
+         return { ...e, status: "encerrado" as any, isCertificateReleased: true };
+      }
+      return e;
+    });
+    evts = evts.filter((e) => e.status !== "deleted");
+    const now = new Date().getTime();
+    evts.sort((a, b) => {
+      const timeA = new Date(a.startDate).getTime();
+      const endA = a.endDate ? new Date(a.endDate).getTime() : timeA + (2 * 60 * 60 * 1000); 
+      const timeB = new Date(b.startDate).getTime();
+      const endB = b.endDate ? new Date(b.endDate).getTime() : timeB + (2 * 60 * 60 * 1000);
+      
+      const isAInProgress = timeA <= now && endA >= now;
+      const isBInProgress = timeB <= now && endB >= now;
+      
+      // 1. Pinned Events at very top
+      if (a.isPinned && !b.isPinned) return -1;
+      if (!a.isPinned && b.isPinned) return 1;
 
-        // 2. In progress events
-        if (isAInProgress && !isBInProgress) return -1;
-        if (!isAInProgress && isBInProgress) return 1;
-        
-        // 3. Chronological sorting
-        const aIsFuture = timeA >= now;
-        const bIsFuture = timeB >= now;
-        if (aIsFuture && bIsFuture) return timeA - timeB;
-        if (!aIsFuture && !bIsFuture) return timeB - timeA;
-        return aIsFuture ? -1 : 1;
-      });
-      setEvents(evts);
+      // 2. In progress events
+      if (isAInProgress && !isBInProgress) return -1;
+      if (!isAInProgress && isBInProgress) return 1;
+      
+      // 3. Chronological sorting
+      const aIsFuture = timeA >= now;
+      const bIsFuture = timeB >= now;
+      if (aIsFuture && bIsFuture) return timeA - timeB;
+      if (!aIsFuture && !bIsFuture) return timeB - timeA;
+      return aIsFuture ? -1 : 1;
+    });
+    return evts;
+  };
+
+  const refreshEvents = async () => {
+    setIsRefreshingEvents(true);
+    try {
+      const { collection, getDocs, query } = await import("firebase/firestore");
+      const qEvents = query(collection(db, `artifacts/${appId}/public/data/events`));
+      const snap = await getDocs(qEvents);
+      const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Event));
+      const sorted = processEventsList(raw);
+      setEvents(sorted);
       try {
-        localStorage.setItem("fajopa_cached_events", JSON.stringify(evts.slice(0, 50)));
+        localStorage.setItem("fajopa_cached_events", JSON.stringify(sorted.slice(0, 50)));
+      } catch {}
+    } catch (err) {
+      console.warn("Manual refresh events notice:", err);
+    } finally {
+      setIsRefreshingEvents(false);
+      setIsLoadingEvents(false);
+    }
+  };
+
+  useEffect(() => {
+    let isMounted = true;
+    const qEvents = query(collection(db, `artifacts/${appId}/public/data/events`));
+
+    // Fallback: se onSnapshot demorar mais de 2.5s (ex: Samsung Browser ou alternância de abas), força leitura direta
+    const fallbackTimer = setTimeout(() => {
+      if (isMounted && events.length === 0) {
+        refreshEvents();
+      }
+    }, 2500);
+
+    const unsubEvents = onSnapshot(qEvents, (snap) => {
+      clearTimeout(fallbackTimer);
+      if (!isMounted) return;
+      const raw = snap.docs.map((d) => ({ id: d.id, ...d.data() } as Event));
+      const sorted = processEventsList(raw);
+      setEvents(sorted);
+      setIsLoadingEvents(false);
+      setIsRefreshingEvents(false);
+      try {
+        localStorage.setItem("fajopa_cached_events", JSON.stringify(sorted.slice(0, 50)));
       } catch {}
     }, (err) => {
       console.warn("Notice in EventsPage events listener:", err?.message || err);
+      clearTimeout(fallbackTimer);
+      if (isMounted) {
+        refreshEvents();
+      }
     });
 
-    return () => unsubEvents();
+    return () => {
+      isMounted = false;
+      clearTimeout(fallbackTimer);
+      unsubEvents();
+    };
   }, []);
 
   useEffect(() => {
@@ -389,6 +437,9 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
       return;
     }
     setIsEnrollingInProgress(eventId);
+    const safetyTimer = setTimeout(() => {
+      setIsEnrollingInProgress((curr) => (curr === eventId ? null : curr));
+    }, 8000);
     try {
       await enrollStudent({
         eventId,
@@ -419,6 +470,7 @@ export default function EventsPage({ onNavigateToStudent, renderSeminary = false
         showAlert("Erro ao realizar inscrição.", { type: 'error' });
       }
     } finally {
+      clearTimeout(safetyTimer);
       setIsEnrollingInProgress(null);
     }
   };
@@ -593,14 +645,25 @@ END:VCALENDAR`;
           <p className={`${renderSeminary ? 'text-amber-100' : 'text-sky-100'} font-medium text-sm sm:text-base max-w-md mx-auto`}>
             {renderSeminary ? "Explore e inscreva-se nos retiros, formações exclusivas e demais eventos." : "Explore e inscreva-se nos próximos eventos acadêmicos, dos seminários e das dioceses."}
           </p>
-          {isAdmin && (
+          <div className="mt-6 flex flex-wrap items-center justify-center gap-3">
             <button
-              onClick={() => setShowAdminEventModal(true)}
-              className="mt-6 bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold uppercase tracking-wider transition-all shadow-md hover:scale-105 active:scale-95 flex items-center gap-2 mx-auto"
+              onClick={refreshEvents}
+              disabled={isRefreshingEvents}
+              className="bg-white/20 hover:bg-white/30 text-white px-4 py-2.5 rounded-xl text-xs sm:text-sm font-bold uppercase tracking-wider transition-all shadow-sm flex items-center gap-2 active:scale-95 disabled:opacity-50 cursor-pointer"
+              title="Recarregar eventos"
             >
-              <Settings className="w-4 h-4" /> Gerenciar Eventos
+              <RefreshCw className={`w-4 h-4 ${isRefreshingEvents ? "animate-spin" : ""}`} />
+              {isRefreshingEvents ? "Atualizando..." : "Atualizar"}
             </button>
-          )}
+            {isAdmin && (
+              <button
+                onClick={() => setShowAdminEventModal(true)}
+                className="bg-white dark:bg-slate-800 text-sky-600 dark:text-sky-400 px-5 py-2.5 rounded-xl text-xs sm:text-sm font-bold uppercase tracking-wider transition-all shadow-md hover:scale-105 active:scale-95 flex items-center gap-2"
+              >
+                <Settings className="w-4 h-4" /> Gerenciar Eventos
+              </button>
+            )}
+          </div>
         </div>
       </div>
 
@@ -811,7 +874,17 @@ END:VCALENDAR`;
       </div>
 
       <div className="space-y-4">
-        {filteredEvents.filter(e => {
+        {isLoadingEvents && events.length === 0 ? (
+          <div className="bg-white dark:bg-slate-800 p-10 rounded-3xl text-center border border-slate-200 dark:border-slate-700 animate-pulse">
+            <div className="w-9 h-9 border-3 border-sky-500 border-t-transparent rounded-full animate-spin mx-auto mb-3" />
+            <p className="text-slate-700 dark:text-slate-200 font-bold text-sm">
+              Carregando eventos...
+            </p>
+            <p className="text-xs text-slate-400 dark:text-slate-500 mt-1">
+              Sincronizando dados acadêmicos e diocesanos
+            </p>
+          </div>
+        ) : filteredEvents.filter(e => {
             const computedState = getEventComputedState(e);
             return subTab === "upcoming" ? computedState !== "past" : computedState === "past";
         }).length === 0 ? (

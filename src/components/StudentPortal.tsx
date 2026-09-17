@@ -709,6 +709,9 @@ const StudentPortal = memo(function StudentPortal({
       return;
     }
     setIsEnrollingInProgress(eventId);
+    const safetyTimer = setTimeout(() => {
+      setIsEnrollingInProgress((curr) => (curr === eventId ? null : curr));
+    }, 8000);
     try {
       await enrollStudent({
         eventId,
@@ -721,6 +724,7 @@ const StudentPortal = memo(function StudentPortal({
       console.error(err);
       showAlert("Erro ao realizar inscrição.", { type: 'error' });
     } finally {
+      clearTimeout(safetyTimer);
       setIsEnrollingInProgress(null);
     }
   };

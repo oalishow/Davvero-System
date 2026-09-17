@@ -7,12 +7,19 @@ import {
   getFirestore,
   setLogLevel,
   doc,
+  getDoc,
+  getDocs,
+  setDoc,
+  updateDoc,
+  query,
+  where,
+  arrayUnion,
   getDocFromServer,
   persistentLocalCache,
+  persistentSingleTabManager,
   persistentMultipleTabManager,
   memoryLocalCache,
   collection,
-  updateDoc,
   runTransaction,
 } from "firebase/firestore";
 import {
@@ -36,24 +43,41 @@ const firebaseConfig = {
 
 export const app = initializeApp(firebaseConfig);
 
-// Inicialização segura do Firestore com cache local persistente (IndexedDB) para pleno funcionamento offline
+// Inicialização segura do Firestore com cache local persistente (IndexedDB)
+// No Samsung Browser e WebViews móveis, navigator.locks pode travar ou congelar guias em segundo plano;
+// portanto, persistentSingleTabManager previne deadlocks garantindo carregamento instantâneo.
 let dbInstance;
 try {
+  const isSamsungBrowser =
+    typeof navigator !== "undefined" &&
+    (/SamsungBrowser/i.test(navigator.userAgent) || /samsung/i.test(navigator.userAgent));
+
   dbInstance = initializeFirestore(app, {
     ignoreUndefinedProperties: true,
     localCache: persistentLocalCache({
-      tabManager: persistentMultipleTabManager(),
+      tabManager: isSamsungBrowser
+        ? persistentSingleTabManager({})
+        : persistentMultipleTabManager(),
     }),
   });
 } catch (e: any) {
   try {
     dbInstance = initializeFirestore(app, {
       ignoreUndefinedProperties: true,
-      localCache: memoryLocalCache(),
+      localCache: persistentLocalCache({
+        tabManager: persistentSingleTabManager({}),
+      }),
     });
   } catch (fallbackErr) {
-    console.warn("Fallback to basic getFirestore:", fallbackErr);
-    dbInstance = getFirestore(app);
+    try {
+      dbInstance = initializeFirestore(app, {
+        ignoreUndefinedProperties: true,
+        localCache: memoryLocalCache(),
+      });
+    } catch (memErr) {
+      console.warn("Fallback to basic getFirestore:", memErr);
+      dbInstance = getFirestore(app);
+    }
   }
 }
 export const db = dbInstance;
@@ -189,37 +213,33 @@ const removeUndefined = (obj: any): any => {
 
 /**
  * Ensures a reliable anonymous login, checking if already authenticated
+ * With resilient timeout to prevent hanging on Samsung Browser or mobile network stalls
  */
-export const loginAnon = async () => {
+export const loginAnon = async (): Promise<boolean> => {
   if (typeof navigator !== "undefined" && !navigator.onLine) {
     return !!auth.currentUser;
   }
   if (auth.currentUser) {
     return true;
   }
-  return new Promise((resolve) => {
-    // Use a short timeout to avoid hanging if offline or slow network
-    const timeout = setTimeout(() => {
-      console.warn("Firebase Auth timeout (offline or slow link)");
-      resolve(!!auth.currentUser);
-    }, 3000);
-
-    const unsubscribe = onAuthStateChanged(auth, async (user) => {
-      clearTimeout(timeout);
-      unsubscribe();
-      if (user) {
-        resolve(true);
-      } else {
-        try {
-          await signInAnonymously(auth);
-          resolve(true);
-        } catch (error) {
-          console.warn("Firebase Auth Notice:", error);
-          resolve(false);
-        }
+  try {
+    const doSignIn = async () => {
+      try {
+        await signInAnonymously(auth);
+        return true;
+      } catch (err) {
+        console.warn("Firebase Auth Notice (proceeding without auth):", err);
+        return false;
       }
-    });
-  });
+    };
+    // Max 2s timeout for anonymous authentication so user operations are never blocked
+    return await Promise.race([
+      doSignIn(),
+      new Promise<boolean>((resolve) => setTimeout(() => resolve(!!auth.currentUser), 2000)),
+    ]);
+  } catch {
+    return false;
+  }
 };
 
 /**
@@ -548,20 +568,34 @@ export const updateEvent = async (
 
 export const enrollStudent = async (attendanceData: Omit<Attendance, "id">) => {
   try {
-    await loginAnon().catch(() => {});
-    const { doc, setDoc, updateDoc, collection, getDoc, getDocs, query, where, arrayUnion } = await import("firebase/firestore");
+    // Non-blocking anonymous login to never stall on Samsung Browser
+    loginAnon().catch(() => {});
     const attendancesCol = collection(db, `artifacts/${appId}/public/data/attendances`);
 
-    // Verifica se o participante já possui inscrição neste evento
-    const qExist = query(
-      attendancesCol,
-      where("eventId", "==", attendanceData.eventId),
-      where("studentId", "==", attendanceData.studentId)
-    );
-    const existSnap = await getDocs(qExist);
+    const cleanEventId = (attendanceData.eventId || "").trim();
+    const cleanStudentId = (attendanceData.studentId || "").trim();
 
-    if (!existSnap.empty) {
-      const existingDoc = existSnap.docs[0];
+    // Check if participant is already registered, with a 3.5s timeout race so it never hangs
+    let existingDoc: any = null;
+    try {
+      const qExist = query(
+        attendancesCol,
+        where("eventId", "==", cleanEventId),
+        where("studentId", "==", cleanStudentId)
+      );
+      const queryPromise = getDocs(qExist);
+      const timeoutPromise = new Promise<any>((_, reject) =>
+        setTimeout(() => reject(new Error("QUERY_TIMEOUT")), 3500)
+      );
+      const existSnap = await Promise.race([queryPromise, timeoutPromise]);
+      if (existSnap && !existSnap.empty) {
+        existingDoc = existSnap.docs[0];
+      }
+    } catch (queryErr) {
+      console.warn("Notice in enrollStudent query check (proceeding with direct write):", queryErr);
+    }
+
+    if (existingDoc) {
       const existingData = existingDoc.data() as Attendance;
       const updates: any = {};
 
@@ -592,7 +626,8 @@ export const enrollStudent = async (attendanceData: Omit<Attendance, "id">) => {
       return existingDoc.id;
     }
 
-    const attendanceId = "att_" + Date.now().toString() + "_" + Math.random().toString(36).substring(2, 6);
+    // Deterministic attendance ID to prevent duplicates if user taps twice
+    const attendanceId = `att_${cleanEventId}_${cleanStudentId}`;
     const attendanceRef = doc(attendancesCol, attendanceId);
 
     const cleanData = Object.fromEntries(
@@ -606,29 +641,29 @@ export const enrollStudent = async (attendanceData: Omit<Attendance, "id">) => {
         validatorName: "Pelo Próprio Participante",
       }));
     }
-    const attendanceItem = { ...cleanData, id: attendanceId } as Attendance;
+    const attendanceItem = { ...cleanData, id: attendanceId, eventId: cleanEventId, studentId: cleanStudentId } as Attendance;
 
-    // Optional constraint check, but not blocking offline local save.
+    // Optional constraint check, non-blocking
     try {
-      const eventRef = doc(db, `artifacts/${appId}/public/data/events`, attendanceData.eventId);
+      const eventRef = doc(db, `artifacts/${appId}/public/data/events`, cleanEventId);
       const eventDoc = await getDoc(eventRef);
       if (eventDoc.exists()) {
         const eventInfo = eventDoc.data() as Event;
         if (eventInfo.status === "deleted") throw new Error("EVENTO_EXCLUIDO");
       }
-    } catch (err) {
-      // if offline, proceed
+    } catch (err: any) {
+      if (err?.message === "EVENTO_EXCLUIDO") throw err;
     }
 
-    await setDoc(attendanceRef, attendanceItem);
+    await setDoc(attendanceRef, attendanceItem, { merge: true });
 
-    // Notificar o aluno
-    await createNotification({
+    // Notificar o aluno em segundo plano
+    createNotification({
       recipientId: attendanceData.studentId,
       title: "Inscrição Confirmada",
       message: `Sua inscrição no evento foi confirmada com sucesso!`,
       type: "inscricao",
-    });
+    }).catch(() => {});
 
     return attendanceId;
   } catch (e) {
