@@ -106,6 +106,27 @@ window.addEventListener('error', (event) => {
 
 setupPWA();
 
+// Desabilitar zoom de pinça (pinch-to-zoom) no Safari iOS, Chrome e navegadores móveis para manter o app perfeitamente ajustado à tela
+if (typeof window !== 'undefined') {
+  const preventPinch = (e: Event) => {
+    if (!(e.target as HTMLElement)?.closest?.('.reactEasyCrop_Container')) {
+      e.preventDefault();
+    }
+  };
+  document.addEventListener('gesturestart', preventPinch, { passive: false });
+  document.addEventListener('gesturechange', preventPinch, { passive: false });
+  document.addEventListener('gestureend', preventPinch, { passive: false });
+  document.addEventListener(
+    'touchmove',
+    (e: TouchEvent) => {
+      if (e.touches && e.touches.length > 1 && !(e.target as HTMLElement)?.closest?.('.reactEasyCrop_Container')) {
+        e.preventDefault();
+      }
+    },
+    { passive: false }
+  );
+}
+
 createRoot(document.getElementById('root')!).render(
   <StrictMode>
     <ErrorBoundary>

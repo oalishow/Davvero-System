@@ -1670,7 +1670,6 @@ const StudentPortal = memo(function StudentPortal({
           modalIframeBiometric={modalIframeBiometric}
           setModalIframeBiometric={setModalIframeBiometric}
           handleUnlockScreen={handleUnlockScreen}
-          onDirectCpfUnlock={handleDirectCpfUnlock}
         />
       );
     }
@@ -1932,7 +1931,7 @@ const StudentPortal = memo(function StudentPortal({
               Certificado Pronto para Download 📜
             </h4>
             <p className="text-[11px] text-amber-800/90 dark:text-amber-300/80 mt-1 leading-relaxed">
-              Faça login com seu CPF ou Código (ou use o <strong>Primeiro Acesso</strong>) para visualizar e baixar seu certificado automaticamente.
+              Vincule sua carteirinha institucional (ou use o <strong>Primeiro Acesso</strong>) para visualizar e baixar seu certificado automaticamente.
             </p>
           </div>
         </div>

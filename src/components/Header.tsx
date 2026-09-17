@@ -226,11 +226,11 @@ export default function Header({ onOpenAdmin }: { onOpenAdmin?: () => void }) {
           </button>
           <button 
             onClick={() => setShowChangelog(true)}
-            className="flex items-center justify-center px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-[11px] sm:text-xs text-slate-500 dark:text-slate-400 font-medium whitespace-nowrap hover:text-sky-500 dark:hover:text-sky-400 hover:scale-105 active:scale-95 transition-all cursor-pointer truncate"
+            className="flex items-center justify-center gap-1 px-1.5 sm:px-2 py-1 bg-slate-100 dark:bg-slate-800 rounded-lg border border-slate-200 dark:border-slate-700 text-[10px] sm:text-xs text-slate-600 dark:text-slate-300 font-medium whitespace-nowrap hover:text-sky-500 dark:hover:text-sky-400 hover:scale-105 active:scale-95 transition-all cursor-pointer shrink-0"
             title={`Ver Novidades da Versão (v${APP_VERSION} - Build: ${APP_BUILD})`}
           >
-            <span>v{APP_VERSION}</span>
-            <span className="opacity-50 ml-1 hidden md:inline">({APP_BUILD})</span>
+            <span className="font-bold text-slate-800 dark:text-slate-200">v{APP_VERSION}</span>
+            <span className="text-[9px] sm:text-[10px] font-mono text-slate-500 dark:text-slate-400">({APP_BUILD})</span>
           </button>
           {!isOnline && (
             <div

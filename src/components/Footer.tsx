@@ -48,10 +48,11 @@ export default function Footer() {
           <div className="flex items-center gap-2 sm:gap-3">
             <button 
               onClick={() => setShowChangelog(true)}
-              className="font-mono text-[9px] sm:text-[10px] bg-slate-200 hover:bg-slate-300 active:scale-95 dark:bg-slate-800 dark:hover:bg-slate-700 py-1 px-2 rounded border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-all cursor-pointer"
+              className="font-mono text-[9px] sm:text-[10px] bg-slate-200 hover:bg-slate-300 active:scale-95 dark:bg-slate-800 dark:hover:bg-slate-700 py-1 px-2 rounded border border-slate-300 dark:border-slate-700 text-slate-700 dark:text-slate-300 transition-all cursor-pointer flex items-center gap-1"
               title="Histórico de Atualizações"
             >
-              v{APP_VERSION}
+              <span>v{APP_VERSION}</span>
+              <span className="opacity-75 text-[8px] sm:text-[9px]">({APP_BUILD})</span>
             </button>
             <button 
               onClick={() => setShowChangelog(true)}
@@ -99,7 +100,7 @@ export default function Footer() {
               <div className="w-1 h-1 rounded-full bg-emerald-500 animate-pulse" />
               DB Conectado
             </div>
-            <span className="text-[7px] font-bold text-slate-400 uppercase tracking-tighter opacity-70">Build: {APP_BUILD}</span>
+            <span className="text-[9px] sm:text-[10px] font-mono font-semibold text-slate-500 dark:text-slate-400">Build: {APP_BUILD}</span>
           </div>
         </div>
         <a href="mailto:oalison.rodrigues@gmail.com" className="flex items-center gap-1.5 hover:text-sky-600 dark:hover:text-sky-400 transition-colors border-b border-transparent hover:border-sky-600 dark:hover:border-sky-400 pb-0.5 text-[10px] sm:text-xs text-slate-600 dark:text-slate-400">

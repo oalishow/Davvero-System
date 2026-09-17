@@ -36,7 +36,7 @@ import NotificationObserver from "./components/NotificationObserver";
 import VersionUpdateGate from "./components/VersionUpdateGate";
 import OfflineNotice from "./components/OfflineNotice";
 import { useSettings } from "./context/SettingsContext";
-import { APP_VERSION, CHANGELOG } from "./lib/constants";
+import { APP_VERSION, APP_BUILD, CHANGELOG } from "./lib/constants";
 import { playSound } from "./lib/sounds";
 import { checkServerVersionWithAntiLoop, safeReloadApp, clearAppCaches, isVersionOutdated } from "./lib/versionManager";
 import { triggerSWCheck } from "./pwa";
@@ -520,7 +520,7 @@ export default function App() {
         setUpdateCheckModal({
           isOpen: true,
           status: "up_to_date",
-          message: `O DAVVERO System já está 100% atualizado na versão mais recente (v${APP_VERSION})!`,
+          message: `O DAVVERO System já está 100% atualizado na versão mais recente (v${APP_VERSION} • Build ${APP_BUILD})!`,
           serverVersion: APP_VERSION,
         });
         playSound('success');
@@ -529,7 +529,7 @@ export default function App() {
       setUpdateCheckModal({
         isOpen: true,
         status: "up_to_date",
-        message: `O DAVVERO System está atualizado na versão v${APP_VERSION}!`,
+        message: `O DAVVERO System está atualizado na versão v${APP_VERSION} (Build ${APP_BUILD})!`,
         serverVersion: APP_VERSION,
       });
       playSound('success');
@@ -998,7 +998,7 @@ export default function App() {
                         Aplicativo Atualizado!
                       </h3>
                       <span className="inline-block px-2.5 py-0.5 bg-emerald-50 dark:bg-emerald-500/10 border border-emerald-200 dark:border-emerald-500/30 text-emerald-600 dark:text-emerald-400 rounded-full text-[10px] font-black uppercase tracking-wider">
-                        Versão {APP_VERSION}
+                        Versão {APP_VERSION} • Build: {APP_BUILD}
                       </span>
                       <p className="text-xs text-slate-600 dark:text-slate-300 pt-1 leading-relaxed">
                         {updateCheckModal.message}
@@ -1083,7 +1083,7 @@ export default function App() {
                   </h2>
                   <div className="flex items-center justify-center gap-1.5 mb-3">
                     <span className="px-2.5 py-0.5 bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-500/30 rounded-full text-[10px] uppercase tracking-wider font-black">
-                      Versão {APP_VERSION}
+                      Versão {APP_VERSION} • Build: {APP_BUILD}
                     </span>
                   </div>
                   <p className="text-xs text-slate-500 dark:text-slate-400 mb-3">

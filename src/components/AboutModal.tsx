@@ -1,5 +1,6 @@
 import { createPortal } from "react-dom";
 import { X, Info } from "lucide-react";
+import { APP_VERSION, APP_BUILD } from "../lib/constants";
 
 interface AboutModalProps {
   onClose: () => void;
@@ -19,7 +20,7 @@ export default function AboutModal({ onClose }: AboutModalProps) {
                 Sobre o Aplicativo
               </h2>
               <p className="text-xs text-slate-500 font-medium">
-                História e agradecimentos do DAVVERO System
+                DAVVERO System v{APP_VERSION} (Build: {APP_BUILD}) • História e agradecimentos
               </p>
             </div>
           </div>

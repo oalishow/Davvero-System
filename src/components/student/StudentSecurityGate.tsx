@@ -30,7 +30,6 @@ interface StudentSecurityGateProps {
   modalIframeBiometric: boolean;
   setModalIframeBiometric: (val: boolean) => void;
   handleUnlockScreen: () => void;
-  onDirectCpfUnlock?: () => void;
 }
 
 export const StudentSecurityGate: React.FC<StudentSecurityGateProps> = ({
@@ -58,7 +57,6 @@ export const StudentSecurityGate: React.FC<StudentSecurityGateProps> = ({
   modalIframeBiometric,
   setModalIframeBiometric,
   handleUnlockScreen,
-  onDirectCpfUnlock,
 }) => {
   if (pinMode !== "none") {
     const title =
@@ -72,13 +70,13 @@ export const StudentSecurityGate: React.FC<StudentSecurityGateProps> = ({
         <Modal
           isOpen={modalPinReset}
           onClose={() => setModalPinReset(false)}
-          title="Autenticação com CPF ou Código"
+          title="Redefinir PIN de Acesso"
           confirmLabel="Redefinir PIN"
           onConfirm={handlePinResetAttempt}
         >
           <div className="space-y-4 text-left">
             <p className="text-sm text-slate-600 dark:text-slate-300 leading-relaxed">
-              Informe seu <strong>CPF</strong> ou o seu <strong>Código de Uso</strong> (alfanumérico) cadastrado para confirmar sua identidade:
+              Para redefinir sua senha de 4 dígitos, informe seu <strong>CPF</strong> ou o seu <strong>Código de Uso</strong> (alfanumérico) cadastrado para confirmar sua identidade:
             </p>
             <input
               type="text"
@@ -88,15 +86,6 @@ export const StudentSecurityGate: React.FC<StudentSecurityGateProps> = ({
               onChange={(e) => setResetCodeStr(e.target.value.toUpperCase())}
               className="input-modern w-full rounded-xl py-3 px-4 text-center font-bold tracking-widest text-lg"
             />
-            {onDirectCpfUnlock && (
-              <button
-                type="button"
-                onClick={onDirectCpfUnlock}
-                className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl font-bold text-xs shadow-md transition-all active:scale-95 flex items-center justify-center gap-2 mt-2"
-              >
-                Apenas Desbloquear nesta Sessão
-              </button>
-            )}
           </div>
         </Modal>
 
@@ -171,7 +160,7 @@ export const StudentSecurityGate: React.FC<StudentSecurityGateProps> = ({
               }}
               className="text-xs text-slate-500 hover:text-sky-600 font-bold w-full p-2"
             >
-              Esqueci minha senha / Entrar com CPF ou Código
+              Esqueci minha senha (Redefinir PIN)
             </button>
           )}
           <button
@@ -271,17 +260,6 @@ export const StudentSecurityGate: React.FC<StudentSecurityGateProps> = ({
             localStorage.getItem(STUDENT_FALLBACK_PIN)
               ? "Digitar Senha / PIN"
               : "Criar Senha de 4 Dígitos"}
-          </button>
-
-          <button
-            type="button"
-            onClick={() => {
-              setModalPinReset(true);
-              setError(null);
-            }}
-            className="w-full py-3.5 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-200 rounded-2xl font-bold transition-all active:scale-95 text-xs flex items-center justify-center gap-2 shadow-sm"
-          >
-            Acessar com CPF ou Código de Uso
           </button>
 
           {isWebAuthnSupported() &&

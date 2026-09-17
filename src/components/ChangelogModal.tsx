@@ -1,5 +1,6 @@
 import { createPortal } from 'react-dom';
 import { X, Sparkles, RefreshCw } from 'lucide-react';
+import { APP_VERSION, APP_BUILD } from '../lib/constants';
 
 interface ChangelogModalProps {
   onClose: () => void;
@@ -349,10 +350,18 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
     <div className="fixed inset-0 bg-slate-900/50 dark:bg-black/80 backdrop-blur-sm flex items-center justify-center p-3 sm:p-4 z-[200] overflow-y-auto">
       <div className="bg-white dark:bg-slate-800 border border-slate-200 dark:border-slate-700 rounded-2xl sm:rounded-3xl shadow-2xl p-5 sm:p-6 md:p-8 w-full max-w-md animated-scale-in my-auto max-h-[90vh] flex flex-col">
         <div className="flex justify-between items-center mb-4 sm:mb-6 pb-3 sm:pb-4 border-b border-slate-200 dark:border-slate-700/60 flex-shrink-0">
-          <h2 className="text-lg sm:text-xl font-bold text-sky-600 dark:text-sky-400 flex items-center gap-2">
-            <Sparkles className="w-5 h-5" />
-            Histórico de Atualizações
-          </h2>
+          <div>
+            <h2 className="text-lg sm:text-xl font-bold text-sky-600 dark:text-sky-400 flex items-center gap-2">
+              <Sparkles className="w-5 h-5" />
+              Histórico de Atualizações
+            </h2>
+            <div className="flex items-center gap-2 mt-1">
+              <span className="text-xs font-bold text-slate-700 dark:text-slate-300">Versão v{APP_VERSION}</span>
+              <span className="text-[10px] font-mono font-semibold px-2 py-0.5 rounded-md bg-sky-50 dark:bg-sky-950/50 text-sky-600 dark:text-sky-400 border border-sky-200 dark:border-sky-800">
+                Build: {APP_BUILD}
+              </span>
+            </div>
+          </div>
           <button onClick={onClose} className="text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-white bg-slate-100 dark:bg-slate-700/50 hover:bg-slate-200 dark:hover:bg-slate-600 p-1.5 sm:p-2 rounded-full transition-colors">
             <X className="w-5 h-5" />
           </button>
