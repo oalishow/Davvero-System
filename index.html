@@ -91,7 +91,17 @@
     </script>
   </head>
   <body>
-    <div id="root"></div>
+    <div id="root">
+      <div style="display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;background-color:#f8fafc;font-family:system-ui,-apple-system,sans-serif;color:#334155;text-align:center;padding:20px;">
+        <div style="width:48px;height:48px;border-radius:16px;background:linear-gradient(135deg,#0284c7,#0369a1);display:flex;align-items:center;justify-content:center;margin-bottom:16px;box-shadow:0 10px 25px -5px rgba(2,132,199,0.3);">
+          <svg style="width:28px;height:28px;color:#ffffff;" fill="none" stroke="currentColor" viewBox="0 0 24 24" stroke-width="2">
+            <path stroke-linecap="round" stroke-linejoin="round" d="M9 12.75L11.25 15 15 9.75m-3-7.036A11.959 11.959 0 013.598 6 11.99 11.99 0 003 9.749c0 5.592 3.824 10.29 9 11.623 5.176-1.332 9-6.03 9-11.622 0-1.31-.21-2.571-.598-3.751h-.152c-3.196 0-6.1-1.248-8.25-3.285z" />
+          </svg>
+        </div>
+        <p style="font-size:16px;font-weight:700;letter-spacing:-0.02em;margin:0 0 4px 0;color:#0f172a;">DAVVERO System</p>
+        <p style="font-size:12px;color:#64748b;margin:0;">Carregando ambiente seguro...</p>
+      </div>
+    </div>
     <script type="module" src="/src/main.tsx"></script>
   </body>
 </html>

@@ -10,14 +10,16 @@ export default function ChangelogModal({ onClose }: ChangelogModalProps) {
   const versions = [
     {
       version: 'v8.9b',
-      title: 'Blindagem de Segurança Institucional & Fim de Fantasmas de Versão',
+      title: 'Blindagem de Segurança Institucional, Biometria/Face-ID & Estabilização Anti-Crash',
       changes: [
+        'Autenticação Biométrica e Face-ID (WebAuthn): integração completa com leitores biométricos nativos e reconhecimento facial com chave criptográfica no Portal do Aluno / Minha ID ("Usar a Biometria ou Face-ID"), garantindo acesso rápido e seguro ao documento estudantil com fallback protegido por PIN.',
+        'Proteção contra Janelas Embutidas (Iframe Shield): detecção automática de ambiente embutido (iframes/webviews), instruindo a abertura segura em nova aba quando o navegador restringir o leitor biométrico por políticas de segurança.',
+        'Prevenção de Tela Branca & Anti-Loop: desativação de recargas destrutivas dentro de ambientes embutidos, guarda de segurança no carregamento assíncrono de módulos e circuit breaker com tolerância inteligente contra falhas transitórias de conexão.',
         'Remoção Integral da Senha Mestra Hardcoded: eliminação definitiva das credenciais legadas (DEFAULT_ADMIN_PASSWORD / PASSWORD_STORAGE_KEY) e de todos os portões de senha mestra em Configurações e Backups, fechando quaisquer portas de acesso paralelo.',
         'Remoção de Privilégios por Domínio de E-mail: exclusão total de listas de e-mails fixas (AUTHORIZED_ADMIN_EMAILS) e de regras de validação por sufixo institucional de e-mail, aplicando rigorosamente as diretrizes do SEGURANCA.md.',
         'Fluxo de Administradores Exclusivamente por Convite Verificado: novo admin só pode ser criado mediante convite prévio emitido pela administração e verificação criptográfica do token JWT de autenticação no servidor (/api/admin/accept-invite).',
-        'Fim dos Fantasmas de Versão (Fix v6.9b): eliminação da anomalia de regressão onde dispositivos com conexão lenta ou PWA instalado abriam temporariamente na versão antiga v6.9b. O App Shell agora utiliza namespaces versionados e invalidação forçada de caches legados.',
-        'Purga Automática de Caches Órfãos no Service Worker: ativação do novo ciclo de vida com auto-limpeza de todos os caches não correspondentes à versão v8.9b durante o evento activate, prevenindo que arquivos obsoletos fiquem presos no armazenamento do navegador.',
-        'Renovação do App Shell sem Bloqueio: remoção da trava estática que impedia atualização de index.html quando o arquivo já existia em cache, garantindo que novos bundles sejam carregados com precisão imediata.',
+        'Fim dos Fantasmas de Versão (Fix v6.9b): eliminação da regressão em que dispositivos lentos ou PWA abriam temporariamente em versões legadas. O App Shell utiliza namespaces versionados (app-shell-cache-v8.9b) e invalidação forçada de caches legados.',
+        'Otimização de Performance e Fluidez: eliminação de ouvintes de touch passivos bloqueantes na thread principal, desacoplamento de rotinas pesadas no verificador e renderização sem engasgos.',
       ],
       current: true,
     },

@@ -39,13 +39,21 @@ export default class ErrorBoundary extends React.Component<Props, State> {
       error.message?.includes('Loading chunk');
 
     if (isChunkError && typeof window !== 'undefined') {
-       const key = 'error_boundary_chunk_reload';
-       const last = sessionStorage.getItem(key);
-       const now = Date.now();
-       if (!last || now - parseInt(last, 10) > 15000) {
-           sessionStorage.setItem(key, now.toString());
-           window.location.reload();
-       }
+      try {
+        if (window.self !== window.top) {
+          console.warn('[ErrorBoundary] Chunk error em iframe; reload automático suprimido para proteger a prévia.');
+          return;
+        }
+      } catch (_) {
+        return;
+      }
+      const key = 'error_boundary_chunk_reload';
+      const last = sessionStorage.getItem(key);
+      const now = Date.now();
+      if (!last || now - parseInt(last, 10) > 15000) {
+        sessionStorage.setItem(key, now.toString());
+        window.location.reload();
+      }
     }
   }
 

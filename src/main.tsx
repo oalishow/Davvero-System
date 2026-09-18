@@ -47,7 +47,7 @@ window.addEventListener('unhandledrejection', (event) => {
       return;
     }
 
-    // Se falhar ao buscar módulo dinâmico após nova publicação, recarregar suavemente apenas se estiver ONLINE
+    // Se falhar ao buscar módulo dinâmico após nova publicação, recarregar suavemente apenas se estiver ONLINE e fora de iframe
     if (
       reasonStr.includes('dynamically imported module') ||
       reasonStr.includes('Loading chunk') ||
@@ -57,6 +57,14 @@ window.addEventListener('unhandledrejection', (event) => {
       const isOnline = typeof navigator === 'undefined' || navigator.onLine !== false;
       if (!isOnline) {
         console.warn('[main] Falha de import dinâmico em modo offline; reload suprimido.');
+        return;
+      }
+      try {
+        if (window.self !== window.top) {
+          console.warn('[main] Falha de import dinâmico em iframe; reload suprimido para proteger prévia.');
+          return;
+        }
+      } catch (_) {
         return;
       }
       const last = sessionStorage.getItem('global_chunk_recover_ts');
@@ -94,6 +102,14 @@ window.addEventListener('error', (event) => {
         console.warn('[main] Erro de chunk de script em modo offline; reload suprimido.');
         return;
       }
+      try {
+        if (window.self !== window.top) {
+          console.warn('[main] Erro de chunk em iframe; reload suprimido para proteger prévia.');
+          return;
+        }
+      } catch (_) {
+        return;
+      }
       const last = sessionStorage.getItem('global_chunk_recover_ts');
       const now = Date.now();
       if (!last || now - parseInt(last, 10) > 12000) {
@@ -106,7 +122,7 @@ window.addEventListener('error', (event) => {
 
 setupPWA();
 
-// Desabilitar zoom de pinça (pinch-to-zoom) no Safari iOS, Chrome e navegadores móveis para manter o app perfeitamente ajustado à tela
+// Desabilitar zoom de pinça (pinch-to-zoom) no Safari iOS sem bloquear a rolagem suave na thread do compositor
 if (typeof window !== 'undefined') {
   const preventPinch = (e: Event) => {
     if (!(e.target as HTMLElement)?.closest?.('.reactEasyCrop_Container')) {
@@ -116,15 +132,6 @@ if (typeof window !== 'undefined') {
   document.addEventListener('gesturestart', preventPinch, { passive: false });
   document.addEventListener('gesturechange', preventPinch, { passive: false });
   document.addEventListener('gestureend', preventPinch, { passive: false });
-  document.addEventListener(
-    'touchmove',
-    (e: TouchEvent) => {
-      if (e.touches && e.touches.length > 1 && !(e.target as HTMLElement)?.closest?.('.reactEasyCrop_Container')) {
-        e.preventDefault();
-      }
-    },
-    { passive: false }
-  );
 }
 
 createRoot(document.getElementById('root')!).render(

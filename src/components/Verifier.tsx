@@ -656,10 +656,6 @@ export default function Verifier({
         }
 
         setCacheLoaded(true);
-        // Background retroactive sync for legacy certificates (authenticated only)
-        if (auth.currentUser) {
-          syncAllExistingCertificates().catch(() => null);
-        }
       } catch (e: any) {
         if (retries > 0) {
           console.warn(`Aviso no sincronismo de cache offline (${retries} tentativas restantes):`, e?.message || e);

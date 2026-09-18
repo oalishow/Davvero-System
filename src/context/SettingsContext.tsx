@@ -378,6 +378,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           getDoc(doc(db, ASSETS_DOC_PATH(appId, 'dioceses_manifest'))).catch(() => null),
         ]);
 
+        const accumulatedUpdates: Partial<AppSettings> = {};
+
         if (mainSnap && mainSnap.exists()) {
           const mainData = mainSnap.data();
           if (mainData) {
@@ -385,7 +387,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
               mainData.professionals = normalizeProfessionals(mainData.professionals);
             }
             const effectiveVersion = mainData.version && compareVersions(mainData.version, APP_VERSION) > 0 ? mainData.version : APP_VERSION;
-            setSettings(prev => ({ ...prev, ...mainData, version: effectiveVersion }));
+            Object.assign(accumulatedUpdates, mainData, { version: effectiveVersion });
           }
         }
 
@@ -394,7 +396,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.instSignature !== undefined ? snapData.instSignature : snapData);
           const val = extractAssetString(rawVal);
           if (val) {
-            setSettings(prev => ({ ...prev, instSignature: val }));
+            accumulatedUpdates.instSignature = val;
           }
         }
 
@@ -403,7 +405,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.rectorSignature !== undefined ? snapData.rectorSignature : snapData);
           const val = extractAssetString(rawVal);
           if (val) {
-            setSettings(prev => ({ ...prev, rectorSignature: val }));
+            accumulatedUpdates.rectorSignature = val;
           }
         }
 
@@ -412,7 +414,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.instLogo !== undefined ? snapData.instLogo : snapData);
           const val = extractAssetString(rawVal);
           if (val) {
-            setSettings(prev => ({ ...prev, instLogo: val }));
+            accumulatedUpdates.instLogo = val;
           }
         }
 
@@ -421,7 +423,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.cardLogo !== undefined ? snapData.cardLogo : snapData);
           const val = extractAssetString(rawVal);
           if (val) {
-            setSettings(prev => ({ ...prev, cardLogo: val }));
+            accumulatedUpdates.cardLogo = val;
           }
         }
 
@@ -430,7 +432,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.cardBackLogo !== undefined ? snapData.cardBackLogo : snapData);
           const val = extractAssetString(rawVal);
           if (val) {
-            setSettings(prev => ({ ...prev, cardBackLogo: val }));
+            accumulatedUpdates.cardBackLogo = val;
           }
         }
 
@@ -439,7 +441,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.cardSecondaryBackLogo !== undefined ? snapData.cardSecondaryBackLogo : snapData);
           const val = extractAssetString(rawVal);
           if (val) {
-            setSettings(prev => ({ ...prev, cardSecondaryBackLogo: val }));
+            accumulatedUpdates.cardSecondaryBackLogo = val;
           }
         }
 
@@ -448,7 +450,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           const rawVal = snapData?.data !== undefined ? snapData.data : (snapData?.cardBackImage !== undefined ? snapData.cardBackImage : snapData);
           const val = extractAssetString(rawVal);
           if (val) {
-            setSettings(prev => ({ ...prev, cardBackImage: val }));
+            accumulatedUpdates.cardBackImage = val;
           }
         }
 
@@ -483,13 +485,20 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           }
         });
 
-        if (Object.keys(directDiocesesConfig).length > 0) {
-          setSettings(prev => {
-            const merged = { ...(prev.diocesesConfig || {}), ...directDiocesesConfig };
-            safeLocalStorageSet('fajopa_dioceses_config', JSON.stringify(merged));
-            return { ...prev, diocesesConfig: merged };
-          });
-        }
+        // Executar uma ÚNICA atualização consolidada no estado para eliminar renderizações em cascata e travamentos
+        setSettings(prev => {
+          const mergedDioceses = Object.keys(directDiocesesConfig).length > 0
+            ? { ...(prev.diocesesConfig || {}), ...directDiocesesConfig }
+            : prev.diocesesConfig;
+          if (Object.keys(directDiocesesConfig).length > 0) {
+            safeLocalStorageSet('fajopa_dioceses_config', JSON.stringify(mergedDioceses));
+          }
+          return {
+            ...prev,
+            ...accumulatedUpdates,
+            diocesesConfig: mergedDioceses
+          };
+        });
       } catch (err) {
         if (!checkIsQuotaError(err)) {
           console.warn("[SettingsContext] Direct fetch non-critical notice:", err);

@@ -78,26 +78,13 @@ export async function forceCacheStudentPortalResources(appSettings?: any): Promi
       "/version.json",
     ];
 
-    // 2. Ícones institucionais, PWA e recursos gráficos
+    // 2. Ícones institucionais e PWA essenciais
     const iconUrls = [
       "/icon.svg",
-      "/icon.png",
       "/icon-192.png",
       "/icon-512.png",
-      "/icon-maskable.svg",
-      "/icon-maskable-192.png",
-      "/icon-maskable-512.png",
-      "/apple-touch-icon.png",
-      "/apple-touch-icon-180x180.png",
-      "/apple-touch-icon-152x152.png",
-      "/apple-touch-icon-167x167.png",
-      "/apple-touch-icon-precomposed.png",
-      "/favicon.ico",
       "/favicon-32x32.png",
-      "/favicon-16x16.png",
-      "/logo.png",
-      "/logo192.png",
-      "/logo512.png",
+      "/apple-touch-icon.png",
     ];
 
     // 3. Captura dinâmica de scripts e estilos carregados no DOM
@@ -152,9 +139,10 @@ export async function forceCacheStudentPortalResources(appSettings?: any): Promi
       studentCardMediaUrls.push(...configImages);
     }
 
-    // Gravação segura no Cache API
+    // Gravação segura no Cache API com baixa prioridade de rede para não travar a navegação do usuário
     const cacheUrlSafely = async (cache: Cache, url: string, isImage = false, forceRefresh = false) => {
       try {
+        if (!url || typeof url !== "string") return;
         if (!forceRefresh) {
           const existing = await cache.match(url);
           if (existing && (existing.ok || existing.type === "opaque")) {
@@ -164,8 +152,8 @@ export async function forceCacheStudentPortalResources(appSettings?: any): Promi
 
         const isSameOrigin = url.startsWith(window.location.origin) || url.startsWith("/");
         const fetchOptions: RequestInit = isImage
-          ? { mode: isSameOrigin ? "cors" : "no-cors" }
-          : { cache: "no-cache" };
+          ? { mode: isSameOrigin ? "cors" : "no-cors", priority: "low" as any }
+          : { cache: "no-cache", priority: "low" as any };
 
         const response = await fetch(url, fetchOptions);
         if (response && (response.ok || response.type === "opaque")) {
@@ -176,13 +164,19 @@ export async function forceCacheStudentPortalResources(appSettings?: any): Promi
       }
     };
 
-    await Promise.allSettled([
-      ...shellUrls.map((u) => cacheUrlSafely(shellCache, u, false, true)),
-      ...activeScripts.map((u) => cacheUrlSafely(staticCache, u)),
-      ...activeStylesheets.map((u) => cacheUrlSafely(staticCache, u)),
-      ...iconUrls.map((u) => cacheUrlSafely(imagesCache, u, true)),
-      ...studentCardMediaUrls.map((u) => cacheUrlSafely(imagesCache, u, true)),
-    ]);
+    // Execução em pequenos lotes (concorrência controlada) para evitar contenção de I/O de rede
+    const tasks: (() => Promise<void>)[] = [
+      ...shellUrls.map((u) => () => cacheUrlSafely(shellCache, u, false, true)),
+      ...activeScripts.map((u) => () => cacheUrlSafely(staticCache, u)),
+      ...activeStylesheets.map((u) => () => cacheUrlSafely(staticCache, u)),
+      ...iconUrls.map((u) => () => cacheUrlSafely(imagesCache, u, true)),
+      ...studentCardMediaUrls.map((u) => () => cacheUrlSafely(imagesCache, u, true)),
+    ];
+
+    const concurrency = 2;
+    for (let i = 0; i < tasks.length; i += concurrency) {
+      await Promise.allSettled(tasks.slice(i, i + concurrency).map((fn) => fn()));
+    }
 
     try {
       sessionStorage.setItem("davvero_student_portal_precached", "true");
@@ -553,6 +547,12 @@ export default function App() {
   // Ref para memorizar se o usuário dispensou o portão nesta sessão
   const userDismissedGateRef = useRef(false);
 
+  // Ref para manter a versão mais recente sem invalidar callbacks estáveis
+  const settingsVersionRef = useRef(settings?.version);
+  useEffect(() => {
+    settingsVersionRef.current = settings?.version;
+  }, [settings?.version]);
+
   // Verificação de versão unificada, estável e reativa
   const performSafeVersionCheck = useCallback(async (force = false, knownVer?: string) => {
     if (
@@ -563,7 +563,7 @@ export default function App() {
       return;
     }
 
-    const candidate = knownVer || settings?.version;
+    const candidate = knownVer || settingsVersionRef.current;
     const res = await checkServerVersionWithAntiLoop(force, candidate);
     if (res.isObsolete) {
       setTargetVersionText(res.serverVersion);
@@ -588,11 +588,19 @@ export default function App() {
     } else {
       setIsLoopBlocked(false);
     }
-  }, [settings?.version]);
+  }, []);
 
   // Observa sincronização em tempo real de versão via Firestore (settings.version)
   useEffect(() => {
     if (settings?.version && isVersionOutdated(APP_VERSION, settings.version)) {
+      try {
+        if (typeof window !== "undefined" && window.self !== window.top) {
+          console.log(`[App] Nova versão remota detectada (${settings.version}) em iframe; auto-recarga suprimida para preservar a prévia.`);
+          return;
+        }
+      } catch (_) {
+        return;
+      }
       console.log(`[App] Nova versão remota detectada (${settings.version}). Iniciando atualização automática...`);
       performSafeVersionCheck(false, settings.version);
     }
@@ -625,24 +633,24 @@ export default function App() {
     localStorage.setItem("app_version", APP_VERSION);
 
     // Verificação inicial imediata
-    performSafeVersionCheck(false, settings?.version);
+    performSafeVersionCheck(false, settingsVersionRef.current);
     triggerSWCheck().catch(() => {});
 
-    // Telemetry and Realtime Presence
+    // Telemetry and Realtime Presence - iniciado apenas uma vez no ciclo de vida da aplicação
     recordAppAccess();
     const stopPresence = startPresenceHeartbeat();
 
-    // Verificação periódica ativa a cada 40 segundos para detectar novas publicações imediatamente (somente se online)
+    // Verificação periódica estável a cada 60 segundos (somente se online)
     const versionInterval = setInterval(() => {
       if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-      performSafeVersionCheck(false, settings?.version);
+      performSafeVersionCheck(false, settingsVersionRef.current);
       triggerSWCheck().catch(() => {});
-    }, 40 * 1000);
+    }, 60 * 1000);
 
     const onVisibilityOrFocus = () => {
       if (document.visibilityState === 'visible') {
         if (typeof navigator !== 'undefined' && navigator.onLine === false) return;
-        performSafeVersionCheck(false, settings?.version);
+        performSafeVersionCheck(false, settingsVersionRef.current);
         triggerSWCheck().catch(() => {});
       }
     };
@@ -697,7 +705,7 @@ export default function App() {
       window.removeEventListener('swUpdated', onServiceWorkerUpdated);
       window.removeEventListener('swNeedRefresh', onServiceWorkerUpdated);
     };
-  }, [performSafeVersionCheck, settings?.version]);
+  }, [performSafeVersionCheck]);
 
   const handleGlobalVerify = (code: string) => {
     setTargetVerifyCode(code);
@@ -846,7 +854,7 @@ export default function App() {
     window.addEventListener("themeChange", onThemeChange);
 
     // Liberações Iniciais (Firebase login anonimo necessário para acessar dados base)
-    const initFirebase = async (retries = 3) => {
+    const initFirebase = async (retries = 2) => {
       // Se offline, não bloqueia e nem dispara retentativas desnecessárias de rede
       if (typeof navigator !== "undefined" && !navigator.onLine) {
         (window as any).db_connected = false;
@@ -856,9 +864,6 @@ export default function App() {
       const success = await loginAnon();
       if (!success && retries > 0) {
         if (typeof navigator !== "undefined" && !navigator.onLine) return;
-        console.warn(
-          `Firebase login failed. Retrying in 3s... (${retries} left)`,
-        );
         setTimeout(() => initFirebase(retries - 1), 3000);
         return;
       }
@@ -866,28 +871,20 @@ export default function App() {
       // Silently test connection to warm up the SDK
       const connected = await testConnection();
       (window as any).db_connected = connected;
-
-      if (!connected && retries > 0) {
-        if (typeof navigator !== "undefined" && !navigator.onLine) return;
-        console.warn(
-          `Firestore server test failed. Retrying in 5s... (${retries} left)`,
-        );
-        setTimeout(() => initFirebase(retries - 1), 5000);
-      }
     };
     initFirebase();
 
     const handleOnlineReconnect = () => {
-      initFirebase(2);
-      forceCacheStudentPortalResources(settings);
+      initFirebase(1);
     };
     window.addEventListener("online", handleOnlineReconnect);
 
     return () => {
       systemPrefersDark.removeEventListener("change", themeListener);
+      window.removeEventListener("themeChange", onThemeChange);
       window.removeEventListener("online", handleOnlineReconnect);
     };
-  }, [settings]);
+  }, []);
 
   const hasPrecachedStudentPortalRef = useRef(false);
 
@@ -904,16 +901,16 @@ export default function App() {
 
     if (typeof window !== "undefined") {
       if ("requestIdleCallback" in window) {
-        (window as any).requestIdleCallback(executePrecache, { timeout: 2500 });
+        (window as any).requestIdleCallback(executePrecache, { timeout: 3500 });
       } else {
-        timer = setTimeout(executePrecache, 1200);
+        timer = setTimeout(executePrecache, 2000);
       }
     }
 
     return () => {
       if (timer) clearTimeout(timer);
     };
-  }, [isOnline, settings]);
+  }, [isOnline]);
 
   return (
     <ErrorBoundary>

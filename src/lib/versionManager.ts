@@ -192,6 +192,18 @@ export async function safeReloadApp(targetVersion?: string, forcePurgeAll = fals
     return;
   }
 
+  // Prevenir quebra de container e tela branca dentro de iframes (ex: preview do AI Studio)
+  if (typeof window !== "undefined") {
+    try {
+      if (window.self !== window.top) {
+        console.warn("[VersionManager] Ambiente em iframe detectado; reload automático suprimido para proteger a prévia.");
+        return;
+      }
+    } catch (_) {
+      return;
+    }
+  }
+
   const finalVersion = targetVersion || APP_VERSION;
   try {
     localStorage.setItem("app_version", finalVersion);
@@ -226,7 +238,7 @@ export async function checkServerVersionWithAntiLoop(
   force = false,
   knownServerVersion?: string
 ): Promise<VersionCheckResult> {
-  // Se estiver offline, retorna imediatamente sem tentar requisições de rede nem disparar recargas
+  // Se estiver offline ou rodando em iframe, suprime obsolescência para garantir estabilidade e evitar tela branca
   if (typeof navigator !== 'undefined' && navigator.onLine === false) {
     return {
       isObsolete: false,
@@ -235,6 +247,20 @@ export async function checkServerVersionWithAntiLoop(
       isLoopBlocked: false,
       status: "up_to_date",
     };
+  }
+
+  if (typeof window !== "undefined") {
+    try {
+      if (window.self !== window.top) {
+        return {
+          isObsolete: false,
+          serverVersion: APP_VERSION,
+          localVersion: APP_VERSION,
+          isLoopBlocked: false,
+          status: "up_to_date",
+        };
+      }
+    } catch (_) {}
   }
 
   const now = Date.now();

@@ -1,5 +1,5 @@
 import React from "react";
-import { Lock, Fingerprint, ExternalLink, KeyRound } from "lucide-react";
+import { Lock, Fingerprint, ScanFace, ExternalLink, KeyRound } from "lucide-react";
 import Modal from "../Modal";
 import { isWebAuthnSupported } from "../../lib/webauthn";
 
@@ -143,12 +143,19 @@ export const StudentSecurityGate: React.FC<StudentSecurityGateProps> = ({
             <button
               type="button"
               onClick={handleBiometricAuth}
-              className="w-full py-3 bg-slate-100 hover:bg-slate-200 text-slate-700 dark:bg-slate-800 dark:hover:bg-slate-700 dark:text-slate-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2"
+              className="w-full py-3.5 bg-gradient-to-r from-sky-500/10 via-indigo-500/10 to-sky-500/10 hover:from-sky-500/20 hover:via-indigo-500/20 hover:to-sky-500/20 text-sky-800 dark:text-sky-200 border border-sky-200/80 dark:border-sky-800/80 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm"
             >
-              <Fingerprint className="w-5 h-5 text-indigo-500" />
-              {localStorage.getItem("student_biometric_credential_id")
-                ? "Usar Biometria"
-                : "Cadastrar Biometria"}
+              <div className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400">
+                <Fingerprint className="w-5 h-5" />
+                <span className="text-xs font-semibold opacity-60">/</span>
+                <ScanFace className="w-5 h-5" />
+              </div>
+              <span>
+                {typeof localStorage !== "undefined" &&
+                localStorage.getItem("student_biometric_credential_id")
+                  ? "Usar a Biometria ou Face-ID"
+                  : "Cadastrar Biometria ou Face-ID"}
+              </span>
             </button>
           ))}
         <div className="flex flex-col gap-2 mt-4 w-full">
@@ -265,15 +272,16 @@ export const StudentSecurityGate: React.FC<StudentSecurityGateProps> = ({
           {isWebAuthnSupported() &&
             (isBiometricAuthenticating ? (
               <div className="w-full p-4 rounded-2xl bg-sky-50 dark:bg-sky-950/40 border border-sky-200 dark:border-sky-800 flex flex-col items-center gap-2.5 animate-fade-in shadow-sm">
-                <div className="relative flex items-center justify-center py-1">
-                  <Fingerprint className="w-10 h-10 text-sky-600 dark:text-sky-400 animate-pulse" />
+                <div className="relative flex items-center justify-center gap-3 py-1">
+                  <Fingerprint className="w-9 h-9 text-sky-600 dark:text-sky-400 animate-pulse" />
+                  <ScanFace className="w-9 h-9 text-indigo-600 dark:text-indigo-400 animate-pulse" />
                 </div>
                 <div className="text-center">
                   <p className="text-sm font-bold text-sky-900 dark:text-sky-200">
-                    Aguardando Leitor Biométrico...
+                    Aguardando Biometria ou Face-ID...
                   </p>
                   <p className="text-xs text-sky-700 dark:text-sky-300 mt-0.5">
-                    Toque no leitor do aparelho ou use o Face ID
+                    Toque no leitor do aparelho ou confirme com o Face ID
                   </p>
                 </div>
                 <button
@@ -291,13 +299,19 @@ export const StudentSecurityGate: React.FC<StudentSecurityGateProps> = ({
               <button
                 type="button"
                 onClick={handleBiometricAuth}
-                className="w-full py-4 bg-sky-100 hover:bg-sky-200 text-sky-700 dark:bg-sky-900/30 dark:hover:bg-sky-900/50 dark:text-sky-300 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2 shadow-sm"
+                className="w-full py-4 px-4 bg-gradient-to-r from-sky-500/10 via-indigo-500/10 to-sky-500/10 hover:from-sky-500/20 hover:via-indigo-500/20 hover:to-sky-500/20 text-sky-800 dark:text-sky-200 border border-sky-200/80 dark:border-sky-800/80 rounded-2xl font-bold transition-all active:scale-95 flex items-center justify-center gap-2.5 shadow-sm hover:shadow-md"
               >
-                <Fingerprint className="w-5 h-5 text-sky-600 dark:text-sky-400" />
-                {typeof localStorage !== "undefined" &&
-                localStorage.getItem("student_biometric_credential_id")
-                  ? "Acessar com Biometria"
-                  : "Habilitar Biometria"}
+                <div className="flex items-center gap-1.5 text-sky-600 dark:text-sky-400">
+                  <Fingerprint className="w-5 h-5" />
+                  <span className="text-xs font-semibold opacity-60">/</span>
+                  <ScanFace className="w-5 h-5" />
+                </div>
+                <span>
+                  {typeof localStorage !== "undefined" &&
+                  localStorage.getItem("student_biometric_credential_id")
+                    ? "Usar a Biometria ou Face-ID"
+                    : "Habilitar Biometria ou Face-ID"}
+                </span>
               </button>
             ))}
         </div>
