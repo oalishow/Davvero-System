@@ -388,7 +388,6 @@ export default function AdminPanel({ onLogout }: { onLogout: () => void }) {
 
   const handleLogoutAdmin = async () => {
     playSound('logout');
-    localStorage.removeItem("adminMasterLogged");
     sessionStorage.removeItem("adminMasterLogged");
     await signOut(auth);
     // Crucial: ensure anonymous auth is immediately restored so that student and public views retain active permissions

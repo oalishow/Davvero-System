@@ -3,6 +3,7 @@ import { doc, onSnapshot, setDoc, getDoc } from 'firebase/firestore';
 import { onAuthStateChanged } from 'firebase/auth';
 import { db, auth, appId, loginAnon, isFirestoreQuotaExhausted, checkIsQuotaError } from '../lib/firebase';
 import { SETTINGS_DOC_PATH, ASSETS_DOC_PATH, APP_VERSION, extractAssetString, safeLocalStorageSet, safeSessionStorageSet, purgeOversizedLocalStorage, deduplicateList } from '../lib/constants';
+import { compareVersions } from '../lib/versionManager';
 import type { DioceseInfo } from '../data/diocesesData';
 import { AVAILABLE_DIOCESES, AVAILABLE_SEMINARIES, ProfessionalConfig } from '../types';
 
@@ -293,6 +294,7 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
           base = {
             ...DEFAULT_SETTINGS,
             ...parsed,
+            version: APP_VERSION,
             visibleFields: {
               ...DEFAULT_SETTINGS.visibleFields,
               ...(parsed.visibleFields || {})
@@ -382,7 +384,8 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             if (mainData.professionals) {
               mainData.professionals = normalizeProfessionals(mainData.professionals);
             }
-            setSettings(prev => ({ ...prev, ...mainData }));
+            const effectiveVersion = mainData.version && compareVersions(mainData.version, APP_VERSION) > 0 ? mainData.version : APP_VERSION;
+            setSettings(prev => ({ ...prev, ...mainData, version: effectiveVersion }));
           }
         }
 
@@ -594,9 +597,12 @@ export function SettingsProvider({ children }: { children: React.ReactNode }) {
             if (data.customCourses) data.customCourses = deduplicateList(data.customCourses);
             if (data.customDioceses) data.customDioceses = deduplicateList(data.customDioceses);
 
+            const effectiveVersion = data.version && compareVersions(data.version, APP_VERSION) > 0 ? data.version : APP_VERSION;
+
             setSettings(prev => ({ 
               ...prev, 
               ...data,
+              version: effectiveVersion,
               visibleFields: mergedVisibleFields
             }));
           } else {

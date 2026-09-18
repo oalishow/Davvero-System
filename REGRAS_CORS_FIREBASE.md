@@ -1,4 +1,11 @@
-# Como corrigir o erro de CORS do Firebase Storage
+# ⚠️ ARQUIVO OBSOLETO / INSTRUÇÕES HISTÓRICAS - NÃO APLICAR COM WILDCARD (*) ⚠️
+
+> **AVISO DE SEGURANÇA:**  
+> A configuração de CORS com wildcard indiscriminado (`"origin": ["*"]`) para operações de gravação (`PUT`, `DELETE`, `POST`) descrita neste arquivo histórico não deve ser aplicada em ambientes de produção. O acesso ao Firebase Storage deve seguir regras restritas de autenticação via `storage.rules` e origens autorizadas explícitas do domínio da instituição.
+
+---
+
+# Como corrigir o erro de CORS do Firebase Storage [ARQUIVO HISTÓRICO]
 
 O Firebase Storage bloqueia uploads feitos diretamente do navegador por padrão, a menos que o domínio de origem seja explicitamente autorizado. Como você está usando a pré-visualização (e não a URL padrão do appspot.com), você precisa configurar o **CORS** (Cross-Origin Resource Sharing) no seu bucket do Google Cloud Platform (GCP).
 

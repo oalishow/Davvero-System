@@ -39,15 +39,19 @@ if (!admin.apps.length) {
 const db = admin.firestore();
 
 // VAPID keys
-// Hardcoding keys for immediate use in preview environment
-const vapidPublicKey = process.env.VAPID_PUBLIC_KEY || "BExGkxEI0iWpLyDIDONDcUaHlIb3f_gGODmxL9LRkLT3qoWd0zpZhgFHA2c1c6sKIsRL9kLh4fpZ1maZg_CLELk";
-const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY || "BLaG0xS9zg1ICGRlg7Q8kHBr_dmMF_IyPJYW3JWVFTg";
+const vapidPublicKey = process.env.VAPID_PUBLIC_KEY;
+const vapidPrivateKey = process.env.VAPID_PRIVATE_KEY;
 
 if (vapidPublicKey && vapidPrivateKey) {
   webpush.setVapidDetails(
     "mailto:admblackjamf@gmail.com",
     vapidPublicKey,
     vapidPrivateKey
+  );
+  console.log("WebPush VAPID details configured successfully.");
+} else {
+  console.error(
+    "❌ [WebPush Error] Chaves VAPID não configuradas! Defina VAPID_PUBLIC_KEY e VAPID_PRIVATE_KEY nas variáveis de ambiente (.env) para habilitar notificações push."
   );
 }
 
@@ -224,6 +228,15 @@ async function startServer() {
     
     if (!subscriptions || subscriptions.length === 0) {
       return res.status(200).json({ success: true, count: 0, sent: 0 });
+    }
+
+    if (!vapidPublicKey || !vapidPrivateKey) {
+      console.error("[Broadcast] Falha: Envio cancelado porque VAPID_PUBLIC_KEY ou VAPID_PRIVATE_KEY não estão definidas no servidor.");
+      return res.status(500).json({
+        success: false,
+        error: "VAPID_NOT_CONFIGURED",
+        message: "As chaves VAPID não estão configuradas nas variáveis de ambiente do servidor."
+      });
     }
 
     const payload = { 
@@ -587,6 +600,171 @@ async function startServer() {
     } catch (err: any) {
       console.error("[Email] Erro ao descadastrar email:", err);
       return res.status(500).json({ success: false, error: err?.message || "Erro ao descadastrar e-mail." });
+    }
+  });
+
+  // Accept Admin Invite Endpoint (Server-authoritative promotion to Admin)
+  app.post("/api/admin/accept-invite", async (req, res) => {
+    try {
+      const { inviteId, idToken } = req.body;
+
+      // 1. Obter e validar obrigatoriamente o token de autenticação
+      const authHeader = req.headers.authorization;
+      const rawToken = idToken || (authHeader?.startsWith("Bearer ") ? authHeader.substring(7).trim() : null);
+
+      if (!rawToken || typeof rawToken !== "string") {
+        return res.status(401).json({
+          success: false,
+          error: "UNAUTHORIZED",
+          message: "Token de autenticação (idToken) obrigatório não fornecido."
+        });
+      }
+
+      // 2. Validar criptograficamente o idToken usando Firebase Admin SDK
+      let decodedToken: admin.auth.DecodedIdToken;
+      try {
+        decodedToken = await admin.auth().verifyIdToken(rawToken);
+      } catch (tokErr: any) {
+        console.error("[AcceptInvite] Falha na validação do token JWT do Firebase:", tokErr?.message || tokErr);
+        return res.status(401).json({
+          success: false,
+          error: "INVALID_TOKEN",
+          message: "O token de autenticação fornecido é inválido ou expirou."
+        });
+      }
+
+      // 3. Extrair UID e e-mail ESTRITAMENTE do token decodificado (nunca confiar no body)
+      const uid = decodedToken.uid;
+      const userEmail = (decodedToken.email || "").trim().toLowerCase();
+
+      if (!uid) {
+        return res.status(400).json({
+          success: false,
+          error: "MISSING_UID_IN_TOKEN",
+          message: "O token de autenticação não contém um UID válido."
+        });
+      }
+
+      if (!userEmail) {
+        return res.status(400).json({
+          success: false,
+          error: "MISSING_EMAIL_IN_TOKEN",
+          message: "A conta de usuário associada ao token não possui um endereço de e-mail."
+        });
+      }
+
+      // Obter dados complementares do usuário (nome de exibição) via Admin SDK
+      let userRecord: admin.auth.UserRecord | null = null;
+      try {
+        userRecord = await admin.auth().getUser(uid);
+      } catch (userErr) {
+        console.warn("[AcceptInvite] Aviso ao buscar UserRecord complementar:", userErr);
+      }
+
+      // 4. Localizar o convite no Firestore usando Firebase Admin SDK
+      const effectiveAppId = "banco-de-dados-fajopa";
+      const cleanInviteId = ((typeof inviteId === "string" && inviteId.trim()) || userEmail).toLowerCase();
+
+      // Procura primeiro no escopo da aplicação: artifacts/banco-de-dados-fajopa/public/data/admin_invites
+      const appInviteRef = db
+        .collection("artifacts")
+        .doc(effectiveAppId)
+        .collection("public")
+        .doc("data")
+        .collection("admin_invites")
+        .doc(cleanInviteId);
+
+      let inviteSnap = await appInviteRef.get();
+      let targetInviteRef = appInviteRef;
+
+      // Fallback para coleção raiz admin_invites/{cleanInviteId} se aplicável
+      if (!inviteSnap.exists) {
+        const rootInviteRef = db.collection("admin_invites").doc(cleanInviteId);
+        const rootSnap = await rootInviteRef.get();
+        if (rootSnap.exists) {
+          inviteSnap = rootSnap;
+          targetInviteRef = rootInviteRef;
+        }
+      }
+
+      if (!inviteSnap.exists) {
+        console.warn(`[AcceptInvite] Tentativa de registro sem convite para e-mail: ${userEmail}`);
+        return res.status(404).json({
+          success: false,
+          error: "INVITE_NOT_FOUND",
+          message: "Nenhum convite válido foi encontrado para este e-mail."
+        });
+      }
+
+      const inviteData = inviteSnap.data() || {};
+
+      // 5. Validar se o convite já foi consumido
+      if (inviteData.used === true || inviteData.consumedAt) {
+        console.warn(`[AcceptInvite] Convite já consumido tentado por: ${userEmail}`);
+        return res.status(400).json({
+          success: false,
+          error: "INVITE_ALREADY_USED",
+          message: "Este convite de administrador já foi utilizado anteriormente."
+        });
+      }
+
+      // 6. Validar se o e-mail do convite confere com o e-mail do token verificado
+      const inviteEmail = (inviteData.email || cleanInviteId).trim().toLowerCase();
+      if (inviteEmail !== userEmail) {
+        console.warn(`[AcceptInvite] E-mail do convite (${inviteEmail}) diferente do token verificado (${userEmail})`);
+        return res.status(403).json({
+          success: false,
+          error: "EMAIL_MISMATCH",
+          message: "O convite existente não corresponde ao e-mail da conta autenticada."
+        });
+      }
+
+      // 7. Gravar documento em /admins/{uid} usando estritamente o uid do token
+      const adminDocData = {
+        uid,
+        email: userEmail,
+        role: inviteData.role || "ADMIN",
+        name: inviteData.name || userRecord?.displayName || (decodedToken as any).name || userEmail.split("@")[0],
+        createdAt: admin.firestore.FieldValue.serverTimestamp(),
+        acceptedAt: new Date().toISOString(),
+        acceptedInviteId: cleanInviteId,
+        source: "admin_invite"
+      };
+
+      // Gravação na coleção raiz /admins/{uid} (avaliada por isAdmin() em firestore.rules)
+      await db.collection("admins").doc(uid).set(adminDocData, { merge: true });
+
+      // Gravação também no escopo da aplicação artifacts/{appId}/public/data/admins/{uid}
+      await db
+        .collection("artifacts")
+        .doc(effectiveAppId)
+        .collection("public")
+        .doc("data")
+        .collection("admins")
+        .doc(uid)
+        .set(adminDocData, { merge: true });
+
+      // 8. Marcar/excluir o convite consumido
+      await targetInviteRef.delete();
+      try {
+        await appInviteRef.delete();
+        await db.collection("admin_invites").doc(cleanInviteId).delete();
+      } catch {}
+
+      console.log(`[AcceptInvite] ✅ Administrador verificado e autorizado com sucesso: ${userEmail} (UID validado: ${uid}, Role: ${adminDocData.role})`);
+
+      return res.status(200).json({
+        success: true,
+        message: "Convite validado e privilégios de administrador concedidos com sucesso.",
+        role: adminDocData.role
+      });
+    } catch (err: any) {
+      console.error("[AcceptInvite] Erro interno ao processar convite:", err);
+      return res.status(500).json({
+        success: false,
+        error: "INTERNAL_ERROR",
+        message: "Erro interno no servidor ao processar convite de administrador: " + (err?.message || err)
+      });
     }
   });
 

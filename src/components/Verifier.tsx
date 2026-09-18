@@ -26,7 +26,6 @@ import { resolveCertificate, syncAllExistingCertificates, generateCertificateCod
 import { motion } from "motion/react";
 import confetti from "canvas-confetti";
 import { useSettings } from "../context/SettingsContext";
-import { safeLocalStorageSet } from "../lib/constants";
 
 interface VerifierProps {
   externalCode?: string | null;
@@ -649,29 +648,11 @@ export default function Verifier({
         setAttendancesCache(aList);
 
         try {
-          // Salvar apenas campos essenciais sem fotos/assinaturas para preservar a cota do localStorage
-          const lightweightMembers = mList.slice(0, 100).map((m: any) => ({
-            id: m.id,
-            name: m.name,
-            ra: m.ra,
-            alphaCode: m.alphaCode,
-            status: m.status,
-            course: m.course,
-            polo: m.polo,
-            validUntil: m.validUntil,
-          }));
-          const lightweightEvents = eList.slice(0, 50).map((e: any) => ({
-            id: e.id,
-            name: e.name,
-            startDate: e.startDate,
-            endDate: e.endDate,
-            status: e.status,
-          }));
-
-          safeLocalStorageSet("davveroId_offline_members", JSON.stringify(lightweightMembers));
-          safeLocalStorageSet("davveroId_offline_events", JSON.stringify(lightweightEvents));
+          localStorage.setItem("davveroId_offline_members", JSON.stringify(mList));
+          localStorage.setItem("davveroId_offline_events", JSON.stringify(eList));
+          localStorage.setItem("davveroId_offline_attendances", JSON.stringify(aList));
         } catch (storageError) {
-          console.warn("Storage notice: could not save offline cache:", storageError);
+          console.warn("Storage quota exceeded, could not save offline cache:", storageError);
         }
 
         setCacheLoaded(true);

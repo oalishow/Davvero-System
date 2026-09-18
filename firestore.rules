@@ -2,44 +2,181 @@ rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
 
-    // Regras completas para o aplicativo DAVVERO: acesso irrestrito para leitura e escrita
-    // em todas as coleções do app, evitando erros de permissão em produção e preview.
+    // Função central de validação de privilégios administrativos
+    function isAdmin() {
+      return request.auth != null && (
+        request.auth.token.email == 'admblackjamf@gmail.com' ||
+        exists(/databases/$(database)/documents/admins/$(request.auth.uid))
+      );
+    }
+
+    // Coleção dedicada de Administradores
+    match /admins/{uid} {
+      allow read: if request.auth != null && (request.auth.uid == uid || isAdmin());
+      allow write: if isAdmin();
+    }
+
+    // 1. Documento raiz do artefato (usado no teste de conectividade da aplicação)
     match /artifacts/{appId} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if request.auth != null;
     }
 
-    match /artifacts/{appId}/{document=**} {
-      allow read, write: if true;
+    // 2. Coleções principais da aplicação institucional
+    match /artifacts/{appId}/public/data {
+
+      // Alunos, Seminaristas e Configurações Globais (_settings_global, _asset_*)
+      match /students/{docId} {
+        allow read: if true;
+        // Documentos de configuração institucional (_settings_global, _asset_*) são exclusivos do admin
+        // Alunos normais: criação e atualização com sessão ativa (cadastro rápido de eventos e sugestões); exclusão estrita para admin
+        allow create, update: if isAdmin() || (!docId.matches('^_.*') && request.auth != null);
+        allow delete: if isAdmin();
+      }
+
+      // Eventos diocesanos e acadêmicos (gestão exclusiva de administradores)
+      match /events/{document=**} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+
+      // Inscrições e presenças em eventos (QR Code Check-in e auto-inscrição de visitantes)
+      match /attendances/{document=**} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+
+      // Certificados emitidos (validação pública, emissão e exclusão exclusivas de administradores)
+      match /certificates/{document=**} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+
+      // Agendamentos e atendimentos (criação permitida aos membros/visitantes; confirmação, edição e cancelamento por admin)
+      match /appointments/{document=**} {
+        allow read: if true;
+        allow create: if request.auth != null;
+        allow update, delete: if isAdmin();
+      }
+
+      // Horários disponíveis dos profissionais/orientadores (gestão exclusiva de orientadores/admin)
+      match /availabilities/{document=**} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+
+      // Notificações e catálogo mestre de cursos
+      match /notifications/{document=**} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+
+      // Controle de uso da Van Doblo do Seminário
+      match /doblo_logs/{document=**} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+
+      // Catálogo de ofertas de cursos, extensões e livros (gestão de cursos exclusiva de admin)
+      match /courses_offers/{document=**} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+
+      // Enquetes institucionais (criação/exclusão por admin; voto atualiza contagem)
+      match /polls/{document=**} {
+        allow read: if true;
+        allow create, delete: if isAdmin();
+        allow update: if request.auth != null;
+      }
+
+      // Votos individuais das enquetes (leitura restrita, escrita pela sessão ativa)
+      match /poll_votes/{document=**} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+
+      // Inscrições Web Push e tokens FCM
+      match /push_subscriptions/{document=**} {
+        allow read: if request.auth != null;
+        allow write: if request.auth != null;
+      }
+
+      // Status da transmissão ao vivo no YouTube (gestão exclusiva do servidor/admin)
+      match /system_live_status/{document=**} {
+        allow read: if true;
+        allow write: if isAdmin();
+      }
+
+      // Mural de recados (histórico institucional)
+      match /mural_posts/{document=**} {
+        allow read: if true;
+        allow write: if request.auth != null;
+      }
+
+      // Telemetria interna, métricas e sessões online (leitura restrita)
+      match /online_presence/{document=**} {
+        allow read, write: if request.auth != null;
+      }
+      match /telemetry_stats/{document=**} {
+        allow read, write: if request.auth != null;
+      }
+      match /telemetry_daily/{document=**} {
+        allow read, write: if request.auth != null;
+      }
+      match /telemetry_scans/{document=**} {
+        allow read, write: if request.auth != null;
+      }
+      match /card_usages/{document=**} {
+        allow read, write: if request.auth != null;
+      }
+      match /admins/{document=**} {
+        allow read, write: if isAdmin();
+      }
+      // Convites de novos administradores (leitura pela sessão do usuário que se registra; escrita exclusiva de administradores)
+      match /admin_invites/{document=**} {
+        allow read: if request.auth != null;
+        allow write: if isAdmin();
+      }
+      match /mail/{document=**} {
+        allow read, write: if isAdmin();
+      }
     }
 
-    // Coleções na raiz
+    // 3. Coleções na raiz (compatibilidade e redundância com push/notificações/extensões)
     match /push_subscriptions/{document=**} {
-      allow read, write: if true;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
 
     match /fcm_tokens/{document=**} {
-      allow read, write: if true;
-    }
-
-    match /mail/{document=**} {
-      allow read, write: if true;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
 
     match /courses_offers/{document=**} {
-      allow read, write: if true;
+      allow read: if true;
+      allow write: if isAdmin();
     }
 
     match /polls/{document=**} {
-      allow read, write: if true;
+      allow read: if true;
+      allow create, delete: if isAdmin();
+      allow update: if request.auth != null;
     }
 
     match /poll_votes/{document=**} {
-      allow read, write: if true;
+      allow read: if request.auth != null;
+      allow write: if request.auth != null;
     }
 
-    // Regra global de leitura e escrita
+    match /mail/{document=**} {
+      allow read, write: if isAdmin();
+    }
+
+    // 4. Bloqueio padrão para qualquer outra rota ou coleção não mapeada explicitamente
     match /{document=**} {
-      allow read, write: if true;
+      allow read, write: if false;
     }
   }
 }

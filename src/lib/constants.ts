@@ -1,22 +1,3 @@
-export const PASSWORD_STORAGE_KEY = "studentAdminPassword";
-export const DEFAULT_ADMIN_PASSWORD = "ADMIN";
-
-export const AUTHORIZED_ADMIN_EMAILS = [
-  'admblackjamf@gmail.com',
-  'comunicacao@fajopa.edu.br',
-  'danilo@fajopa.edu.br',
-  'suporte@fajopa.edu.br',
-  'secretaria@fajopa.edu.br'
-];
-
-export const isInstitutionalAdminEmail = (email?: string | null): boolean => {
-  if (!email) return false;
-  const clean = email.trim().toLowerCase();
-  return (
-    AUTHORIZED_ADMIN_EMAILS.includes(clean) ||
-    clean.endsWith('@fajopa.edu.br')
-  );
-};
 export const URL_STORAGE_KEY = "studentVerifierUrl";
 export const DEFAULT_PUBLIC_URL = "https://davvero.netlify.app";
 export const BACKUP_STORAGE_KEY = "davveroId_local_backup";
@@ -43,8 +24,8 @@ export const INSTITUTION_DESCRIPTION_KEY = "davveroId_institution_description";
 export const CARD_DESCRIPTION_KEY = "davveroId_card_description";
 export const CUSTOM_ROLES_KEY = "davveroId_custom_roles";
 export const CUSTOM_COURSES_KEY = "davveroId_custom_courses";
-export const APP_VERSION = "8.8";
-export const APP_BUILD = "16.09.2026";
+export const APP_VERSION = "8.9b";
+export const APP_BUILD = "18.09.2026";
 export const SETTINGS_DOC_PATH = (appId: string) =>
   `artifacts/${appId}/public/data/students/_settings_global`;
 export const ASSETS_DOC_PATH = (appId: string, assetType: string) =>
@@ -199,6 +180,8 @@ export function safeSessionStorageSet(key: string, value: string): boolean {
 }
 
 export const CHANGELOG = [
+  "Versão 8.9b - Blindagem e Atualizações de Segurança Institucional & Fim de Fantasmas de Versão",
+  "Remoção integral e definitiva de mecanismos legados de senha mestra (DEFAULT_ADMIN_PASSWORD / PASSWORD_STORAGE_KEY) e de privilégios implícitos por domínio de e-mail (AUTHORIZED_ADMIN_EMAILS); restrição estrita e autoritativa de privilégios de administrador exclusivamente via convite com token criptográfico verificado no servidor (/api/admin/accept-invite); eliminação da regressão de versões antigas (versões fantasmas como v6.9b) através de particionamento e versionamento isolado de namespaces de CacheStorage do Service Worker (app-shell-cache-v8.9b), purga obrigatória de caches órfãos no evento activate e renovação em tempo real do App Shell.",
   "Versão 8.8 - Paridade Visual dos Certificados, Impressão Fiel A4, Modal de Abertura Direta no Celular & Modo Offline",
   "Garantia de paridade visual estrita entre a Verificação de Autenticidade e o Portal do Aluno com hidratação integral de modelos, temas, fontes, fundos e assinaturas; nova engine de impressão A4 paisagem (297mm x 210mm) em altíssima definição sem quebras de layout ou cortes de borda; novo modal pós-download com abertura instantânea do PDF no leitor nativo do celular, compartilhamento rápido e guia de localização de downloads; suporte completo ao funcionamento offline de certificados e histórico acadêmico com transparência no painel offline.",
   "Versão 8.7b - Fix de Rolagem na Verificação, Proteção do Cabeçalho e Acesso à Gestão",

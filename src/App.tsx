@@ -38,7 +38,7 @@ import OfflineNotice from "./components/OfflineNotice";
 import { useSettings } from "./context/SettingsContext";
 import { APP_VERSION, APP_BUILD, CHANGELOG } from "./lib/constants";
 import { playSound } from "./lib/sounds";
-import { checkServerVersionWithAntiLoop, safeReloadApp, clearAppCaches, isVersionOutdated } from "./lib/versionManager";
+import { checkServerVersionWithAntiLoop, safeReloadApp, clearAppCaches, isVersionOutdated, CURRENT_SHELL_CACHE, CURRENT_STATIC_CACHE, purgeLegacyVersionCaches } from "./lib/versionManager";
 import { triggerSWCheck } from "./pwa";
 import { lazyWithRetry } from "./lib/lazyWithRetry";
 import Verifier from "./components/Verifier";
@@ -65,8 +65,8 @@ export async function forceCacheStudentPortalResources(appSettings?: any): Promi
 
   try {
     const [shellCache, staticCache, imagesCache] = await Promise.all([
-      caches.open("app-shell-cache"),
-      caches.open("static-assets-cache"),
+      caches.open(CURRENT_SHELL_CACHE),
+      caches.open(CURRENT_STATIC_CACHE),
       caches.open("images-cache"),
     ]);
 
@@ -153,11 +153,13 @@ export async function forceCacheStudentPortalResources(appSettings?: any): Promi
     }
 
     // Gravação segura no Cache API
-    const cacheUrlSafely = async (cache: Cache, url: string, isImage = false) => {
+    const cacheUrlSafely = async (cache: Cache, url: string, isImage = false, forceRefresh = false) => {
       try {
-        const existing = await cache.match(url);
-        if (existing && (existing.ok || existing.type === "opaque")) {
-          return;
+        if (!forceRefresh) {
+          const existing = await cache.match(url);
+          if (existing && (existing.ok || existing.type === "opaque")) {
+            return;
+          }
         }
 
         const isSameOrigin = url.startsWith(window.location.origin) || url.startsWith("/");
@@ -175,7 +177,7 @@ export async function forceCacheStudentPortalResources(appSettings?: any): Promi
     };
 
     await Promise.allSettled([
-      ...shellUrls.map((u) => cacheUrlSafely(shellCache, u)),
+      ...shellUrls.map((u) => cacheUrlSafely(shellCache, u, false, true)),
       ...activeScripts.map((u) => cacheUrlSafely(staticCache, u)),
       ...activeStylesheets.map((u) => cacheUrlSafely(staticCache, u)),
       ...iconUrls.map((u) => cacheUrlSafely(imagesCache, u, true)),
@@ -209,20 +211,6 @@ export default function App() {
     : (youtubeLive.liveUrl || settings.liveBadgeUrl || "https://www.youtube.com/@fajopademarilia/live");
   const [showWelcomeModal, setShowWelcomeModal] = useState(() => {
     if (typeof window !== "undefined") {
-      const isAlreadyInstalled =
-        window.matchMedia("(display-mode: standalone)").matches ||
-        (navigator as any).standalone === true ||
-        document.referrer.includes("android-app://") ||
-        localStorage.getItem("pwa_installed") === "true";
-
-      if (isAlreadyInstalled) {
-        try {
-          localStorage.setItem("has_seen_welcome", "true");
-          localStorage.setItem("pwa_installed", "true");
-        } catch {}
-        return false;
-      }
-
       const params = new URLSearchParams(window.location.search);
       const isDirectDeepLink =
         params.has("event") || 
@@ -622,6 +610,9 @@ export default function App() {
       } catch {}
     }
 
+    // 2. Eliminação ativa de caches legados e versões fantasmas
+    purgeLegacyVersionCaches().catch(() => {});
+
     const lastSeenVersion = localStorage.getItem("last_seen_app_version");
     
     // Mostra o modal de novidades se o app já estava instalado e agora é uma versão mais nova
@@ -802,26 +793,16 @@ export default function App() {
       handleUrlNavigation();
     };
 
-    const handleAppInstalled = () => {
-      try {
-        localStorage.setItem("has_seen_welcome", "true");
-        localStorage.setItem("pwa_installed", "true");
-      } catch {}
-      setShowWelcomeModal(false);
-    };
-
     if (typeof navigator !== "undefined" && navigator.serviceWorker) {
       navigator.serviceWorker.addEventListener("message", handleSWMessage);
     }
     window.addEventListener("popstate", handlePopState);
-    window.addEventListener("appinstalled", handleAppInstalled);
 
     return () => {
       if (typeof navigator !== "undefined" && navigator.serviceWorker) {
         navigator.serviceWorker.removeEventListener("message", handleSWMessage);
       }
       window.removeEventListener("popstate", handlePopState);
-      window.removeEventListener("appinstalled", handleAppInstalled);
     };
   }, []);
 

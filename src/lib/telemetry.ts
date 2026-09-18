@@ -31,7 +31,6 @@ export interface TelemetryStats {
   totalDbWrites: number;
   onlineUsersCount: number;
   peakSimultaneousUsers: number;
-  peakRecordedDate?: string;
   totalCardDiscountUses: number;
   todayCardDiscountUses: number;
   scansByType: {
@@ -229,19 +228,11 @@ export const recordCardDiscountUse = async (member?: { id?: string; name?: strin
  * Registra recorde de usuários simultâneos se a contagem atual superar o pico anterior
  */
 export const recordSimultaneousPeak = async (currentCount: number, recordedPeak: number) => {
-  const minPeak = Math.max(76, recordedPeak);
-  if (currentCount <= minPeak || isFirestoreQuotaExhausted) return;
+  if (currentCount <= recordedPeak || isFirestoreQuotaExhausted) return;
   try {
-    const now = new Date();
-    const day = String(now.getDate()).padStart(2, "0");
-    const month = String(now.getMonth() + 1).padStart(2, "0");
-    const year = now.getFullYear();
-    const formattedDate = `${day}/${month}/${year}`;
-
     const telemetryDocRef = doc(db, `artifacts/${appId}/public/data/telemetry_stats`, "global_stats");
     await setDoc(telemetryDocRef, {
       peakSimultaneousUsers: currentCount,
-      peakRecordedDate: formattedDate,
       peakRecordedAt: serverTimestamp(),
       lastUpdated: serverTimestamp(),
     }, { merge: true });
@@ -306,14 +297,14 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
     updateHeartbeat();
   }
 
-  // Pulse a cada 45 segundos para manter status em tempo real preciso sem onerar a rede
-  const intervalId = setInterval(updateHeartbeat, 45000);
+  // Pulse every 180 seconds (3 minutos) instead of 45s to avoid quota exhaustion
+  const intervalId = setInterval(updateHeartbeat, 180000);
 
   // Resume heartbeat when tab becomes visible or gains focus
   const handleVisibilityOrFocus = () => {
     if (document.visibilityState === "visible" && !isFirestoreQuotaExhausted) {
       const elapsed = Date.now() - lastHeartbeatTime;
-      if (elapsed > 30000) {
+      if (elapsed > 120000) {
         updateHeartbeat();
       }
     }
@@ -321,22 +312,10 @@ export const startPresenceHeartbeat = (userEmail?: string | null, role: string =
   document.addEventListener("visibilitychange", handleVisibilityOrFocus);
   window.addEventListener("focus", handleVisibilityOrFocus);
 
-  // Limpeza ao sair ou fechar a aba
-  const handleExit = () => {
-    try {
-      deleteDoc(presenceDocRef).catch(() => {});
-    } catch (_) {}
-  };
-  window.addEventListener("pagehide", handleExit);
-  window.addEventListener("beforeunload", handleExit);
-
   return () => {
     clearInterval(intervalId);
     document.removeEventListener("visibilitychange", handleVisibilityOrFocus);
     window.removeEventListener("focus", handleVisibilityOrFocus);
-    window.removeEventListener("pagehide", handleExit);
-    window.removeEventListener("beforeunload", handleExit);
-    handleExit();
   };
 };
 
@@ -378,16 +357,13 @@ export const getFullTelemetryData = async (
 
   // 1. Fetch real online presence count (apenas se a cota não estiver esgotada)
   let onlineCount = 1;
-  const initialPeak = Math.max(76, Number(globalData.peakSimultaneousUsers || 76));
-  let currentPeak = initialPeak;
-  let peakDate = globalData.peakRecordedDate || "02/09/2026";
+  let currentPeak = Math.max(1, Number(globalData.peakSimultaneousUsers || 1));
   if (!isFirestoreQuotaExhausted) {
     try {
       const presenceSnap = await getDocs(
         query(
           collection(db, `artifacts/${appId}/public/data/online_presence`),
-          orderBy("lastActiveTimestamp", "desc"),
-          limit(150)
+          limit(100)
         )
       );
       const now = Date.now();
@@ -395,22 +371,18 @@ export const getFullTelemetryData = async (
       
       presenceSnap.forEach((d) => {
         const data = d.data();
-        const ts = Number(data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0));
-        // Usuários ativos nos últimos 150s (2.5 minutos)
-        if (ts && (now - ts) >= 0 && (now - ts) <= 150 * 1000) {
-          validOnline++;
+        let isActive = false;
+        const ts = data.lastActiveTimestamp || (data.lastActive ? new Date(data.lastActive).getTime() : 0);
+        if (ts && Math.abs(now - ts) < 300 * 1000) {
+          isActive = true;
         }
+        if (isActive) validOnline++;
       });
       onlineCount = Math.max(1, validOnline);
 
       if (onlineCount > currentPeak) {
         currentPeak = onlineCount;
-        const nowD = new Date();
-        const day = String(nowD.getDate()).padStart(2, "0");
-        const month = String(nowD.getMonth() + 1).padStart(2, "0");
-        const year = nowD.getFullYear();
-        peakDate = `${day}/${month}/${year}`;
-        recordSimultaneousPeak(onlineCount, initialPeak).catch(() => {});
+        recordSimultaneousPeak(onlineCount, currentPeak).catch(() => {});
       }
     } catch (err) {
       if (!checkIsQuotaError(err)) {
@@ -516,7 +488,6 @@ export const getFullTelemetryData = async (
     totalDbWrites: recordedWrites,
     onlineUsersCount: onlineCount,
     peakSimultaneousUsers: currentPeak,
-    peakRecordedDate: peakDate,
     totalCardDiscountUses: Number(globalData.totalCardDiscountUses || 0),
     todayCardDiscountUses: Number(todayData.cardDiscountUses || 0),
     scansByType: {

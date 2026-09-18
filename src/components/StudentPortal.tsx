@@ -108,29 +108,29 @@ const StudentPortal = memo(function StudentPortal({
   const [expandedPortalEvents, setExpandedPortalEvents] = useState<Record<string, boolean>>({});
   const [isUnlocked, setIsUnlocked] = useState(() => {
     if (typeof window !== "undefined") {
-      // Prioriza persistência segura no localStorage (ou sessionStorage caso presente)
-      return (
-        localStorage.getItem("davveroId_unlocked") === "true" ||
-        sessionStorage.getItem("davveroId_unlocked") === "true"
-      );
+      // Exige autenticação a cada abertura do aplicativo (somente desbloqueado se autenticado na sessão ativa)
+      return sessionStorage.getItem("davveroId_unlocked") === "true";
     }
     return false;
   });
 
-  // Garante que o estado de segurança seja gerenciado de forma equilibrada:
-  // Mantém os dados da conta vinculados e preserva o login conforme solicitado pelo usuário.
+  // Garante que o fechamento da janela/app ou inatividade em segundo plano no celular bloqueie a MINHA ID
   useEffect(() => {
     let backgroundedAt = 0;
+
+    const handleWindowUnload = () => {
+      try {
+        sessionStorage.removeItem("davveroId_unlocked");
+      } catch (_) {}
+    };
 
     const handleVisibilityChange = () => {
       if (document.visibilityState === "hidden") {
         backgroundedAt = Date.now();
       } else if (document.visibilityState === "visible") {
-        // Se ficou em segundo plano / celular bloqueado por longo período (mais de 1 hora de inatividade),
-        // tranca para solicitar PIN/Biometria com segurança sem desvincular a conta.
-        if (backgroundedAt > 0 && Date.now() - backgroundedAt > 60 * 60 * 1000) {
+        // Se ficou em segundo plano / celular bloqueado por mais de 2 minutos, tranca novamente por segurança
+        if (backgroundedAt > 0 && Date.now() - backgroundedAt > 2 * 60 * 1000) {
           try {
-            localStorage.removeItem("davveroId_unlocked");
             sessionStorage.removeItem("davveroId_unlocked");
           } catch (_) {}
           setIsUnlocked(false);
@@ -141,9 +141,13 @@ const StudentPortal = memo(function StudentPortal({
       }
     };
 
+    window.addEventListener("pagehide", handleWindowUnload);
+    window.addEventListener("beforeunload", handleWindowUnload);
     document.addEventListener("visibilitychange", handleVisibilityChange);
 
     return () => {
+      window.removeEventListener("pagehide", handleWindowUnload);
+      window.removeEventListener("beforeunload", handleWindowUnload);
       document.removeEventListener("visibilitychange", handleVisibilityChange);
     };
   }, []);
@@ -177,13 +181,11 @@ const StudentPortal = memo(function StudentPortal({
     }
   };
 
-  // Update storage whenever isUnlocked changes
+  // Update sessionStorage whenever isUnlocked changes
   useEffect(() => {
     if (isUnlocked) {
-      localStorage.setItem("davveroId_unlocked", "true");
       sessionStorage.setItem("davveroId_unlocked", "true");
     } else {
-      localStorage.removeItem("davveroId_unlocked");
       sessionStorage.removeItem("davveroId_unlocked");
     }
   }, [isUnlocked]);
@@ -343,9 +345,7 @@ const StudentPortal = memo(function StudentPortal({
   // Fallback PIN state
   const [pinMode, setPinMode] = useState<"create" | "verify" | "none">(() => {
     if (typeof window !== "undefined") {
-      const isAlreadyUnlocked =
-        localStorage.getItem("davveroId_unlocked") === "true" ||
-        sessionStorage.getItem("davveroId_unlocked") === "true";
+      const isAlreadyUnlocked = sessionStorage.getItem("davveroId_unlocked") === "true";
       if (isAlreadyUnlocked) return "none";
       const hasPin = !!localStorage.getItem(STUDENT_FALLBACK_PIN);
       return hasPin ? "verify" : "none";
@@ -1362,7 +1362,6 @@ const StudentPortal = memo(function StudentPortal({
           setIsGenerating(true);
           playSound('generating');
           await new Promise((resolve) => setTimeout(resolve, 1000));
-          localStorage.setItem("davveroId_unlocked", "true");
           sessionStorage.setItem("davveroId_unlocked", "true");
           setIsUnlocked(true);
           setIsGenerating(false);
@@ -1386,7 +1385,6 @@ const StudentPortal = memo(function StudentPortal({
         setIsGenerating(true);
         playSound('generating');
         await new Promise((resolve) => setTimeout(resolve, 800));
-        localStorage.setItem("davveroId_unlocked", "true");
         sessionStorage.setItem("davveroId_unlocked", "true");
         setIsUnlocked(true);
         setIsGenerating(false);
@@ -1412,7 +1410,6 @@ const StudentPortal = memo(function StudentPortal({
     member,
     onSuccess: async () => {
       setIsGenerating(true);
-      localStorage.setItem("davveroId_unlocked", "true");
       sessionStorage.setItem("davveroId_unlocked", "true");
       playSound('generating');
       await new Promise((r) => setTimeout(r, 600));
@@ -1467,7 +1464,6 @@ const StudentPortal = memo(function StudentPortal({
     const isRaMatch = Boolean(member.ra && resetCodeStr.trim().toUpperCase() === member.ra.trim().toUpperCase());
 
     if (isCodeMatch || isCpfMatch || isRaMatch) {
-      localStorage.setItem("davveroId_unlocked", "true");
       sessionStorage.setItem("davveroId_unlocked", "true");
       setIsUnlocked(true);
       setPinMode("none");
@@ -1496,7 +1492,6 @@ const StudentPortal = memo(function StudentPortal({
       localStorage.removeItem("davveroId_guest_email");
       localStorage.removeItem("davveroId_guest_phone");
       localStorage.removeItem("davveroId_my_attendances_cache");
-      localStorage.removeItem("davveroId_unlocked");
       sessionStorage.removeItem("davveroId_unlocked");
       window.dispatchEvent(new CustomEvent("davveroId_student_logout"));
       window.dispatchEvent(new Event("storage"));
@@ -1722,10 +1717,7 @@ const StudentPortal = memo(function StudentPortal({
             pushSubscription={subscription}
             onSubscribePush={subscribe}
             onLockSecurity={() => {
-              try {
-                localStorage.removeItem("davveroId_unlocked");
-                sessionStorage.removeItem("davveroId_unlocked");
-              } catch (_) {}
+              sessionStorage.removeItem("davveroId_unlocked");
               setIsUnlocked(false);
               const hasPin = typeof localStorage !== "undefined" && !!localStorage.getItem(STUDENT_FALLBACK_PIN);
               setPinMode(hasPin ? "verify" : "none");

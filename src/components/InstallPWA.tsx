@@ -42,26 +42,14 @@ export default function InstallPWA() {
       setIsInstalled(true);
       setShowInstallBtn(false);
       setDeferredPrompt(null);
-      try {
-        localStorage.setItem("pwa_installed", "true");
-        localStorage.setItem("has_seen_welcome", "true");
-      } catch {}
     };
 
     window.addEventListener('beforeinstallprompt', handleBeforeInstallPrompt);
     window.addEventListener('appinstalled', handleAppInstalled);
 
     // Check if already installed
-    if (
-      window.matchMedia('(display-mode: standalone)').matches ||
-      (navigator as any).standalone === true ||
-      localStorage.getItem('pwa_installed') === 'true'
-    ) {
+    if (window.matchMedia('(display-mode: standalone)').matches) {
       setShowInstallBtn(false);
-      try {
-        localStorage.setItem('pwa_installed', 'true');
-        localStorage.setItem('has_seen_welcome', 'true');
-      } catch {}
     }
 
     return () => {
@@ -83,10 +71,6 @@ export default function InstallPWA() {
       const { outcome } = await deferredPrompt.userChoice;
       if (outcome === 'accepted') {
         setShowInstallBtn(false);
-        try {
-          localStorage.setItem("pwa_installed", "true");
-          localStorage.setItem("has_seen_welcome", "true");
-        } catch {}
       }
       setDeferredPrompt(null);
     } catch (err) {

@@ -1,4 +1,13 @@
-# Configuração do Firebase para Correção do Mural e outros
+# ⚠️ ARQUIVO OBSOLETO - NÃO APLICAR ⚠️
+
+> **ALERTA CRÍTICO DE SEGURANÇA:**  
+> As regras descritas neste documento são **OBSOLETAS** e **NUNCA DEVEM SER APLICADAS**.  
+> Elas contêm permissões abertas permissivas (`allow write: if true`) que anulam a proteção de dados da instituição e violam os princípios de segurança.  
+> As regras oficiais e vigentes da aplicação estão mantidas e versionadas exclusivamente no arquivo **`firestore.rules`** na raiz do repositório.
+
+---
+
+# Configuração do Firebase para Correção do Mural e outros [ARQUIVO HISTÓRICO / DESATIVADO]
 
 Para que o mural (e todas as outras funcionalidades) voltem a funcionar perfeitamente, precisamos ajustar as regras de segurança do seu Firebase Console (porque ele está bloqueando a edição no `mural_posts` pelo que foi configurado no arquivo LGPD).
 

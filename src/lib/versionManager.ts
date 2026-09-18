@@ -1,5 +1,8 @@
 import { APP_VERSION, APP_BUILD } from "./constants";
 
+export const CURRENT_SHELL_CACHE = `app-shell-cache-v${APP_VERSION}`;
+export const CURRENT_STATIC_CACHE = `static-assets-cache-v${APP_VERSION}`;
+
 const STORAGE_KEYS = {
   ATTEMPT_COUNT: "davvero_version_reload_count",
   LAST_TIMESTAMP: "davvero_version_last_attempt_ts",
@@ -93,7 +96,7 @@ export async function clearAppCaches(forcePurgeAll = false): Promise<void> {
   }
 
   try {
-    // 1. Clear dynamic CacheStorage (purges all caches when forcePurgeAll is true)
+    // 1. Clear dynamic CacheStorage (purges all caches when forcePurgeAll is true, or removes non-matching versions)
     if (typeof window !== "undefined" && "caches" in window) {
       const keys = await caches.keys();
       await Promise.all(
@@ -101,13 +104,24 @@ export async function clearAppCaches(forcePurgeAll = false): Promise<void> {
           if (forcePurgeAll) {
             return caches.delete(key);
           }
-          if (!key.includes('workbox-precache') && !key.includes('app-shell')) {
+          // Purgar caches legados e quaisquer instâncias de app-shell que não correspondam à versão corrente
+          if (
+            key === "app-shell-cache" ||
+            key === "firestore-data-cache" ||
+            (key.startsWith("app-shell-cache-") && key !== CURRENT_SHELL_CACHE) ||
+            (key.startsWith("static-assets-cache") && key !== CURRENT_STATIC_CACHE) ||
+            key.includes("v6.9") ||
+            key.includes("6.9b")
+          ) {
+            return caches.delete(key);
+          }
+          if (!key.includes("workbox-precache") && !key.includes(CURRENT_SHELL_CACHE) && !key.includes(CURRENT_STATIC_CACHE)) {
             return caches.delete(key);
           }
           return Promise.resolve(true);
         })
       );
-      console.log("[VersionManager] Caches limpos com sucesso. forcePurgeAll =", forcePurgeAll);
+      console.log("[VersionManager] Caches verificados e sincronizados com sucesso. forcePurgeAll =", forcePurgeAll);
     }
 
     // 2. Notify active service workers to update and activate immediately
@@ -130,6 +144,42 @@ export async function clearAppCaches(forcePurgeAll = false): Promise<void> {
     }
   } catch (err) {
     console.warn("[VersionManager] Aviso ao sincronizar caches:", err);
+  }
+}
+
+/**
+ * Executada proativamente no ciclo de inicialização do app para eliminar caches legados órfãos
+ * (incluindo fantasmas da v6.9b ou app-shell não versionado).
+ */
+export async function purgeLegacyVersionCaches(): Promise<void> {
+  if (typeof window === "undefined" || !("caches" in window)) return;
+  try {
+    const keys = await caches.keys();
+    const obsoleteKeys = keys.filter(
+      (k) =>
+        k === "app-shell-cache" ||
+        k === "firestore-data-cache" ||
+        (k.startsWith("app-shell-cache-") && k !== CURRENT_SHELL_CACHE) ||
+        (k.startsWith("static-assets-cache") && k !== CURRENT_STATIC_CACHE) ||
+        k.includes("v6.9") ||
+        k.includes("6.9b") ||
+        k.includes("v7.") ||
+        k.includes("v8.0") ||
+        k.includes("v8.1") ||
+        k.includes("v8.2") ||
+        k.includes("v8.3") ||
+        k.includes("v8.4") ||
+        k.includes("v8.5") ||
+        k.includes("v8.6") ||
+        k.includes("v8.7") ||
+        k.includes("v8.8")
+    );
+    if (obsoleteKeys.length > 0) {
+      console.log(`[VersionManager] Purgando ${obsoleteKeys.length} caches legados:`, obsoleteKeys);
+      await Promise.all(obsoleteKeys.map((k) => caches.delete(k)));
+    }
+  } catch (err) {
+    console.warn("[VersionManager] Erro não fatal ao purgar caches legados:", err);
   }
 }
 

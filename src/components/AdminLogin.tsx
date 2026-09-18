@@ -1,7 +1,6 @@
 import React, { useState, useEffect } from "react";
-import { KeyRound, UserPlus, LogIn, ChevronRight, Lock } from "lucide-react";
+import { UserPlus, LogIn, ChevronRight, Lock } from "lucide-react";
 import { motion, AnimatePresence } from "motion/react";
-import { PASSWORD_STORAGE_KEY, DEFAULT_ADMIN_PASSWORD, isInstitutionalAdminEmail } from "../lib/constants";
 import { auth } from "../lib/firebase";
 import {
   signInWithEmailAndPassword,
@@ -20,7 +19,6 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
   const [activeTab, setActiveTab] = useState<"login" | "register">("login");
   const [email, setEmail] = useState("");
   const [emailPassword, setEmailPassword] = useState("");
-  const [masterConfirm, setMasterConfirm] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [successMsg, setSuccessMsg] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
@@ -30,7 +28,6 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
     // Clear fields and error when switching tabs
     setError(null);
     setSuccessMsg(null);
-    setMasterConfirm("");
   }, [activeTab]);
 
   const handleAction = async () => {
@@ -44,39 +41,21 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
     let inviteDocRef: any = null;
 
     if (isRegister) {
-      let skipMaster = false;
       const emailClean = email.trim().toLowerCase();
       try {
         const { doc: getDocRef, getDoc } = await import("firebase/firestore");
         const { db, appId } = await import("../lib/firebase");
         inviteDocRef = getDocRef(db, `artifacts/${appId}/public/data/admin_invites`, emailClean);
         const inviteSnap = await getDoc(inviteDocRef);
-        if (inviteSnap.exists()) {
-          skipMaster = true;
-          resolvedRole = (inviteSnap.data() as any)?.role || "ADMIN";
-        }
-      } catch (e) {
-        console.error(e);
-      }
-
-      if (!skipMaster) {
-        // Validação obrigatória de e-mail institucional ou autorizado caso não tenha convite emitido
-        if (!isInstitutionalAdminEmail(emailClean)) {
-          setError("Apenas e-mails institucionais autorizados (@fajopa.edu.br) ou e-mails com convite prévio emitido pela administração podem se registrar como administradores.");
+        if (!inviteSnap.exists()) {
+          setError("Registro não autorizado. Para criar uma conta de administrador, é necessário possuir um convite prévio emitido pela administração para este e-mail.");
           return;
         }
-
-        if (!masterConfirm) {
-           setError("A Senha Mestra é necessária para registrar.");
-           return;
-        }
-
-        const storedMaster =
-          localStorage.getItem(PASSWORD_STORAGE_KEY) || DEFAULT_ADMIN_PASSWORD;
-        if (masterConfirm !== storedMaster) {
-          setError("Senha Mestra incorreta.");
-          return;
-        }
+        resolvedRole = (inviteSnap.data() as any)?.role || "ADMIN";
+      } catch (e: any) {
+        console.error("Erro ao validar convite de administrador:", e);
+        setError("Não foi possível verificar a autorização do convite. Verifique sua conexão ou contate a administração.");
+        return;
       }
     }
 
@@ -86,16 +65,34 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
     try {
       if (isRegister) {
         const userCred = await createUserWithEmailAndPassword(auth, email, emailPassword);
-        
-        // Remove administrator save since we no longer manage access there
-        if (inviteDocRef) {
-          try {
-            const { deleteDoc } = await import("firebase/firestore");
-            await deleteDoc(inviteDocRef);
-          } catch(e) {}
+        const newUser = userCred.user;
+        const idToken = await newUser.getIdToken();
+
+        // Aciona o backend autoritativo para validar o convite, promover a admin em /admins/{uid} e consumir o convite
+        const res = await fetch("/api/admin/accept-invite", {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+            Authorization: `Bearer ${idToken}`,
+          },
+          body: JSON.stringify({
+            uid: newUser.uid,
+            inviteId: email.trim().toLowerCase(),
+            idToken,
+          }),
+        });
+
+        const data = await res.json().catch(() => ({}));
+
+        if (!res.ok || !data.success) {
+          // Desconectar a sessão imediatamente caso a autorização do convite falhe no servidor
+          await auth.signOut();
+          throw new Error(
+            data.message || data.error || "Não foi possível autorizar seus privilégios de administrador no servidor."
+          );
         }
-        
-        await showAlert("Administrador registrado com sucesso!", { type: 'success' });
+
+        await showAlert("Administrador registrado e autorizado com sucesso!", { type: 'success' });
       } else {
         await signInWithEmailAndPassword(auth, email, emailPassword);
         await showAlert("Logado com sucesso!", { type: 'success', title: 'Bem-vindo(a)' });
@@ -204,7 +201,7 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
                 {activeTab === 'register' && (
                   <div className="bg-blue-50/50 dark:bg-blue-900/10 border border-blue-100 dark:border-blue-800/30 rounded-xl p-3 mb-4">
                     <p className="text-[11px] text-blue-700 dark:text-blue-300 font-medium leading-relaxed text-center">
-                      A criação de conta é exclusiva para administradores e gerentes do sistema. <br/>Para solicitar acesso, entre em contato com o suporte técnico ou o desenvolvedor.
+                      O registro é exclusivo para administradores autorizados. <br/>É necessário possuir um convite prévio emitido pela administração para o seu e-mail.
                     </p>
                   </div>
                 )}
@@ -241,26 +238,6 @@ export default function AdminLogin({ onLogin }: AdminLoginProps) {
                     </div>
                   )}
                 </div>
-
-                {activeTab === 'register' && (
-                  <motion.div 
-                     initial={{ opacity: 0, height: 0 }}
-                     animate={{ opacity: 1, height: 'auto' }}
-                     className="pt-2 border-t border-slate-100 dark:border-slate-700 mt-2"
-                  >
-                    <label className="block text-xs font-bold text-amber-600 dark:text-amber-500 uppercase mb-1.5 ml-1 flex items-center gap-1.5">
-                       <KeyRound className="w-3.5 h-3.5" />
-                       Senha Mestra de Autorização
-                    </label>
-                    <input
-                      type="password"
-                      value={masterConfirm}
-                      onChange={(e) => setMasterConfirm(e.target.value)}
-                      placeholder="Senha Mestra"
-                      className="input-modern w-full text-sm rounded-xl py-3 px-4 bg-amber-50/50 border-amber-200 focus:bg-white focus:border-amber-400 text-amber-900 placeholder-amber-700/30 dark:bg-amber-900/10 dark:border-amber-900/30 dark:focus:border-amber-500/50 dark:text-amber-100"
-                    />
-                  </motion.div>
-                )}
 
                 <motion.button
                   whileHover={{ scale: 1.02 }}

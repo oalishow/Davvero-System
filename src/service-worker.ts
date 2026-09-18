@@ -8,18 +8,23 @@ import { clientsClaim } from 'workbox-core';
 
 declare const self: any;
 
+const CURRENT_VERSION = '8.9b';
+const SHELL_CACHE_NAME = `app-shell-cache-v${CURRENT_VERSION}`;
+const STATIC_CACHE_NAME = `static-assets-cache-v${CURRENT_VERSION}`;
+
 // Ativar e registrar imediatamente o novo service worker e assumir o controle dos clientes
 self.skipWaiting();
 clientsClaim();
 cleanupOutdatedCaches();
 
-// Garantir que a casca da aplicação (App Shell) esteja permanentemente em cache dedicado
+// Garantir que a casca da aplicação (App Shell) esteja permanentemente em cache dedicado versionado
 self.addEventListener('install', (event: any) => {
   event.waitUntil(
     (async () => {
       try {
-        const cache = await caches.open('app-shell-cache');
-        await cache.addAll(['/', '/index.html']);
+        const cache = await caches.open(SHELL_CACHE_NAME);
+        const reqs = ['/', '/index.html'].map((url) => new Request(url, { cache: 'reload' }));
+        await cache.addAll(reqs);
       } catch (e) {
         console.warn('[SW] Pré-cache de contingência do app-shell finalizado com aviso:', e);
       }
@@ -27,15 +32,43 @@ self.addEventListener('install', (event: any) => {
   );
 });
 
-// Limpar caches antigos ou conflitantes (como o de chamadas streaming do Firestore)
+// Limpar caches antigos ou conflitantes (incluindo caches legados da v6.9b e app-shell não versionado)
 self.addEventListener('activate', (event: any) => {
   event.waitUntil(
     (async () => {
       try {
         if ('caches' in self) {
-          await caches.delete('firestore-data-cache');
+          const keys = await caches.keys();
+          await Promise.all(
+            keys.map((key: string) => {
+              if (
+                key === 'app-shell-cache' ||
+                key === 'firestore-data-cache' ||
+                (key.startsWith('app-shell-cache-') && key !== SHELL_CACHE_NAME) ||
+                (key.startsWith('static-assets-cache') && key !== STATIC_CACHE_NAME) ||
+                key.includes('v6.9') ||
+                key.includes('6.9b') ||
+                key.includes('v7.') ||
+                key.includes('v8.0') ||
+                key.includes('v8.1') ||
+                key.includes('v8.2') ||
+                key.includes('v8.3') ||
+                key.includes('v8.4') ||
+                key.includes('v8.5') ||
+                key.includes('v8.6') ||
+                key.includes('v8.7') ||
+                key.includes('v8.8')
+              ) {
+                console.log('[SW] Purgando cache legado / obsoleto:', key);
+                return caches.delete(key);
+              }
+              return Promise.resolve();
+            })
+          );
         }
-      } catch (_) {}
+      } catch (err) {
+        console.warn('[SW] Aviso ao ativar e purgar caches legados:', err);
+      }
     })()
   );
 });
@@ -59,7 +92,7 @@ precacheAndRoute(self.__WB_MANIFEST);
 // Uses NetworkFirst online so user gets newest bundles immediately,
 // and gracefully falls back to precached index.html when offline
 const navigationStrategy = new NetworkFirst({
-  cacheName: 'app-shell-cache',
+  cacheName: SHELL_CACHE_NAME,
   networkTimeoutSeconds: 3,
   plugins: [
     new CacheableResponsePlugin({
@@ -90,8 +123,8 @@ registerRoute(
           (await matchPrecache('/index.html')) ||
           (await caches.match('index.html')) ||
           (await caches.match('/index.html')) ||
-          (await caches.match('/', { cacheName: 'app-shell-cache' })) ||
-          (await caches.match('/index.html', { cacheName: 'app-shell-cache' }));
+          (await caches.match('/', { cacheName: SHELL_CACHE_NAME })) ||
+          (await caches.match('/index.html', { cacheName: SHELL_CACHE_NAME }));
         if (cached) return cached;
       }
       return await fetch(request);
@@ -101,8 +134,8 @@ registerRoute(
         (await matchPrecache('/index.html')) ||
         (await caches.match('index.html')) ||
         (await caches.match('/index.html')) ||
-        (await caches.match('/', { cacheName: 'app-shell-cache' })) ||
-        (await caches.match('/index.html', { cacheName: 'app-shell-cache' }));
+        (await caches.match('/', { cacheName: SHELL_CACHE_NAME })) ||
+        (await caches.match('/index.html', { cacheName: SHELL_CACHE_NAME }));
       if (fallback) return fallback;
       return new Response(
         '<!DOCTYPE html><html lang="pt-BR"><head><meta charset="utf-8"><title>DAVVERO - Modo Offline</title></head><body><h1>DAVVERO System Offline</h1><p>A carteirinha institucional funciona com dados salvos.</p></body></html>',
@@ -120,8 +153,8 @@ setCatchHandler(async ({ request }) => {
       (await matchPrecache('/index.html')) ||
       (await caches.match('index.html')) ||
       (await caches.match('/index.html')) ||
-      (await caches.match('/', { cacheName: 'app-shell-cache' })) ||
-      (await caches.match('/index.html', { cacheName: 'app-shell-cache' }));
+      (await caches.match('/', { cacheName: SHELL_CACHE_NAME })) ||
+      (await caches.match('/index.html', { cacheName: SHELL_CACHE_NAME }));
     if (fallback) return fallback;
   }
   // Retornar status HTTP amigável ao invés de Response.error() para nunca crashar o navegador em ERR_FAILED
@@ -171,7 +204,7 @@ registerRoute(
      request.destination === 'font') &&
     !url.pathname.startsWith('/api/'),
   new StaleWhileRevalidate({
-    cacheName: 'static-assets-cache',
+    cacheName: STATIC_CACHE_NAME,
     plugins: [
       new CacheableResponsePlugin({
         statuses: [0, 200],

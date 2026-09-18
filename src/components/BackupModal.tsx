@@ -1,6 +1,6 @@
 import { useState, useRef, useEffect, ChangeEvent } from "react";
 import { createPortal } from "react-dom";
-import { X, Database, Download, Lock, HardDrive, Clock } from "lucide-react";
+import { X, Database, Download, HardDrive, Clock } from "lucide-react";
 import {
   collection,
   setDoc,
@@ -8,7 +8,6 @@ import {
   addDoc,
 } from "firebase/firestore";
 import { db, appId, createNotification } from "../lib/firebase";
-import { PASSWORD_STORAGE_KEY, DEFAULT_ADMIN_PASSWORD } from "../lib/constants";
 import { fetchFullBackup, getAutoBackupsList, downloadAutoBackup } from "../lib/autoBackup";
 
 export default function BackupModal({ onClose }: { onClose: () => void }) {
@@ -18,15 +17,11 @@ export default function BackupModal({ onClose }: { onClose: () => void }) {
     type: "success" | "error";
   } | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
-  const [isUnlocked, setIsUnlocked] = useState(false);
-  const [passwordInput, setPasswordInput] = useState("");
   const [autoBackupsList, setAutoBackupsList] = useState<any[]>([]);
 
   useEffect(() => {
-    if (isUnlocked) {
-      getAutoBackupsList().then(setAutoBackupsList).catch(console.error);
-    }
-  }, [isUnlocked]);
+    getAutoBackupsList().then(setAutoBackupsList).catch(console.error);
+  }, []);
 
   const handleExport = async () => {
     setLoading(true);
@@ -127,17 +122,6 @@ export default function BackupModal({ onClose }: { onClose: () => void }) {
     setTimeout(() => setStatus(null), 4000);
   };
 
-  const handleUnlock = () => {
-    const current =
-      localStorage.getItem(PASSWORD_STORAGE_KEY) || DEFAULT_ADMIN_PASSWORD;
-    if (passwordInput === current) {
-      setIsUnlocked(true);
-      setStatus(null);
-    } else {
-      showStatus("Senha incorreta.", "error");
-    }
-  };
-
   useEffect(() => {
     document.body.style.overflow = "hidden";
     return () => {
@@ -168,104 +152,77 @@ export default function BackupModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {!isUnlocked ? (
-          <div className="space-y-4">
-            <div className="text-center mb-6">
-              <div className="w-12 h-12 bg-sky-100 dark:bg-sky-900/30 rounded-full flex items-center justify-center mx-auto mb-3">
-                <Lock className="w-6 h-6 text-sky-600 dark:text-sky-400" />
-              </div>
-              <p className="text-sm font-medium text-slate-600 dark:text-slate-400">
-                Área Restrita. Insira a senha mestra para continuar.
-              </p>
-            </div>
-            <input
-              type="password"
-              placeholder="Senha Mestra"
-              value={passwordInput}
-              onChange={(e) => setPasswordInput(e.target.value)}
-              onKeyDown={(e) => e.key === "Enter" && handleUnlock()}
-              className="w-full rounded-xl py-3 px-4 text-sm bg-slate-50 dark:bg-slate-900 border border-slate-200 dark:border-slate-700 outline-none focus:border-sky-500 text-center"
-            />
+        <div className="space-y-4">
+          <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-200 dark:border-emerald-500/30 text-center">
+            <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 mb-2">
+              Exportar Ficheiro (.json)
+            </h4>
+            <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mb-4">
+              Descarregue uma cópia completa de todos os registos atuais.
+            </p>
             <button
-              onClick={handleUnlock}
-              className="w-full py-3 bg-sky-600 hover:bg-sky-500 text-white rounded-xl text-sm font-bold shadow-lg shadow-sky-500/20 active:scale-95 transition-all"
+              onClick={handleExport}
+              disabled={loading}
+              className="btn-modern w-full py-2.5 rounded-lg text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 flex items-center justify-center gap-2"
             >
-              Desbloquear
+              <Download className="w-4 h-4" /> Exportar Base de Dados
             </button>
           </div>
-        ) : (
-          <div className="space-y-4">
-            <div className="bg-emerald-50 dark:bg-emerald-900/20 p-4 rounded-xl border border-emerald-200 dark:border-emerald-500/30 text-center">
-              <h4 className="text-sm font-semibold text-emerald-700 dark:text-emerald-300 mb-2">
-                Exportar Ficheiro (.json)
-              </h4>
-              <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mb-4">
-                Descarregue uma cópia completa de todos os registos atuais.
-              </p>
-              <button
-                onClick={handleExport}
-                disabled={loading}
-                className="btn-modern w-full py-2.5 rounded-lg text-sm font-medium text-white bg-emerald-600 hover:bg-emerald-500 flex items-center justify-center gap-2"
-              >
-                <Download className="w-4 h-4" /> Exportar Base de Dados
-              </button>
-            </div>
 
-            <div className="bg-sky-50 dark:bg-sky-900/20 p-4 rounded-xl border border-sky-200 dark:border-sky-500/30 text-center">
-              <h4 className="text-sm font-semibold text-sky-700 dark:text-sky-300 mb-2">
-                Importar Ficheiro (.json)
-              </h4>
-              <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mb-4">
-                Carregue um backup antigo. Ficará espelhado com os dados na
-                Nuvem.
-              </p>
-              <input
-                type="file"
-                ref={fileInputRef}
-                accept=".json"
-                onChange={handleImport}
-                className="hidden"
-              />
-              <button
-                onClick={() => fileInputRef.current?.click()}
-                disabled={loading}
-                className="btn-modern w-full py-2.5 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-500"
-              >
-                {loading ? "A processar..." : "Selecionar e Importar"}
-              </button>
-            </div>
-
-            {autoBackupsList.length > 0 && (
-              <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/50">
-                <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2 flex items-center justify-between">
-                  <span className="flex items-center gap-1.5"><Clock className="w-4 h-4" /> Backups Automáticos</span>
-                </h4>
-                <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mb-4">
-                  O sistema extrai bases semanais automaticamente e armazena localmente.
-                </p>
-                <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar pr-1">
-                  {autoBackupsList.map(b => (
-                    <div key={b.id} className="flex items-center justify-between bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
-                      <div>
-                        <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{b.id}</p>
-                        <p className="text-[10px] text-slate-500">
-                          {new Date(b.timestamp).toLocaleString()} • {(b.size / 1024).toFixed(1)} KB
-                        </p>
-                      </div>
-                      <button 
-                        onClick={() => downloadAutoBackup(b.id)}
-                        className="p-2 bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors"
-                        title="Descarregar ZIP/JSON"
-                      >
-                        <HardDrive className="w-4 h-4" />
-                      </button>
-                    </div>
-                  ))}
-                </div>
-              </div>
-            )}
+          <div className="bg-sky-50 dark:bg-sky-900/20 p-4 rounded-xl border border-sky-200 dark:border-sky-500/30 text-center">
+            <h4 className="text-sm font-semibold text-sky-700 dark:text-sky-300 mb-2">
+              Importar Ficheiro (.json)
+            </h4>
+            <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mb-4">
+              Carregue um backup antigo. Ficará espelhado com os dados na
+              Nuvem.
+            </p>
+            <input
+              type="file"
+              ref={fileInputRef}
+              accept=".json"
+              onChange={handleImport}
+              className="hidden"
+            />
+            <button
+              onClick={() => fileInputRef.current?.click()}
+              disabled={loading}
+              className="btn-modern w-full py-2.5 rounded-lg text-sm font-medium text-white bg-sky-600 hover:bg-sky-500"
+            >
+              {loading ? "A processar..." : "Selecionar e Importar"}
+            </button>
           </div>
-        )}
+
+          {autoBackupsList.length > 0 && (
+            <div className="bg-slate-50 dark:bg-slate-800/50 p-4 rounded-xl border border-slate-200 dark:border-slate-700/50">
+              <h4 className="text-sm font-semibold text-slate-700 dark:text-slate-300 mb-2 flex items-center justify-between">
+                <span className="flex items-center gap-1.5"><Clock className="w-4 h-4" /> Backups Automáticos</span>
+              </h4>
+              <p className="text-[10px] sm:text-xs text-slate-500 dark:text-slate-400 mb-4">
+                O sistema extrai bases semanais automaticamente e armazena localmente.
+              </p>
+              <div className="space-y-2 max-h-[150px] overflow-y-auto custom-scrollbar pr-1">
+                {autoBackupsList.map(b => (
+                  <div key={b.id} className="flex items-center justify-between bg-white dark:bg-slate-800 p-2.5 rounded-lg border border-slate-200 dark:border-slate-700">
+                    <div>
+                      <p className="text-xs font-bold text-slate-700 dark:text-slate-300">{b.id}</p>
+                      <p className="text-[10px] text-slate-500">
+                        {new Date(b.timestamp).toLocaleString()} • {(b.size / 1024).toFixed(1)} KB
+                      </p>
+                    </div>
+                    <button 
+                      onClick={() => downloadAutoBackup(b.id)}
+                      className="p-2 bg-sky-50 dark:bg-sky-500/10 text-sky-600 dark:text-sky-400 rounded-lg hover:bg-sky-100 dark:hover:bg-sky-500/20 transition-colors"
+                      title="Descarregar ZIP/JSON"
+                    >
+                      <HardDrive className="w-4 h-4" />
+                    </button>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
+        </div>
       </div>
     </div>,
     document.body,
